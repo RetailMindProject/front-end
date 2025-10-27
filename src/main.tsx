@@ -1,9 +1,12 @@
-import { StrictMode } from 'react'
-import { createRoot } from 'react-dom/client'
+import React from 'react'
+import ReactDOM from 'react-dom/client'
 import './index.css'
-import App from './App.tsx'
-createRoot(document.getElementById('root')!).render(
-  <StrictMode>
-    <App />
-  </StrictMode>,
+import LoginPage from './pages/LoginPage'
+import StoreManager from './pages/StoreManagerDashboard'
+import Register from './pages/RegisterPage'
+
+ReactDOM.createRoot(document.getElementById('root')!).render(
+  <React.StrictMode>
+     <StoreManager/>
+  </React.StrictMode>,
 )
