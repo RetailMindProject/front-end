@@ -11,6 +11,7 @@ import {
   ProductsList,
   RecentDailyTable,
 } from "../components";
+import Sessions from "./Sessions";
 
 // -------- Mock Data --------
 const salesTrend = [
@@ -48,14 +49,33 @@ const fmt = new Intl.NumberFormat(undefined, { style: "currency", currency: "USD
 
 export default function StoreManager() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [currentPage, setCurrentPage] = useState('dashboard');
   const totalSales = useMemo(() => fmt.format(recentDaily.reduce((a, b) => a + b.amount, 0)), []);
   const totalOrders = useMemo(() => recentDaily.reduce((a, b) => a + b.orders, 0), []);
   const today = recentDaily[recentDaily.length - 1];
 
+  const handleNavigate = (page: string) => {
+    setCurrentPage(page);
+  };
+
+  if (currentPage === 'sessions') {
+    return (
+      <div className="flex min-h-screen bg-gradient-to-b from-blue-50 via-blue-100 to-blue-50">
+        <Sidebar open={sidebarOpen} onToggle={() => setSidebarOpen((s) => !s)} onNavigate={handleNavigate} />
+        <div className="flex min-h-screen flex-1 flex-col">
+          <Topbar />
+          <div className="flex-1">
+            <Sessions />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex min-h-screen bg-gradient-to-b from-blue-50 via-blue-100 to-blue-50">
       {/* Sidebar */}
-      <Sidebar open={sidebarOpen} onToggle={() => setSidebarOpen((s) => !s)} />
+      <Sidebar open={sidebarOpen} onToggle={() => setSidebarOpen((s) => !s)} onNavigate={handleNavigate} />
 
       {/* Main */}
       <div className="flex min-h-screen flex-1 flex-col">

@@ -2,7 +2,11 @@ import React from "react";
 import { Menu, Package, UsersRound, Settings, LineChart as LineChartIcon, LayoutDashboard } from "lucide-react";
 import SideLink from "./SideLink";
 
-export default function Sidebar({ open, onToggle }: { open: boolean; onToggle: () => void }) {
+export default function Sidebar({ open, onToggle, onNavigate }: { 
+  open: boolean; 
+  onToggle: () => void;
+  onNavigate?: (page: string) => void;
+}) {
   return (
     <aside className={`${open ? "w-64" : "w-16"} sticky top-0 h-screen border-r border-blue-200 bg-blue-50/50 transition-all`}>
       <div className="flex items-center justify-between px-3 py-3">
@@ -22,12 +26,43 @@ export default function Sidebar({ open, onToggle }: { open: boolean; onToggle: (
       </div>
 
       <nav className="px-2 py-2 text-sm">
-        <SideLink icon={<LayoutDashboard className="h-4 w-4" />} label="Dashboard" open={open} active />
-        <SideLink icon={<Package className="h-4 w-4" />} label="Products" open={open} />
-        <SideLink icon={<Package className="h-4 w-4" />} label="Store Operations" open={open} />
-        <SideLink icon={<LineChartIcon className="h-4 w-4" />} label="Sessions" open={open} />
-        <SideLink icon={<UsersRound className="h-4 w-4" />} label="Cashiers" open={open} />
-        <SideLink icon={<Settings className="h-4 w-4" />} label="Settings" open={open} />
+        <SideLink 
+          icon={<LayoutDashboard className="h-4 w-4" />} 
+          label="Dashboard" 
+          open={open} 
+          active 
+          onClick={() => onNavigate?.('dashboard')}
+        />
+        <SideLink 
+          icon={<Package className="h-4 w-4" />} 
+          label="Products" 
+          open={open} 
+          onClick={() => onNavigate?.('products')}
+        />
+        <SideLink 
+          icon={<Package className="h-4 w-4" />} 
+          label="Store Operations" 
+          open={open} 
+          onClick={() => onNavigate?.('operations')}
+        />
+        <SideLink 
+          icon={<LineChartIcon className="h-4 w-4" />} 
+          label="Sessions" 
+          open={open} 
+          onClick={() => onNavigate?.('sessions')}
+        />
+        <SideLink 
+          icon={<UsersRound className="h-4 w-4" />} 
+          label="Cashiers" 
+          open={open} 
+          onClick={() => onNavigate?.('cashiers')}
+        />
+        <SideLink 
+          icon={<Settings className="h-4 w-4" />} 
+          label="Settings" 
+          open={open} 
+          onClick={() => onNavigate?.('settings')}
+        />
       </nav>
     </aside>
   );
