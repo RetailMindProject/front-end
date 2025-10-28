@@ -15,14 +15,18 @@ export default function SideLink({
 }) {
   return (
     <div
-      className={`mb-1 flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 ${
-        active ? "bg-blue-200 text-blue-900" : "text-blue-700 hover:bg-blue-100"
+      className={`mb-1.5 flex cursor-pointer items-center gap-3 rounded-xl px-3 py-2.5 transition-all duration-200 ${
+        active 
+          ? "bg-gradient-to-r from-indigo-500 to-blue-500 text-white shadow-md shadow-indigo-500/30" 
+          : "text-indigo-700/80 hover:bg-indigo-50/70 hover:text-indigo-900"
       }`}
       title={label}
       onClick={onClick}
     >
-      {icon}
-      <span className={`${open ? "block" : "hidden"}`}>{label}</span>
+      <div className={`${active ? "scale-110" : ""} transition-transform duration-200`}>
+        {icon}
+      </div>
+      <span className={`font-medium text-sm ${open ? "block" : "hidden"}`}>{label}</span>
     </div>
   );
 }

@@ -1,15 +1,16 @@
 import React from "react";
-import { Menu, Package, UsersRound, Settings, LineChart as LineChartIcon, LayoutDashboard } from "lucide-react";
+import { Menu, LayoutDashboard, UsersRound, FileText, TrendingUp } from "lucide-react";
 import SideLink from "./SideLink";
 
-export default function Sidebar({ open, onToggle, onNavigate }: { 
+export default function CEOSidebar({ open, onToggle, onNavigate }: { 
   open: boolean; 
   onToggle: () => void;
   onNavigate?: (page: string) => void;
 }) {
+  const activePage = 'dashboard'; // This will be managed by parent
+  
   return (
     <aside className={`${open ? "w-64" : "w-16"} sticky top-0 h-screen bg-gradient-to-br from-indigo-50 via-blue-50 to-purple-50 border-r border-indigo-200/50 transition-all shadow-lg`}>
-      {/* Decorative background pattern */}
       <div className="absolute inset-0 opacity-5 bg-[radial-gradient(circle_at_2px_2px,_indigo_500_1px,_transparent_0)] bg-[length:40px_40px]"></div>
       
       <div className="relative flex items-center justify-between px-3 py-4 border-b border-indigo-200/30">
@@ -21,52 +22,44 @@ export default function Sidebar({ open, onToggle, onNavigate }: {
               className="h-9 w-9 rounded-lg"
             />
           </div>
-          <span className={`font-bold text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-blue-600 ${open ? "block" : "hidden"}`}>RetailMind</span>
+          <span className={`font-bold text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-blue-600 ${open ? "block" : "hidden"}`}>RetailMind CEO</span>
         </div>
         <button onClick={onToggle} className="rounded-lg p-2 hover:bg-indigo-100/50 transition-colors" aria-label="Toggle Sidebar">
           <Menu className="h-5 w-5 text-indigo-600" />
         </button>
       </div>
 
-      <nav className="px-2 py-2 text-sm">
+      <nav className="relative px-2 py-2 text-sm">
         <SideLink 
           icon={<LayoutDashboard className="h-4 w-4" />} 
           label="Dashboard" 
           open={open} 
-          active 
+          active={activePage === 'dashboard'}
           onClick={() => onNavigate?.('dashboard')}
         />
         <SideLink 
-          icon={<Package className="h-4 w-4" />} 
-          label="Products" 
-          open={open} 
-          onClick={() => onNavigate?.('products')}
-        />
-        <SideLink 
-          icon={<Package className="h-4 w-4" />} 
-          label="Store Operations" 
-          open={open} 
-          onClick={() => onNavigate?.('operations')}
-        />
-        <SideLink 
-          icon={<LineChartIcon className="h-4 w-4" />} 
-          label="Sessions" 
-          open={open} 
-          onClick={() => onNavigate?.('sessions')}
-        />
-        <SideLink 
           icon={<UsersRound className="h-4 w-4" />} 
-          label="Cashiers" 
+          label="Manage Accounts" 
           open={open} 
-          onClick={() => onNavigate?.('cashiers')}
+          active={activePage === 'manage-accounts'}
+          onClick={() => onNavigate?.('manage-accounts')}
         />
         <SideLink 
-          icon={<Settings className="h-4 w-4" />} 
-          label="Settings" 
+          icon={<FileText className="h-4 w-4" />} 
+          label="Reports" 
           open={open} 
-          onClick={() => onNavigate?.('settings')}
+          active={activePage === 'reports'}
+          onClick={() => onNavigate?.('reports')}
+        />
+        <SideLink 
+          icon={<TrendingUp className="h-4 w-4" />} 
+          label="Forecasting" 
+          open={open} 
+          active={activePage === 'forecasting'}
+          onClick={() => onNavigate?.('forecasting')}
         />
       </nav>
     </aside>
   );
 }
+
