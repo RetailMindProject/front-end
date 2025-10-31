@@ -12,6 +12,10 @@ import {
   RecentDailyTable,
 } from "../components";
 import Sessions from "./Sessions";
+import { LineChart as LineChartIcon, LayoutDashboard, Package, Upload } from "lucide-react";
+import UploadReport from "./UploadReport";
+import StoreOperations from "./StoreOperations";
+import { Routes, Route } from "react-router-dom";
 
 // -------- Mock Data --------
 const salesTrend = [
@@ -49,99 +53,99 @@ const fmt = new Intl.NumberFormat(undefined, { style: "currency", currency: "USD
 
 export default function StoreManager() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
-  const [currentPage, setCurrentPage] = useState('dashboard');
   const totalSales = useMemo(() => fmt.format(recentDaily.reduce((a, b) => a + b.amount, 0)), []);
   const totalOrders = useMemo(() => recentDaily.reduce((a, b) => a + b.orders, 0), []);
   const today = recentDaily[recentDaily.length - 1];
 
-  const handleNavigate = (page: string) => {
-    setCurrentPage(page);
-  };
-
-  if (currentPage === 'sessions') {
-    return (
-      <div className="flex min-h-screen bg-gradient-to-b from-blue-50 via-blue-100 to-blue-50">
-        <Sidebar open={sidebarOpen} onToggle={() => setSidebarOpen((s) => !s)} onNavigate={handleNavigate} />
-        <div className="flex min-h-screen flex-1 flex-col">
-          <Topbar />
-          <div className="flex-1">
-            <Sessions />
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="flex min-h-screen bg-gradient-to-b from-blue-50 via-blue-100 to-blue-50">
       {/* Sidebar */}
-      <Sidebar open={sidebarOpen} onToggle={() => setSidebarOpen((s) => !s)} onNavigate={handleNavigate} />
+      <Sidebar
+        open={sidebarOpen}
+        onToggle={() => setSidebarOpen((s) => !s)}
+        links={[
+          { to: "/store-manager", label: "Dashboard", icon: <LayoutDashboard className="h-4 w-4" /> },
+          { to: "/store-manager/sessions", label: "Sessions", icon: <LineChartIcon className="h-4 w-4" /> },
+          { to: "/store-manager/operations", label: "Store Operations", icon: <Package className="h-4 w-4" /> },
+          { to: "/store-manager/upload-report", label: "Upload Report", icon: <Upload className="h-4 w-4" /> },
+        ]}
+      />
 
       {/* Main */}
       <div className="flex min-h-screen flex-1 flex-col">
         <Topbar />
 
-        <main className="p-4 md:p-6">
-          <div className="mb-6">
-            <h1 className="text-2xl md:text-3xl font-semibold tracking-tight">Store Manager Dashboard</h1>
-            <p className="text-slate-600">Mock view – UI only (no backend data)</p>
-          </div>
+        <Routes>
+          <Route
+            index
+            element={
+              <main className="p-4 md:p-6">
+                <div className="mb-6">
+                  <h1 className="text-2xl md:text-3xl font-semibold tracking-tight">Store Manager Dashboard</h1>
+                  <p className="text-slate-600">Mock view – UI only (no backend data)</p>
+                </div>
 
-          {/* KPI Row */}
-          <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            <Card>
-              <CardTitle>💰 Total Sales</CardTitle>
-              <CardValue>{totalSales}</CardValue>
-              <CardHint>Last 5 days</CardHint>
-            </Card>
+                {/* KPI Row */}
+                <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                  <Card>
+                    <CardTitle>💰 Total Sales</CardTitle>
+                    <CardValue>{totalSales}</CardValue>
+                    <CardHint>Last 5 days</CardHint>
+                  </Card>
 
-            <Card>
-              <CardTitle>🧾 Total Orders</CardTitle>
-              <CardValue>{totalOrders}</CardValue>
-              <CardHint>Last 5 days</CardHint>
-            </Card>
+                  <Card>
+                    <CardTitle>🧾 Total Orders</CardTitle>
+                    <CardValue>{totalOrders}</CardValue>
+                    <CardHint>Last 5 days</CardHint>
+                  </Card>
 
-            <Card>
-              <CardTitle>📅 Recent Daily Amount</CardTitle>
-              <CardValue>{fmt.format(today.amount)}</CardValue>
-              <CardHint>{today.date}</CardHint>
-            </Card>
+                  <Card>
+                    <CardTitle>📅 Recent Daily Amount</CardTitle>
+                    <CardValue>{fmt.format(today.amount)}</CardValue>
+                    <CardHint>{today.date}</CardHint>
+                  </Card>
 
-            <Card>
-              <CardTitle>⭐ Most Popular Product</CardTitle>
-              <div className="mt-1">
-                <div className="font-medium">{topProducts[0].name}</div>
-                <div className="text-xs text-slate-500">Sold {topProducts[0].sold} • {fmt.format(topProducts[0].revenue)}</div>
-              </div>
-            </Card>
-          </section>
+                  <Card>
+                    <CardTitle>⭐ Most Popular Product</CardTitle>
+                    <div className="mt-1">
+                      <div className="font-medium">{topProducts[0].name}</div>
+                      <div className="text-xs text-slate-500">Sold {topProducts[0].sold} • {fmt.format(topProducts[0].revenue)}</div>
+                    </div>
+                  </Card>
+                </section>
 
-          {/* Charts Row */}
-          <section className="mt-6 grid grid-cols-1 gap-6 xl:grid-cols-2">
-            <Card padded>
-              <h2 className="mb-3 text-lg font-medium leading-none tracking-tight">Sales / Money (Line)</h2>
-              <SalesLineChart data={salesTrend} />
-            </Card>
+                {/* Charts Row */}
+                <section className="mt-6 grid grid-cols-1 gap-6 xl:grid-cols-2">
+                  <Card padded>
+                    <h2 className="mb-3 text-lg font-medium leading-none tracking-tight">Sales / Money (Line)</h2>
+                    <SalesLineChart data={salesTrend} />
+                  </Card>
 
-            <Card padded>
-              <h2 className="mb-3 text-lg font-medium leading-none tracking-tight">Category Products Counts (Pie)</h2>
-              <CategoryPieChart data={categoryCounts} />
-            </Card>
-          </section>
+                  <Card padded>
+                    <h2 className="mb-3 text-lg font-medium leading-none tracking-tight">Category Products Counts (Pie)</h2>
+                    <CategoryPieChart data={categoryCounts} />
+                  </Card>
+                </section>
 
-          {/* Insights Row */}
-          <section className="mt-6 grid grid-cols-1 gap-6 xl:grid-cols-2">
-            <Card padded>
-              <h2 className="mb-3 text-lg font-medium leading-none tracking-tight">Most Popular Products</h2>
-              <ProductsList items={topProducts} />
-            </Card>
+                {/* Insights Row */}
+                <section className="mt-6 grid grid-cols-1 gap-6 xl:grid-cols-2">
+                  <Card padded>
+                    <h2 className="mb-3 text-lg font-medium leading-none tracking-tight">Most Popular Products</h2>
+                    <ProductsList items={topProducts} />
+                  </Card>
 
-            <Card padded>
-              <h2 className="mb-3 text-lg font-medium leading-none tracking-tight">Recent Daily Amount & Orders</h2>
-              <RecentDailyTable rows={recentDaily} />
-            </Card>
-          </section>
-        </main>
+                  <Card padded>
+                    <h2 className="mb-3 text-lg font-medium leading-none tracking-tight">Recent Daily Amount & Orders</h2>
+                    <RecentDailyTable rows={recentDaily} />
+                  </Card>
+                </section>
+              </main>
+            }
+          />
+          <Route path="sessions" element={<div className="flex-1 p-4 md:p-6"><Sessions /></div>} />
+          <Route path="operations" element={<div className="flex-1 p-4 md:p-6"><StoreOperations /></div>} />
+          <Route path="upload-report" element={<div className="flex-1 p-4 md:p-6"><UploadReport /></div>} />
+        </Routes>
       </div>
     </div>
   );

@@ -1,10 +1,26 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
 import './index.css'
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import CEODashboard from './pages/CEODashboard'
+import Login from './pages/LoginPage'
+import StoreManager from './pages/StoreManagerDashboard'
+import InventoryManagerDashboard from './pages/InventoryManagerDashboard'
+import Profile from './pages/Profile'
+
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-     <CEODashboard/>
+    <BrowserRouter>
+      <Routes>
+        <Route path="/" element={<Login />} />
+        <Route path="/login" element={<Login />} />
+        <Route path="/ceo/*" element={<CEODashboard />} />
+        <Route path="/store-manager/*" element={<StoreManager />} />
+        <Route path="/inventory-manager/*" element={<InventoryManagerDashboard />} />
+        <Route path="/profile" element={<Profile />} />
+        <Route path="*" element={<Navigate to="/login" replace />} />
+      </Routes>
+    </BrowserRouter>
   </React.StrictMode>,
 )
