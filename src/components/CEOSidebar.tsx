@@ -1,17 +1,17 @@
 import React from "react";
-import { Menu, LayoutDashboard, UsersRound, FileText, TrendingUp } from "lucide-react";
-import SideLink from "./SideLink";
+import { Menu, LayoutDashboard, UsersRound, FileText, TrendingUp, Send } from "lucide-react";
+import { Link, useLocation } from "react-router-dom";
 
-export default function CEOSidebar({ open, onToggle, onNavigate }: { 
+export default function CEOSidebar({ open, onToggle }: { 
   open: boolean; 
   onToggle: () => void;
-  onNavigate?: (page: string) => void;
 }) {
-  const activePage = 'dashboard'; // This will be managed by parent
+  const location = useLocation();
+  const path = location.pathname;
   
   return (
-    <aside className={`${open ? "w-64" : "w-16"} sticky top-0 h-screen bg-gradient-to-br from-indigo-50 via-blue-50 to-purple-50 border-r border-indigo-200/50 transition-all shadow-lg`}>
-      <div className="absolute inset-0 opacity-5 bg-[radial-gradient(circle_at_2px_2px,_indigo_500_1px,_transparent_0)] bg-[length:40px_40px]"></div>
+    <aside className={`${open ? "w-64" : "w-16"} sticky top-0 h-screen bg-gradient-to-br from-indigo-50 via-blue-50 to-purple-50 border-r border-indigo-200/50 transition-all shadow-lg relative`}>
+      <div className="pointer-events-none absolute inset-0 opacity-5 bg-[radial-gradient(circle_at_2px_2px,_indigo_500_1px,_transparent_0)] bg-[length:40px_40px]"></div>
       
       <div className="relative flex items-center justify-between px-3 py-4 border-b border-indigo-200/30">
         <div className="flex items-center gap-3">
@@ -30,34 +30,36 @@ export default function CEOSidebar({ open, onToggle, onNavigate }: {
       </div>
 
       <nav className="relative px-2 py-2 text-sm">
-        <SideLink 
-          icon={<LayoutDashboard className="h-4 w-4" />} 
-          label="Dashboard" 
-          open={open} 
-          active={activePage === 'dashboard'}
-          onClick={() => onNavigate?.('dashboard')}
-        />
-        <SideLink 
-          icon={<UsersRound className="h-4 w-4" />} 
-          label="Manage Accounts" 
-          open={open} 
-          active={activePage === 'manage-accounts'}
-          onClick={() => onNavigate?.('manage-accounts')}
-        />
-        <SideLink 
-          icon={<FileText className="h-4 w-4" />} 
-          label="Reports" 
-          open={open} 
-          active={activePage === 'reports'}
-          onClick={() => onNavigate?.('reports')}
-        />
-        <SideLink 
-          icon={<TrendingUp className="h-4 w-4" />} 
-          label="Forecasting" 
-          open={open} 
-          active={activePage === 'forecasting'}
-          onClick={() => onNavigate?.('forecasting')}
-        />
+        <Link to="/ceo" className="block">
+          <div className={`flex items-center gap-3 rounded-md px-3 py-2 hover:bg-indigo-100/60 ${path === '/ceo' ? 'bg-indigo-100/60' : ''}`}>
+            <LayoutDashboard className="h-4 w-4" />
+            {open && <span>Dashboard</span>}
+          </div>
+        </Link>
+        <Link to="/ceo/manage-accounts" className="block">
+          <div className={`flex items-center gap-3 rounded-md px-3 py-2 hover:bg-indigo-100/60 ${path.includes('/ceo/manage-accounts') ? 'bg-indigo-100/60' : ''}`}>
+            <UsersRound className="h-4 w-4" />
+            {open && <span>Manage Accounts</span>}
+          </div>
+        </Link>
+        <Link to="/ceo/reports" className="block">
+          <div className={`flex items-center gap-3 rounded-md px-3 py-2 hover:bg-indigo-100/60 ${path.includes('/ceo/reports') ? 'bg-indigo-100/60' : ''}`}>
+            <FileText className="h-4 w-4" />
+            {open && <span>Reports</span>}
+          </div>
+        </Link>
+        <Link to="/ceo/forecasting" className="block">
+          <div className={`flex items-center gap-3 rounded-md px-3 py-2 hover:bg-indigo-100/60 ${path.includes('/ceo/forecasting') ? 'bg-indigo-100/60' : ''}`}>
+            <TrendingUp className="h-4 w-4" />
+            {open && <span>Forecasting</span>}
+          </div>
+        </Link>
+        <Link to="/ceo/outbox" className="block">
+          <div className={`flex items-center gap-3 rounded-md px-3 py-2 hover:bg-indigo-100/60 ${path.includes('/ceo/outbox') ? 'bg-indigo-100/60' : ''}`}>
+            <Send className="h-4 w-4" />
+            {open && <span>Outbox</span>}
+          </div>
+        </Link>
       </nav>
     </aside>
   );

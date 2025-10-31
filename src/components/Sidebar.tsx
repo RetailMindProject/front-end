@@ -1,16 +1,17 @@
 import React from "react";
-import { Menu, Package, UsersRound, Settings, LineChart as LineChartIcon, LayoutDashboard } from "lucide-react";
-import SideLink from "./SideLink";
+import { Menu } from "lucide-react";
+import { Link, useLocation } from "react-router-dom";
 
-export default function Sidebar({ open, onToggle, onNavigate }: { 
+export default function Sidebar({ open, onToggle, links }: { 
   open: boolean; 
   onToggle: () => void;
-  onNavigate?: (page: string) => void;
+  links: { to: string; label: string; icon: React.ReactNode }[];
 }) {
+  const { pathname } = useLocation();
   return (
-    <aside className={`${open ? "w-64" : "w-16"} sticky top-0 h-screen bg-gradient-to-br from-indigo-50 via-blue-50 to-purple-50 border-r border-indigo-200/50 transition-all shadow-lg`}>
+    <aside className={`${open ? "w-64" : "w-16"} sticky top-0 h-screen bg-gradient-to-br from-indigo-50 via-blue-50 to-purple-50 border-r border-indigo-200/50 transition-all shadow-lg relative`}>
       {/* Decorative background pattern */}
-      <div className="absolute inset-0 opacity-5 bg-[radial-gradient(circle_at_2px_2px,_indigo_500_1px,_transparent_0)] bg-[length:40px_40px]"></div>
+      <div className="pointer-events-none absolute inset-0 opacity-5 bg-[radial-gradient(circle_at_2px_2px,_indigo_500_1px,_transparent_0)] bg-[length:40px_40px]"></div>
       
       <div className="relative flex items-center justify-between px-3 py-4 border-b border-indigo-200/30">
         <div className="flex items-center gap-3">
@@ -28,44 +29,18 @@ export default function Sidebar({ open, onToggle, onNavigate }: {
         </button>
       </div>
 
-      <nav className="px-2 py-2 text-sm">
-        <SideLink 
-          icon={<LayoutDashboard className="h-4 w-4" />} 
-          label="Dashboard" 
-          open={open} 
-          active 
-          onClick={() => onNavigate?.('dashboard')}
-        />
-        <SideLink 
-          icon={<Package className="h-4 w-4" />} 
-          label="Products" 
-          open={open} 
-          onClick={() => onNavigate?.('products')}
-        />
-        <SideLink 
-          icon={<Package className="h-4 w-4" />} 
-          label="Store Operations" 
-          open={open} 
-          onClick={() => onNavigate?.('operations')}
-        />
-        <SideLink 
-          icon={<LineChartIcon className="h-4 w-4" />} 
-          label="Sessions" 
-          open={open} 
-          onClick={() => onNavigate?.('sessions')}
-        />
-        <SideLink 
-          icon={<UsersRound className="h-4 w-4" />} 
-          label="Cashiers" 
-          open={open} 
-          onClick={() => onNavigate?.('cashiers')}
-        />
-        <SideLink 
-          icon={<Settings className="h-4 w-4" />} 
-          label="Settings" 
-          open={open} 
-          onClick={() => onNavigate?.('settings')}
-        />
+      <nav className="relative px-2 py-2 text-sm">
+        {links.map((link) => {
+          const isActive = pathname === link.to || pathname.startsWith(link.to + '/');
+          return (
+            <Link key={link.to} to={link.to} className="block">
+              <div className={`flex items-center gap-3 rounded-md px-3 py-2 hover:bg-indigo-100/60 ${isActive ? 'bg-indigo-100/60' : ''}`}>
+                <span className={`h-4 w-4 ${isActive ? 'text-indigo-600' : 'text-slate-700'}`}>{link.icon}</span>
+                {open && <span className={`truncate ${isActive ? 'text-indigo-700 font-medium' : ''}`}>{link.label}</span>}
+              </div>
+            </Link>
+          );
+        })}
       </nav>
     </aside>
   );
