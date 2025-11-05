@@ -12,9 +12,10 @@ import {
   RecentDailyTable,
 } from "../components";
 import Sessions from "./Sessions";
-import { LineChart as LineChartIcon, LayoutDashboard, Package, Upload } from "lucide-react";
+import { LineChart as LineChartIcon, LayoutDashboard, Package, Upload, Percent } from "lucide-react";
 import UploadReport from "./UploadReport";
 import StoreOperations from "./StoreOperations";
+import StoreManagerOffersPage from "./StoreManagerOffersPage";
 import { Routes, Route } from "react-router-dom";
 
 // -------- Mock Data --------
@@ -66,6 +67,7 @@ export default function StoreManager() {
         links={[
           { to: "/store-manager", label: "Dashboard", icon: <LayoutDashboard className="h-4 w-4" /> },
           { to: "/store-manager/sessions", label: "Sessions", icon: <LineChartIcon className="h-4 w-4" /> },
+          { to: "/store-manager/offers", label: "Offers", icon: <Percent className="h-4 w-4" /> },
           { to: "/store-manager/operations", label: "Store Operations", icon: <Package className="h-4 w-4" /> },
           { to: "/store-manager/upload-report", label: "Upload Report", icon: <Upload className="h-4 w-4" /> },
         ]}
@@ -143,6 +145,7 @@ export default function StoreManager() {
             }
           />
           <Route path="sessions" element={<div className="flex-1 p-4 md:p-6"><Sessions /></div>} />
+          <Route path="offers" element={<div className="flex-1"><StoreManagerOffersPage /></div>} />
           <Route path="operations" element={<div className="flex-1 p-4 md:p-6"><StoreOperations /></div>} />
           <Route path="upload-report" element={<div className="flex-1 p-4 md:p-6"><UploadReport /></div>} />
         </Routes>

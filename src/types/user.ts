@@ -15,7 +15,7 @@ export interface CreateAccountProps {
   onSubmit?: (data: CreateAccountFormData) => void;
   initialData?: Partial<CreateAccountFormData>;
 }
-
+  
 // Extended user interface for account management
 export interface UserAccount extends CreateAccountFormData {
   id: string;
