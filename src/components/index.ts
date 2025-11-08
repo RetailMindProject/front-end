@@ -2,6 +2,7 @@ export { Card, CardTitle, CardValue, CardHint } from "./Card";
 export { default as Sidebar } from "./Sidebar";
 export { default as SideLink } from "./SideLink";
 export { default as Topbar } from "./Topbar";
+export { default as Footer } from "./Footer";
 export { default as NotificationBell } from "./NotificationBell";
 export { default as MessagesPanel } from "./MessagesPanel";
 

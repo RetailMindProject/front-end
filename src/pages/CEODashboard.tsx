@@ -4,7 +4,7 @@ import CEOSidebar from "../components/CEOSidebar";
 import StoreDashboard from "./StoreDashboard";
 import InventoryDashboard from "./InventoryDashboard";
 import ManageAccounts from "./ManageAccounts";
-import CeoReportsPage from "./CeoReportsPage";
+import ReportsPage from "./reports/ReportsPage";
 import Forecasting from "./Forecasting";
 import Outbox from "./Outbox";
 import { Routes, Route } from "react-router-dom";
@@ -51,7 +51,7 @@ export default function CEODashboard() {
             }
           />
           <Route path="manage-accounts" element={<div className="flex-1 overflow-auto"><ManageAccounts /></div>} />
-          <Route path="reports" element={<div className="flex-1 overflow-auto"><CeoReportsPage /></div>} />
+          <Route path="reports" element={<div className="flex-1 overflow-auto"><ReportsPage /></div>} />
           <Route path="forecasting" element={<div className="flex-1 overflow-auto"><Forecasting /></div>} />
           <Route path="outbox" element={<div className="flex-1 overflow-auto"><Outbox /></div>} />
         </Routes>
