@@ -1,6 +1,9 @@
-import React from "react";
+import { useState, useEffect } from "react";
 import { LogOut, MessageSquare } from "lucide-react";
 import NotificationBell from "./NotificationBell";
+import MessagesPanel from "./MessagesPanel";
+import { getMockMessages } from "./messages/utils";
+import type { Message } from "./messages/types";
 import { Link, useLocation } from "react-router-dom";
 
 function useRoleHeader() {
@@ -58,7 +61,15 @@ export default function Topbar() {
             <span className="hidden sm:inline">Logout</span>
           </button>
         </div>
-      </div>
-    </header>
+      </header>
+
+      {showMessages && (
+        <MessagesPanel 
+          isOpen={messagesOpen} 
+          onClose={() => setMessagesOpen(false)}
+          onMessagesChange={setMessages}
+        />
+      )}
+    </>
   );
 }

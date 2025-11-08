@@ -4,6 +4,13 @@ export { default as SideLink } from "./SideLink";
 export { default as Topbar } from "./Topbar";
 export { default as Footer } from "./Footer";
 export { default as NotificationBell } from "./NotificationBell";
+export { default as MessagesPanel } from "./MessagesPanel";
+
+// Messages components
+export * from "./messages";
+
+// Profile components
+export * from "./profile";
 export { default as ProductsList } from "./ProductsList";
 export { default as RecentDailyTable } from "./RecentDailyTable";
 export { default as SalesLineChart } from "./charts/SalesLineChart";
@@ -30,3 +37,9 @@ export { default as SessionInfoCard } from "./sessions/SessionInfoCard";
 export { default as AccountsTable } from "./accounts/AccountsTable";
 export { default as AccountsFilters } from "./accounts/AccountsFilters";
 export { default as AccountModal } from "./accounts/AccountModal";
+
+// Form components
+export { default as FormInput } from "./forms/FormInput";
+export { default as FormSelect } from "./forms/FormSelect";
+export { default as RichTextEditor } from "./forms/RichTextEditor";
+export { default as FileUpload } from "./forms/FileUpload";

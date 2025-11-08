@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import {
   Sidebar,
   Topbar,
@@ -147,7 +147,8 @@ export default function StoreManager() {
           <Route path="sessions" element={<div className="flex-1 p-4 md:p-6"><Sessions /></div>} />
           <Route path="offers" element={<div className="flex-1"><StoreManagerOffersPage /></div>} />
           <Route path="operations" element={<div className="flex-1 p-4 md:p-6"><StoreOperations /></div>} />
-          <Route path="upload-report" element={<div className="flex-1 p-4 md:p-6"><UploadReport /></div>} />
+          <Route path="upload-report" element={<UploadReport />} />
+          <Route path="message/:id" element={<MessageDetail />} />
         </Routes>
       </div>
     </div>

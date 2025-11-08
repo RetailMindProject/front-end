@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import { Sidebar, Topbar } from "../components";
 import InventoryDashboard from "./InventoryDashboard";
 import { LayoutDashboard, Package, TrendingUp, Upload } from "lucide-react";
@@ -36,7 +36,19 @@ export default function InventoryManagerDashboard() {
           />
           <Route path="operations" element={<div className="flex-1 p-4 md:p-6"><StoreOperations /></div>} />
           <Route path="forecasting" element={<div className="flex-1 p-4 md:p-6"><Forecasting /></div>} />
-          <Route path="upload-report" element={<div className="flex-1 p-4 md:p-6"><UploadReport /></div>} />
+          <Route
+            path="upload-report"
+            element={
+              <div className="flex-1 p-4 md:p-6">
+                <UploadReport
+                  recipients={[
+                    { value: "store_manager", label: "Store Manager" },
+                    { value: "ceo", label: "CEO" },
+                  ]}
+                />
+              </div>
+            }
+          />
         </Routes>
       </div>
     </div>
