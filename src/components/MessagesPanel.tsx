@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { MessageSquare, X } from "lucide-react";
 import type { Message } from "./messages/types";
 import { getMockMessages } from "./messages/utils";
@@ -14,6 +14,7 @@ interface MessagesPanelProps {
 export default function MessagesPanel({ isOpen, onClose, onMessagesChange }: MessagesPanelProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const navigate = useNavigate();
+  const { pathname } = useLocation();
 
   useEffect(() => {
     const mockMessages = getMockMessages();
@@ -23,6 +24,20 @@ export default function MessagesPanel({ isOpen, onClose, onMessagesChange }: Mes
   }, []);
 
   const unreadCount = messages.filter((m) => !m.read).length;
+
+  const getMessageRoute = (messageId: string) => {
+    if (pathname.startsWith("/ceo")) {
+      return `/ceo/message/${messageId}`;
+    }
+    if (pathname.startsWith("/store-manager")) {
+      return `/store-manager/message/${messageId}`;
+    }
+    if (pathname.startsWith("/inventory-manager")) {
+      return `/inventory-manager/message/${messageId}`;
+    }
+    // Default fallback
+    return `/store-manager/message/${messageId}`;
+  };
 
   const handleMessageClick = (msg: Message) => {
     // Mark as read
@@ -36,7 +51,7 @@ export default function MessagesPanel({ isOpen, onClose, onMessagesChange }: Mes
     
     // Navigate to message detail
     onClose();
-    navigate(`/store-manager/message/${msg.id}`);
+    navigate(getMessageRoute(msg.id));
   };
 
   if (!isOpen) return null;
@@ -94,7 +109,14 @@ export default function MessagesPanel({ isOpen, onClose, onMessagesChange }: Mes
         {/* Footer */}
         {messages.length > 0 && (
           <div className="border-t border-slate-200 px-4 py-3">
-            <button className="w-full rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 transition-colors">
+            <button 
+              onClick={() => {
+                const basePath = pathname.split("/").slice(0, 2).join("/");
+                onClose();
+                navigate(`${basePath}/outbox`);
+              }}
+              className="w-full rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 transition-all duration-200 hover:shadow-lg hover:shadow-indigo-500/30 hover:scale-[1.02] active:scale-[0.98] focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
+            >
               View All Messages
             </button>
           </div>

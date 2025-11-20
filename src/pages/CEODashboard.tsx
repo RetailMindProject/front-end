@@ -7,6 +7,8 @@ import ManageAccounts from "./ManageAccounts";
 import ReportsPage from "./reports/ReportsPage";
 import Forecasting from "./Forecasting";
 import Outbox from "./Outbox";
+import MessageDetail from "./MessageDetail";
+import Compose from "./Compose";
 import { Routes, Route } from "react-router-dom";
 
 export default function CEODashboard() {
@@ -54,6 +56,8 @@ export default function CEODashboard() {
           <Route path="reports" element={<div className="flex-1 overflow-auto"><ReportsPage /></div>} />
           <Route path="forecasting" element={<div className="flex-1 overflow-auto"><Forecasting /></div>} />
           <Route path="outbox" element={<div className="flex-1 overflow-auto"><Outbox /></div>} />
+          <Route path="compose" element={<div className="flex-1 overflow-auto"><Compose /></div>} />
+          <Route path="message/:id" element={<MessageDetail />} />
         </Routes>
       </div>
     </div>

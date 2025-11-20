@@ -1,7 +1,11 @@
 import React from "react";
 
 export function Card({ children, padded = false }: { children: React.ReactNode; padded?: boolean }) {
-  return <div className={`rounded-2xl border border-slate-200 bg-white shadow-sm ${padded ? "p-5" : "p-4"}`}>{children}</div>;
+  return (
+    <div className={`rounded-2xl border border-slate-200 bg-white shadow-sm transition-all duration-200 ease-in-out hover:shadow-md hover:border-slate-300 ${padded ? "p-5" : "p-4"}`}>
+      {children}
+    </div>
+  );
 }
 export function CardTitle({ children }: { children: React.ReactNode }) {
   return <div className="text-sm font-medium text-slate-600">{children}</div>;

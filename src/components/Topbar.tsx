@@ -1,9 +1,7 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { LogOut, MessageSquare } from "lucide-react";
 import NotificationBell from "./NotificationBell";
 import MessagesPanel from "./MessagesPanel";
-import { getMockMessages } from "./messages/utils";
-import type { Message } from "./messages/types";
 import { Link, useLocation } from "react-router-dom";
 
 function useRoleHeader() {
@@ -22,7 +20,8 @@ function useRoleHeader() {
 
 export default function Topbar() {
   const { role, name } = useRoleHeader();
-  const [hasMessages] = React.useState(true);
+  const [hasMessages] = useState(true);
+  const [messagesOpen, setMessagesOpen] = useState(false);
   
   return (
     <header className="sticky top-0 z-10 border-b border-[#0066FF]/20 shadow-sm bg-white/80 backdrop-blur-md transition-all duration-200 ease-in-out">
@@ -47,6 +46,7 @@ export default function Topbar() {
         {/* Left section: Messages, Notifications, Logout */}
         <div className="flex items-center gap-1 sm:gap-2">
           <button 
+            onClick={() => setMessagesOpen(true)}
             aria-label="Messages" 
             className="relative rounded-lg p-2 text-slate-600 hover:text-[#0066FF] hover:bg-blue-50/80 transition-all duration-200 ease-in-out hover:scale-105 active:scale-95"
           >
@@ -61,15 +61,12 @@ export default function Topbar() {
             <span className="hidden sm:inline">Logout</span>
           </button>
         </div>
-      </header>
+      </div>
 
-      {showMessages && (
-        <MessagesPanel 
-          isOpen={messagesOpen} 
-          onClose={() => setMessagesOpen(false)}
-          onMessagesChange={setMessages}
-        />
-      )}
-    </>
+      <MessagesPanel 
+        isOpen={messagesOpen} 
+        onClose={() => setMessagesOpen(false)}
+      />
+    </header>
   );
 }
