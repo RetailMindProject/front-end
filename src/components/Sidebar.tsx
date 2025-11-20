@@ -66,16 +66,16 @@ export default function Sidebar({ open, onToggle, links }: {
               <div className={`relative flex items-center gap-3 rounded-lg px-3 py-2.5 transition-all duration-200 ease-in-out group ${
                 isActive 
                   ? 'bg-gradient-to-r from-blue-500 to-blue-400 text-white shadow-md shadow-blue-500/30' 
-                  : 'hover:bg-indigo-100/60 text-slate-700'
-              }`}>
+                  : 'hover:bg-indigo-100/60 text-slate-700 hover:shadow-sm'
+              } focus-within:ring-2 focus-within:ring-blue-400 focus-within:ring-offset-2`}>
                 {/* Active left accent */}
                 {isActive && (
-                  <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-8 rounded-r-full bg-white/40"></div>
+                  <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-8 rounded-r-full bg-white/40 transition-all duration-200"></div>
                 )}
-                <span className={`h-4 w-4 flex-shrink-0 transition-all duration-200 ${isActive ? 'text-white scale-110' : 'text-slate-700 group-hover:scale-105 group-hover:text-[#0066FF]'}`}>
+                <span className={`h-4 w-4 flex-shrink-0 transition-all duration-200 ${isActive ? 'text-white scale-110' : 'text-slate-700 group-hover:scale-110 group-hover:text-[#0066FF] group-hover:rotate-3'}`}>
                   {link.icon}
                 </span>
-                <span className={`truncate transition-all duration-300 ${isActive ? 'font-semibold text-white' : 'group-hover:text-indigo-700'} ${open ? 'opacity-100' : 'opacity-0 hidden'}`}>
+                <span className={`truncate transition-all duration-300 ${isActive ? 'font-semibold text-white' : 'group-hover:text-indigo-700 group-hover:translate-x-0.5'} ${open ? 'opacity-100' : 'opacity-0 hidden'}`}>
                   {link.label}
                 </span>
               </div>

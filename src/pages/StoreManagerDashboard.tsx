@@ -12,10 +12,13 @@ import {
   RecentDailyTable,
 } from "../components";
 import Sessions from "./Sessions";
-import { LineChart as LineChartIcon, LayoutDashboard, Package, Upload, Percent } from "lucide-react";
+import { LineChart as LineChartIcon, LayoutDashboard, Package, Upload, Percent, Send } from "lucide-react";
 import UploadReport from "./UploadReport";
 import StoreOperations from "./StoreOperations";
 import StoreManagerOffersPage from "./StoreManagerOffersPage";
+import MessageDetail from "./MessageDetail";
+import Outbox from "./Outbox";
+import Compose from "./Compose";
 import { Routes, Route } from "react-router-dom";
 
 // -------- Mock Data --------
@@ -70,6 +73,7 @@ export default function StoreManager() {
           { to: "/store-manager/offers", label: "Offers", icon: <Percent className="h-4 w-4" /> },
           { to: "/store-manager/operations", label: "Store Operations", icon: <Package className="h-4 w-4" /> },
           { to: "/store-manager/upload-report", label: "Upload Report", icon: <Upload className="h-4 w-4" /> },
+          { to: "/store-manager/outbox", label: "Outbox", icon: <Send className="h-4 w-4" /> },
         ]}
       />
 
@@ -148,6 +152,8 @@ export default function StoreManager() {
           <Route path="offers" element={<div className="flex-1"><StoreManagerOffersPage /></div>} />
           <Route path="operations" element={<div className="flex-1 p-4 md:p-6"><StoreOperations /></div>} />
           <Route path="upload-report" element={<UploadReport />} />
+          <Route path="outbox" element={<div className="flex-1 overflow-auto"><Outbox /></div>} />
+          <Route path="compose" element={<Compose />} />
           <Route path="message/:id" element={<MessageDetail />} />
         </Routes>
       </div>

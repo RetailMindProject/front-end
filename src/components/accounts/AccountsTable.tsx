@@ -40,42 +40,45 @@ export default function AccountsTable({ accounts, onEdit, onToggleStatus }: Acco
         </thead>
         <tbody>
           {accounts.map((account) => (
-            <tr key={account.id} className="border-b border-gray-100 hover:bg-gray-50">
+            <tr 
+              key={account.id} 
+              className="border-b border-gray-100 hover:bg-blue-50/50 transition-all duration-150 ease-in-out group"
+            >
               <td className="py-3 px-4">
-                <div className="font-medium">{account.first_name} {account.last_name}</div>
+                <div className="font-medium group-hover:text-blue-700 transition-colors duration-150">{account.first_name} {account.last_name}</div>
               </td>
-              <td className="py-3 px-4 text-gray-600">{account.email}</td>
-              <td className="py-3 px-4 text-gray-600">{account.phone}</td>
+              <td className="py-3 px-4 text-gray-600 group-hover:text-gray-800 transition-colors duration-150">{account.email}</td>
+              <td className="py-3 px-4 text-gray-600 group-hover:text-gray-800 transition-colors duration-150">{account.phone}</td>
               <td className="py-3 px-4">
-                <span className="inline-block px-2 py-1 rounded text-xs font-medium bg-indigo-100 text-indigo-700">
+                <span className="inline-block px-2 py-1 rounded-lg text-xs font-medium bg-indigo-100 text-indigo-700 transition-all duration-150 group-hover:bg-indigo-200 group-hover:shadow-sm">
                   {roleLabels[account.role]}
                 </span>
               </td>
               <td className="py-3 px-4">
-                <span className={`inline-block px-2 py-1 rounded text-xs font-medium ${
+                <span className={`inline-block px-2 py-1 rounded-lg text-xs font-medium transition-all duration-150 group-hover:shadow-sm ${
                   account.is_active 
-                    ? 'bg-green-100 text-green-700' 
-                    : 'bg-red-100 text-red-700'
+                    ? 'bg-green-100 text-green-700 group-hover:bg-green-200' 
+                    : 'bg-red-100 text-red-700 group-hover:bg-red-200'
                 }`}>
                   {account.is_active ? 'Active' : 'Inactive'}
                 </span>
               </td>
-              <td className="py-3 px-4 text-gray-600 text-sm">{account.created_at}</td>
+              <td className="py-3 px-4 text-gray-600 text-sm group-hover:text-gray-800 transition-colors duration-150">{account.created_at}</td>
               <td className="py-3 px-4">
-                <div className="flex items-center justify-center gap-2">
+                <div className="flex items-center justify-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
                   <button
                     onClick={() => onEdit(account)}
-                    className="p-2 text-indigo-600 hover:bg-indigo-50 rounded"
+                    className="p-2 text-indigo-600 hover:bg-indigo-100 hover:scale-110 active:scale-95 rounded-lg transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-1"
                     title="Edit"
                   >
                     <Edit className="h-4 w-4" />
                   </button>
                   <button
                     onClick={() => onToggleStatus(account.id)}
-                    className={`p-2 rounded ${
+                    className={`p-2 rounded-lg transition-all duration-150 hover:scale-110 active:scale-95 focus:outline-none focus:ring-2 focus:ring-offset-1 ${
                       account.is_active 
-                        ? 'text-orange-600 hover:bg-orange-50' 
-                        : 'text-green-600 hover:bg-green-50'
+                        ? 'text-orange-600 hover:bg-orange-50 focus:ring-orange-500' 
+                        : 'text-green-600 hover:bg-green-50 focus:ring-green-500'
                     }`}
                     title={account.is_active ? 'Deactivate' : 'Activate'}
                   >
