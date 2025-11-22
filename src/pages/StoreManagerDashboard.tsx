@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import {
   Sidebar,
   Topbar,
@@ -21,6 +21,7 @@ import MessageDetail from "./MessageDetail";
 import Outbox from "./Outbox";
 import Compose from "./Compose";
 import { Routes, Route } from "react-router-dom";
+import { dashboardApi, type DashboardSummary, type SalesTrendItem, type CategoryCount, type TopProduct, type RecentDaily } from "../services/dashboard.api";
 
 // -------- Mock Data --------
 const salesTrend = [
@@ -58,9 +59,97 @@ const fmt = new Intl.NumberFormat(undefined, { style: "currency", currency: "USD
 
 export default function StoreManager() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
-  const totalSales = useMemo(() => fmt.format(recentDaily.reduce((a, b) => a + b.amount, 0)), []);
-  const totalOrders = useMemo(() => recentDaily.reduce((a, b) => a + b.orders, 0), []);
-  const today = recentDaily[recentDaily.length - 1];
+  const [dashboardData, setDashboardData] = useState<DashboardSummary | null>(null);
+  const [salesTrendData, setSalesTrendData] = useState<SalesTrendItem[] | null>(null);
+  const [categoryCountsData, setCategoryCountsData] = useState<CategoryCount[] | null>(null);
+  const [topProductsData, setTopProductsData] = useState<TopProduct[] | null>(null);
+  const [recentDailyData, setRecentDailyData] = useState<RecentDaily[] | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const fetchDashboardData = async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const [summaryData, trendData, categoryData, productsData, dailyData] = await Promise.all([
+          dashboardApi.fetchStoreSummary(),
+          dashboardApi.fetchSalesTrend(),
+          dashboardApi.fetchCategoryCounts(),
+          dashboardApi.fetchTopProducts(),
+          dashboardApi.fetchRecentDaily(),
+        ]);
+        
+        if (summaryData) {
+          setDashboardData(summaryData);
+        } else {
+          setError("Failed to load dashboard data");
+        }
+        
+        if (trendData) {
+          setSalesTrendData(trendData);
+        }
+        
+        if (categoryData) {
+          setCategoryCountsData(categoryData);
+        }
+        
+        if (productsData) {
+          setTopProductsData(productsData);
+        }
+        
+        if (dailyData) {
+          setRecentDailyData(dailyData);
+        }
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "An error occurred");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchDashboardData();
+  }, []);
+
+  // Use API data if available, otherwise fall back to mock data
+  const totalSales = useMemo(() => {
+    if (dashboardData) {
+      return fmt.format(dashboardData.totalSales);
+    }
+    return fmt.format(recentDaily.reduce((a, b) => a + b.amount, 0));
+  }, [dashboardData]);
+
+  const totalOrders = useMemo(() => {
+    if (dashboardData) {
+      return dashboardData.totalOrders;
+    }
+    return recentDaily.reduce((a, b) => a + b.orders, 0);
+  }, [dashboardData]);
+
+  const recentDailyAmount = useMemo(() => {
+    if (dashboardData) {
+      return fmt.format(dashboardData.recentDailyAmount);
+    }
+    return fmt.format(recentDaily[recentDaily.length - 1].amount);
+  }, [dashboardData]);
+
+  const recentDate = useMemo(() => {
+    if (dashboardData) {
+      return dashboardData.recentDate;
+    }
+    return recentDaily[recentDaily.length - 1].date;
+  }, [dashboardData]);
+
+  const mostPopularProduct = useMemo(() => {
+    if (dashboardData) {
+      return {
+        name: dashboardData.mostPopularProduct,
+        sold: dashboardData.mostPopularSold,
+        revenue: dashboardData.mostPopularRevenue,
+      };
+    }
+    return topProducts[0];
+  }, [dashboardData]);
 
   return (
     <div className="flex min-h-screen bg-gradient-to-b from-blue-50 via-blue-100 to-blue-50">
@@ -89,8 +178,19 @@ export default function StoreManager() {
               <main className="p-4 md:p-6">
                 <div className="mb-6">
                   <h1 className="text-2xl md:text-3xl font-semibold tracking-tight">Store Manager Dashboard</h1>
-                  <p className="text-slate-600">Mock view – UI only (no backend data)</p>
+                  {loading && <p className="text-slate-600">Loading dashboard data...</p>}
+                  {error && <p className="text-red-600">Error: {error}</p>}
+                  {!loading && !error && dashboardData && <p className="text-slate-600">Connected to backend API</p>}
                 </div>
+
+                {loading && (
+                  <div className="flex items-center justify-center py-12">
+                    <div className="text-slate-500">Loading...</div>
+                  </div>
+                )}
+
+                {!loading && (
+                  <>
 
                 {/* KPI Row */}
                 <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -108,15 +208,15 @@ export default function StoreManager() {
 
                   <Card>
                     <CardTitle>📅 Recent Daily Amount</CardTitle>
-                    <CardValue>{fmt.format(today.amount)}</CardValue>
-                    <CardHint>{today.date}</CardHint>
+                    <CardValue>{recentDailyAmount}</CardValue>
+                    <CardHint>{recentDate}</CardHint>
                   </Card>
 
                   <Card>
                     <CardTitle>⭐ Most Popular Product</CardTitle>
                     <div className="mt-1">
-                      <div className="font-medium">{topProducts[0].name}</div>
-                      <div className="text-xs text-slate-500">Sold {topProducts[0].sold} • {fmt.format(topProducts[0].revenue)}</div>
+                      <div className="font-medium">{mostPopularProduct.name}</div>
+                      <div className="text-xs text-slate-500">Sold {mostPopularProduct.sold} • {fmt.format(mostPopularProduct.revenue)}</div>
                     </div>
                   </Card>
                 </section>
@@ -125,12 +225,12 @@ export default function StoreManager() {
                 <section className="mt-6 grid grid-cols-1 gap-6 xl:grid-cols-2">
                   <Card padded>
                     <h2 className="mb-3 text-lg font-medium leading-none tracking-tight">Sales / Money (Line)</h2>
-                    <SalesLineChart data={salesTrend} />
+                    <SalesLineChart data={salesTrendData || salesTrend} />
                   </Card>
 
                   <Card padded>
                     <h2 className="mb-3 text-lg font-medium leading-none tracking-tight">Category Products Counts (Pie)</h2>
-                    <CategoryPieChart data={categoryCounts} />
+                    <CategoryPieChart data={categoryCountsData || categoryCounts} />
                   </Card>
                 </section>
 
@@ -138,14 +238,16 @@ export default function StoreManager() {
                 <section className="mt-6 grid grid-cols-1 gap-6 xl:grid-cols-2">
                   <Card padded>
                     <h2 className="mb-3 text-lg font-medium leading-none tracking-tight">Most Popular Products</h2>
-                    <ProductsList items={topProducts} />
+                    <ProductsList items={topProductsData || topProducts} />
                   </Card>
 
                   <Card padded>
                     <h2 className="mb-3 text-lg font-medium leading-none tracking-tight">Recent Daily Amount & Orders</h2>
-                    <RecentDailyTable rows={recentDaily} />
+                    <RecentDailyTable rows={recentDailyData || recentDaily} />
                   </Card>
                 </section>
+                  </>
+                )}
               </main>
             }
           />
