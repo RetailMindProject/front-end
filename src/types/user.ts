@@ -7,6 +7,8 @@ export interface CreateAccountFormData {
   phone: string;
   address: string;
   role: UserRole;
+  password?: string;
+  confirmPassword?: string;
 }
 
 export interface CreateAccountProps {

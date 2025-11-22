@@ -1,4 +1,6 @@
 import React, { useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { Plus } from "lucide-react";
 import { SessionActiveCard, CashierInfoCard, SessionInfoCard, Modal } from "../components";
 
 // --------------------
@@ -37,6 +39,7 @@ function timeSince(iso: string) {
 // Page
 // --------------------
 export default function Sessions() {
+  const navigate = useNavigate();
   const [active, setActive] = useState<typeof mockActive | null>(mockActive);
   const [showEndModal, setShowEndModal] = useState(false);
   const [showStartModal, setShowStartModal] = useState(false);
@@ -51,8 +54,19 @@ export default function Sessions() {
 
   return (
     <div className="p-6 text-gray-800">
-      <h1 className="mb-2 text-2xl font-semibold tracking-tight">Sessions</h1>
-      <p className="mb-6 text-slate-600">Mock view — Active Session, Cashier Info, and Session Info.</p>
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h1 className="mb-2 text-2xl font-semibold tracking-tight">Sessions</h1>
+          <p className="text-slate-600">Mock view — Active Session, Cashier Info, and Session Info.</p>
+        </div>
+        <button
+          onClick={() => navigate("/store-manager/create-account")}
+          className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 transition-colors"
+        >
+          <Plus className="h-4 w-4" />
+          Add New Cashier
+        </button>
+      </div>
 
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
         <SessionActiveCard

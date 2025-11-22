@@ -16,6 +16,7 @@ import { LineChart as LineChartIcon, LayoutDashboard, Package, Upload, Percent, 
 import UploadReport from "./UploadReport";
 import StoreOperations from "./StoreOperations";
 import StoreManagerOffersPage from "./StoreManagerOffersPage";
+import CreateAccountPage from "./CreateAccountPage";
 import MessageDetail from "./MessageDetail";
 import Outbox from "./Outbox";
 import Compose from "./Compose";
@@ -149,6 +150,7 @@ export default function StoreManager() {
             }
           />
           <Route path="sessions" element={<div className="flex-1 p-4 md:p-6"><Sessions /></div>} />
+          <Route path="create-account" element={<div className="flex-1 overflow-auto"><CreateAccountPage /></div>} />
           <Route path="offers" element={<div className="flex-1"><StoreManagerOffersPage /></div>} />
           <Route path="operations" element={<div className="flex-1 p-4 md:p-6"><StoreOperations /></div>} />
           <Route path="upload-report" element={<UploadReport />} />
