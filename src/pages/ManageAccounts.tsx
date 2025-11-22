@@ -1,4 +1,5 @@
 import { useState, useMemo } from "react";
+import { useNavigate } from "react-router-dom";
 import { Plus } from "lucide-react";
 import { Card } from "../components";
 import AccountsTable from "../components/accounts/AccountsTable";
@@ -59,8 +60,8 @@ const mockAccounts: UserAccount[] = [
 ];
 
 export default function ManageAccounts() {
+  const navigate = useNavigate();
   const [accounts, setAccounts] = useState<UserAccount[]>(mockAccounts);
-  const [showCreateModal, setShowCreateModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [editingAccount, setEditingAccount] = useState<UserAccount | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
@@ -83,19 +84,6 @@ export default function ManageAccounts() {
       return matchesSearch && matchesRole && matchesStatus;
     });
   }, [accounts, searchTerm, roleFilter, statusFilter]);
-
-  const handleCreate = async (data: any) => {
-    const newAccount: UserAccount = {
-      ...data,
-      id: Date.now().toString(),
-      is_active: true,
-      created_at: new Date().toISOString().split('T')[0],
-      updated_at: new Date().toISOString().split('T')[0],
-    };
-    setAccounts([...accounts, newAccount]);
-    setShowCreateModal(false);
-    alert('Account created successfully');
-  };
 
   const handleEdit = async (data: any) => {
     if (!editingAccount) return;
@@ -130,7 +118,7 @@ export default function ManageAccounts() {
           <p className="text-gray-600 mt-1">View and manage all user accounts</p>
         </div>
         <button
-          onClick={() => setShowCreateModal(true)}
+          onClick={() => navigate("/ceo/create-account")}
           className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 transition-colors"
         >
           <Plus className="h-4 w-4" />
@@ -160,15 +148,6 @@ export default function ManageAccounts() {
           onToggleStatus={handleToggleStatus}
         />
       </Card>
-
-      {/* Create Modal */}
-      <AccountModal
-        isOpen={showCreateModal}
-        onClose={() => setShowCreateModal(false)}
-        onSave={handleCreate}
-        mode="create"
-        allowedRoles={['STORE_MANAGER', 'INVENTORY_MANAGER', 'CASHIER']}
-      />
 
       {/* Edit Modal */}
       <AccountModal

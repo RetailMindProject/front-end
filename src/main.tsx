@@ -7,6 +7,7 @@ import Login from './pages/LoginPage'
 import StoreManager from './pages/StoreManagerDashboard'
 import InventoryManagerDashboard from './pages/InventoryManagerDashboard'
 import Profile from './pages/Profile'
+import Register from './pages/RegisterPage'
 
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
@@ -14,6 +15,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
     <BrowserRouter>
       <Routes>
         <Route path="/" element={<Login />} />
+        <Route path="/register" element={<Register />} />
         <Route path="/login" element={<Login />} />
         <Route path="/ceo/*" element={<CEODashboard />} />
         <Route path="/store-manager/*" element={<StoreManager />} />

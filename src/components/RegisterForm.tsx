@@ -1,121 +1,185 @@
 import { useState } from "react";
 
 export default function RegisterForm() {
-  const [firstName, setFirstName] = useState("");
-  const [lastName,  setLastName ] = useState("");
-  const [email,     setEmail    ] = useState("");
-  const [phone,     setPhone    ] = useState("");
-  const [password,  setPassword ] = useState("");
-  const [confirm,   setConfirm  ] = useState("");
-  const [agree,     setAgree    ] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
+
+  const [form, setForm] = useState({
+    firstName: "",
+    lastName: "",
+    email: "",
+    phone: "",
+    password: "",
+    confirmPassword: "",
+    agree: false,
+  });
+
+  const handleChange = (
+    e: React.ChangeEvent<HTMLInputElement>
+  ) => {
+    const { name, value, type, checked } = e.target;
+    setForm((prev) => ({
+      ...prev,
+      [name]: type === "checkbox" ? checked : value,
+    }));
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (password !== confirm) return alert("Passwords do not match.");
-    if (!agree) return alert("Please agree to the Terms & Privacy.");
-    // TODO: استدعاء API لإنشاء حساب Customer
-    console.log("Register:", { firstName, lastName, email, phone, password });
-    alert("Registered (demo) — customer account created.");
+
+    if (!form.agree) {
+      alert("You must agree to the Terms & Privacy.");
+      return;
+    }
+
+    if (form.password !== form.confirmPassword) {
+      alert("Passwords do not match.");
+      return;
+    }
+
+    // هنا لاحقًا بتربطه مع API تبع Spring Boot
+    console.log("Register data:", form);
+    alert("Customer registered (demo). Connect this form to your API later.");
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+    <form onSubmit={handleSubmit} className="space-y-8">
+      {/* First + Last name */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div>
-          <label className="block text-sm font-medium text-slate-700">First name</label>
+          <label className="block text-sm mb-2">First name</label>
           <input
-            value={firstName}
-            onChange={e=>setFirstName(e.target.value)}
-            required
-            className="mt-1 w-full rounded-xl border border-slate-300 focus:border-indigo-500 focus:ring-indigo-500"
+            type="text"
+            name="firstName"
+            value={form.firstName}
+            onChange={handleChange}
             placeholder="Ahmad"
+            className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            required
           />
         </div>
+
         <div>
-          <label className="block text-sm font-medium text-slate-700">Last name</label>
+          <label className="block text-sm mb-2">Last name</label>
           <input
-            value={lastName}
-            onChange={e=>setLastName(e.target.value)}
-            required
-            className="mt-1 w-full rounded-xl border border-slate-300 focus:border-indigo-500 focus:ring-indigo-500"
+            type="text"
+            name="lastName"
+            value={form.lastName}
+            onChange={handleChange}
             placeholder="Ewidat"
+            className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            required
           />
         </div>
       </div>
 
+      {/* Email */}
       <div>
-        <label className="block text-sm font-medium text-slate-700">Email</label>
+        <label className="block text-sm mb-2">Email</label>
         <input
           type="email"
-          value={email}
-          onChange={e=>setEmail(e.target.value)}
+          name="email"
+          value={form.email}
+          onChange={handleChange}
+          placeholder="you@company.com"
+          className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
           required
-          className="mt-1 w-full rounded-xl border border-slate-300 focus:border-indigo-500 focus:ring-indigo-500"
-          placeholder="you@example.com"
-          autoComplete="email"
         />
       </div>
 
+      {/* Phone */}
       <div>
-        <label className="block text-sm font-medium text-slate-700">Phone</label>
+        <label className="block text-sm mb-2">Phone</label>
         <input
           type="tel"
-          value={phone}
-          onChange={e=>setPhone(e.target.value)}
-          className="mt-1 w-full rounded-xl border border-slate-300 focus:border-indigo-500 focus:ring-indigo-500"
+          name="phone"
+          value={form.phone}
+          onChange={handleChange}
           placeholder="+970 5x xxx xxxx"
-          autoComplete="tel"
+          className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          required
         />
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      {/* Password + Confirm */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div>
-          <label className="block text-sm font-medium text-slate-700">Password</label>
+          <div className="flex justify-between mb-2">
+            <label className="block text-sm">Password</label>
+            <button
+              type="button"
+              onClick={() => setShowPassword(!showPassword)}
+              className="text-sm text-gray-500"
+            >
+              {showPassword ? "Hide" : "Show"}
+            </button>
+          </div>
           <input
-            type="password"
-            value={password}
-            onChange={e=>setPassword(e.target.value)}
-            required
-            minLength={8}
-            className="mt-1 w-full rounded-xl border border-slate-300 focus:border-indigo-500 focus:ring-indigo-500"
+            type={showPassword ? "text" : "password"}
+            name="password"
+            value={form.password}
+            onChange={handleChange}
             placeholder="••••••••"
-            autoComplete="new-password"
+            className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            required
           />
         </div>
+
         <div>
-          <label className="block text-sm font-medium text-slate-700">Confirm password</label>
+          <div className="flex justify-between mb-2">
+            <label className="block text-sm">Confirm password</label>
+            <button
+              type="button"
+              onClick={() => setShowConfirm(!showConfirm)}
+              className="text-sm text-gray-500"
+            >
+              {showConfirm ? "Hide" : "Show"}
+            </button>
+          </div>
           <input
-            type="password"
-            value={confirm}
-            onChange={e=>setConfirm(e.target.value)}
-            required
-            minLength={8}
-            className="mt-1 w-full rounded-xl border border-slate-300 focus:border-indigo-500 focus:ring-indigo-500"
+            type={showConfirm ? "text" : "password"}
+            name="confirmPassword"
+            value={form.confirmPassword}
+            onChange={handleChange}
             placeholder="••••••••"
-            autoComplete="new-password"
+            className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            required
           />
         </div>
       </div>
 
-      <label className="inline-flex items-start gap-3 text-sm text-slate-600">
+      {/* Terms */}
+      <div className="flex items-center gap-3">
         <input
+          id="terms"
           type="checkbox"
-          checked={agree}
-          onChange={e=>setAgree(e.target.checked)}
-          className="mt-1 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+          name="agree"
+          checked={form.agree}
+          onChange={handleChange}
+          className="w-4 h-4 border-gray-300 rounded text-[#0066FF] focus:ring-2 focus:ring-blue-200"
         />
-        <span>
-          I agree to the <a href="#" className="text-indigo-600 hover:underline">Terms</a> and{" "}
-          <a href="#" className="text-indigo-600 hover:underline">Privacy Policy</a>.
-        </span>
-      </label>
+        <label htmlFor="terms" className="text-sm">
+          I agree to the{" "}
+          <a href="#" className="text-[#0066FF] hover:underline">
+            Terms
+          </a>{" "}
+          and{" "}
+          <a href="#" className="text-[#0066FF] hover:underline">
+            Privacy Policy
+          </a>
+        </label>
+      </div>
 
       <button
         type="submit"
-        className="w-full rounded-xl bg-indigo-600 px-4 py-3 text-white font-medium hover:bg-indigo-700 transition"
+        className="w-full bg-[#0066FF] text-white py-3 rounded-lg font-semibold hover:bg-blue-700 transition-colors focus:outline-none focus:ring-4 focus:ring-blue-200"
       >
         Create account
       </button>
+
+      <p className="text-center text-sm text-gray-500">
+        By continuing, you agree to our Terms&Privacy.
+      </p>
     </form>
   );
 }
