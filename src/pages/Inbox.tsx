@@ -1,19 +1,35 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { Inbox as InboxIcon, Plus } from "lucide-react";
 import type { Message } from "../components/messages/types";
-import { getMockMessages } from "../components/messages/utils";
 import MessageCard from "../components/messages/MessageCard";
+import { messagesApi } from "../services/messages.api";
 
 export default function Inbox() {
   const navigate = useNavigate();
   const { pathname } = useLocation();
   const [searchTerm, setSearchTerm] = useState("");
-  const [senderFilter, setSenderFilter] = useState<"all" | "CEO" | "Inventory Manager">("all");
+  const [senderFilter, setSenderFilter] = useState<"all" | "CEO" | "Store Manager" | "Inventory Manager">("all");
   const [readFilter, setReadFilter] = useState<"all" | "read" | "unread">("all");
+  const [allMessages, setAllMessages] = useState<Message[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
-  // Get received messages
-  const allMessages = useMemo(() => getMockMessages(), []);
+  useEffect(() => {
+    const loadMessages = async () => {
+      setLoading(true);
+      setError("");
+      const result = await messagesApi.getInboxMessages();
+      if (result.error) {
+        setError(result.error);
+      } else if (result.data) {
+        setAllMessages(result.data);
+      }
+      setLoading(false);
+    };
+
+    loadMessages();
+  }, []);
 
   // Filter messages
   const filteredMessages = useMemo(() => {
@@ -103,7 +119,7 @@ export default function Inbox() {
                 Sender
               </label>
               <div className="flex flex-wrap gap-2">
-                {(["all", "CEO", "Inventory Manager"] as const).map((sender) => (
+                {(["all", "CEO", "Store Manager", "Inventory Manager"] as const).map((sender) => (
                   <button
                     key={sender}
                     onClick={() => setSenderFilter(sender)}
@@ -145,7 +161,26 @@ export default function Inbox() {
 
         {/* Messages List */}
         <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-          {filteredMessages.length === 0 ? (
+          {loading ? (
+            <div className="px-6 py-16 text-center">
+              <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+              <p className="text-sm text-slate-600 mt-4">Loading messages...</p>
+            </div>
+          ) : error ? (
+            <div className="px-6 py-16 text-center">
+              <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-red-100 mb-4">
+                <InboxIcon className="h-8 w-8 text-red-400" />
+              </div>
+              <h3 className="text-lg font-semibold text-slate-800 mb-2">Error loading messages</h3>
+              <p className="text-sm text-slate-600 mb-6">{error}</p>
+              <button
+                onClick={() => window.location.reload()}
+                className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition-all duration-200"
+              >
+                Retry
+              </button>
+            </div>
+          ) : filteredMessages.length === 0 ? (
             <div className="px-6 py-16 text-center">
               <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-slate-100 mb-4">
                 <InboxIcon className="h-8 w-8 text-slate-400" />

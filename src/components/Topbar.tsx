@@ -1,27 +1,62 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { LogOut, MessageSquare } from "lucide-react";
 import NotificationBell from "./NotificationBell";
 import MessagesPanel from "./MessagesPanel";
 import { Link, useLocation } from "react-router-dom";
+import { getUserDisplayName, getUserInfo, getCurrentRole } from "../services/tokens";
+import { logout } from "../services/auth.api";
+import { messagesApi } from "../services/messages.api";
 
 function useRoleHeader() {
   const { pathname } = useLocation();
-  if (pathname.startsWith("/ceo")) {
-    return { role: "CEO", name: "Ahmad Ali" };
+  const userInfo = getUserInfo();
+  const currentRole = getCurrentRole();
+  
+  // Get user name from stored info or JWT token
+  const userName = getUserDisplayName();
+  
+  // Get role display name
+  let roleDisplayName = "Dashboard";
+  if (currentRole === "CEO") {
+    roleDisplayName = "CEO";
+  } else if (currentRole === "STORE_MANAGER") {
+    roleDisplayName = "Store Manager";
+  } else if (currentRole === "INVENTORY_MANAGER") {
+    roleDisplayName = "Inventory Manager";
+  } else if (userInfo) {
+    // Fallback to role from userInfo
+    if (userInfo.role === "CEO") {
+      roleDisplayName = "CEO";
+    } else if (userInfo.role === "STORE_MANAGER") {
+      roleDisplayName = "Store Manager";
+    } else if (userInfo.role === "INVENTORY_MANAGER") {
+      roleDisplayName = "Inventory Manager";
+    }
   }
-  if (pathname.startsWith("/store-manager")) {
-    return { role: "Store Manager", name: "Moath Saleh" };
-  }
-  if (pathname.startsWith("/inventory-manager")) {
-    return { role: "Inventory Manager", name: "Sara Mohammed" };
-  }
-  return { role: "Dashboard", name: "Guest" };
+  
+  return { role: roleDisplayName, name: userName };
 }
 
 export default function Topbar() {
   const { role, name } = useRoleHeader();
-  const [hasMessages] = useState(true);
+  const [hasMessages, setHasMessages] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
   const [messagesOpen, setMessagesOpen] = useState(false);
+
+  useEffect(() => {
+    const loadUnreadCount = async () => {
+      const result = await messagesApi.getUnreadCount();
+      if (result.data !== undefined) {
+        setUnreadCount(result.data);
+        setHasMessages(result.data > 0);
+      }
+    };
+
+    loadUnreadCount();
+    const interval = setInterval(loadUnreadCount, 30000);
+    
+    return () => clearInterval(interval);
+  }, []);
   
   return (
     <header className="sticky top-0 z-10 border-b border-[#0066FF]/20 shadow-sm bg-white/80 backdrop-blur-md transition-all duration-200 ease-in-out">
@@ -51,12 +86,17 @@ export default function Topbar() {
             className="relative rounded-lg p-2 text-slate-600 hover:text-[#0066FF] hover:bg-blue-50/80 transition-all duration-200 ease-in-out hover:scale-105 active:scale-95"
           >
             <MessageSquare className="h-5 w-5 transition-transform duration-200" />
-            {hasMessages && (
-              <span className="absolute top-1 right-1 h-2 w-2 rounded-full bg-[#0066FF] ring-2 ring-white"></span>
+            {unreadCount > 0 && (
+              <span className="absolute -right-0.5 -top-0.5 grid h-4 w-4 place-items-center rounded-full bg-[#0066FF] text-[10px] text-white font-semibold ring-2 ring-white shadow-sm">
+                {unreadCount > 9 ? "9+" : unreadCount}
+              </span>
             )}
           </button>
           <NotificationBell />
-          <button className="flex items-center gap-2 rounded-lg border border-slate-200/60 bg-white/80 backdrop-blur-sm px-3 py-2 text-sm font-medium text-slate-700 hover:bg-white hover:shadow-sm hover:border-[#0066FF]/20 hover:text-[#0066FF] transition-all duration-200 ease-in-out hover:scale-105 active:scale-95">
+          <button 
+            onClick={logout}
+            className="flex items-center gap-2 rounded-lg border border-slate-200/60 bg-white/80 backdrop-blur-sm px-3 py-2 text-sm font-medium text-slate-700 hover:bg-white hover:shadow-sm hover:border-[#0066FF]/20 hover:text-[#0066FF] transition-all duration-200 ease-in-out hover:scale-105 active:scale-95"
+          >
             <LogOut className="h-4 w-4 transition-transform duration-200" />
             <span className="hidden sm:inline">Logout</span>
           </button>

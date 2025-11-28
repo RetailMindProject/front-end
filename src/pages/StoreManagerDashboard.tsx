@@ -258,7 +258,7 @@ export default function StoreManager() {
           <Route path="upload-report" element={<UploadReport />} />
           <Route path="outbox" element={<div className="flex-1 overflow-auto"><Outbox /></div>} />
           <Route path="compose" element={<Compose />} />
-          <Route path="message/:id" element={<MessageDetail />} />
+          <Route path="message/:id" element={<div className="flex-1 overflow-auto"><MessageDetail /></div>} />
         </Routes>
       </div>
     </div>

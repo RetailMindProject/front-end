@@ -12,15 +12,23 @@ export default function MessageBadge({ from, size = "sm", className = "" }: Mess
     md: "px-3 py-1 text-sm",
   };
 
-  const badgeClasses = from === "CEO"
-    ? "bg-purple-100 text-purple-700"
-    : "bg-blue-100 text-blue-700";
+  const getBadgeConfig = () => {
+    if (from === "CEO") {
+      return { classes: "bg-purple-100 text-purple-700", icon: "👔" };
+    } else if (from === "Store Manager") {
+      return { classes: "bg-indigo-100 text-indigo-700", icon: "🏪" };
+    } else {
+      return { classes: "bg-blue-100 text-blue-700", icon: "📦" };
+    }
+  };
+
+  const { classes: badgeClasses, icon } = getBadgeConfig();
 
   return (
     <span
       className={`inline-flex items-center gap-1.5 rounded-full font-medium ${sizeClasses[size]} ${badgeClasses} ${className}`}
     >
-      {from === "CEO" ? "👔" : "📦"}
+      {icon}
       {from}
     </span>
   );

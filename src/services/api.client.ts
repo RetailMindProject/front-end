@@ -2,11 +2,6 @@ import { getCurrentToken } from "./tokens";
 
 const API_BASE_URL = "http://localhost:8081";
 
-// Get token based on current user role
-function getAuthToken(): string | null {
-  return getCurrentToken();
-}
-
 export interface ApiResponse<T> {
   data?: T;
   error?: string;
@@ -17,7 +12,7 @@ async function apiRequest<T>(
   endpoint: string,
   options: RequestInit = {}
 ): Promise<ApiResponse<T>> {
-  const token = getAuthToken();
+  const token = getCurrentToken();
   
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
@@ -37,6 +32,15 @@ async function apiRequest<T>(
     const data = await response.json();
 
     if (!response.ok) {
+      // Handle 401 Unauthorized - redirect to login
+      if (response.status === 401) {
+        // Clear tokens and redirect to login
+        localStorage.clear();
+        if (typeof window !== 'undefined' && !window.location.pathname.includes('/login')) {
+          window.location.href = '/login';
+        }
+      }
+      
       return {
         error: data.message || `HTTP error! status: ${response.status}`,
         status: response.status,

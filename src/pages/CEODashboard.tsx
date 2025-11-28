@@ -59,7 +59,7 @@ export default function CEODashboard() {
           <Route path="forecasting" element={<div className="flex-1 overflow-auto"><Forecasting /></div>} />
           <Route path="outbox" element={<div className="flex-1 overflow-auto"><Outbox /></div>} />
           <Route path="compose" element={<div className="flex-1 overflow-auto"><Compose /></div>} />
-          <Route path="message/:id" element={<MessageDetail />} />
+          <Route path="message/:id" element={<div className="flex-1 overflow-auto"><MessageDetail /></div>} />
         </Routes>
       </div>
     </div>

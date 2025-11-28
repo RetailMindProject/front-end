@@ -1,12 +1,13 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Send, Upload, Mail } from "lucide-react";
+import { useNavigate, useLocation } from "react-router-dom";
 import FormInput from "../components/forms/FormInput";
 import FormSelect from "../components/forms/FormSelect";
 import RichTextEditor from "../components/forms/RichTextEditor";
 import FileUpload from "../components/forms/FileUpload";
-import { useLocation } from "react-router-dom";
+import { messagesApi } from "../services/messages.api";
 
-type RecipientOption = { value: string; label: string };
+type RecipientOption = { value: string; label: string; userId?: number; role?: string };
 
 type UploadReportProps = {
   recipients?: RecipientOption[];
@@ -14,24 +15,72 @@ type UploadReportProps = {
 
 export default function UploadReport({ recipients }: UploadReportProps) {
   const { pathname } = useLocation();
+  const navigate = useNavigate();
   const [to, setTo] = useState("");
   const [subject, setSubject] = useState("");
   const [message, setMessage] = useState("");
   const [files, setFiles] = useState<File[]>([]);
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState("");
+  const [loadingRecipients, setLoadingRecipients] = useState(true);
+  const [availableRecipients, setAvailableRecipients] = useState<RecipientOption[]>([]);
 
-  const recipientOptions: RecipientOption[] =
-    recipients ?? [
-      { value: "inventory_manager", label: "Inventory Manager" },
-      { value: "ceo", label: "CEO" },
-    ];
-
-  // Determine if this is compose page or upload report
   const isCompose = pathname.includes("/compose");
   const pageTitle = isCompose ? "Compose Message" : "Upload Report";
   const pageDescription = isCompose 
     ? "Send a message to your team members" 
-    : "Send report / note to management (mock view – no backend)";
+    : "Send report / note to management";
   const buttonText = isCompose ? "Send Message" : "Send Report";
+
+  useEffect(() => {
+    const loadRecipients = async () => {
+      setLoadingRecipients(true);
+      setError("");
+      
+      try {
+        const result = await messagesApi.getAvailableRecipients();
+        
+        if (result.error) {
+          console.error("Failed to load recipients:", result.error);
+          setError(`Failed to load recipients: ${result.error}. Please refresh the page.`);
+          if (recipients && recipients.length > 0) {
+            const fallbackRecipients = recipients.map(recipient => ({
+              ...recipient,
+              userId: undefined,
+              role: recipient.value,
+            }));
+            setAvailableRecipients(fallbackRecipients);
+          }
+        } else if (result.data && result.data.length > 0) {
+          const recipientList = result.data.map(user => ({
+            value: user.id.toString(),
+            label: `${user.name} (${user.role})`,
+            userId: user.id,
+            role: user.role,
+          }));
+          setAvailableRecipients(recipientList);
+          setError("");
+        } else {
+          setError("No recipients available. Please contact support.");
+          if (recipients && recipients.length > 0) {
+            const fallbackRecipients = recipients.map(recipient => ({
+              ...recipient,
+              userId: undefined,
+              role: recipient.value,
+            }));
+            setAvailableRecipients(fallbackRecipients);
+          }
+        }
+      } catch (err) {
+        console.error("Error loading recipients:", err);
+        setError(`Error loading recipients: ${err instanceof Error ? err.message : "Unknown error"}`);
+      } finally {
+        setLoadingRecipients(false);
+      }
+    };
+
+    loadRecipients();
+  }, [recipients]);
 
   const handleFileChange = (newFiles: File[]) => {
     setFiles(newFiles);
@@ -41,11 +90,61 @@ export default function UploadReport({ recipients }: UploadReportProps) {
     setFiles((prev) => prev.filter((_, i) => i !== index));
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    console.log({ to, subject, message, files });
-    // Mock: Show success message
-    alert("Report sent successfully! (Mock - no backend)");
+    setError("");
+    setSending(true);
+
+    try {
+      if (!to) {
+        setError("Please select a recipient");
+        setSending(false);
+        return;
+      }
+
+      const selectedRecipient = availableRecipients.find(r => r.value === to);
+      
+      if (!selectedRecipient) {
+        setError("Please select a valid recipient from the list");
+        setSending(false);
+        return;
+      }
+
+      if (!selectedRecipient.userId) {
+        setError("Recipients list is not loaded properly. Please refresh the page to reload recipients.");
+        setSending(false);
+        return;
+      }
+
+      const request: {
+        title: string;
+        body: string;
+        files?: File[];
+        toUserId: number;
+      } = {
+        title: subject,
+        body: message,
+        toUserId: selectedRecipient.userId,
+      };
+
+      if (files.length > 0) {
+        request.files = files;
+      }
+
+      const result = await messagesApi.sendMessage(request);
+
+      if (result.error) {
+        setError(result.error);
+        setSending(false);
+        return;
+      }
+
+      const basePath = pathname.split("/").slice(0, 2).join("/");
+      navigate(`${basePath}/outbox`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to send message");
+      setSending(false);
+    }
   };
 
   const handleClear = () => {
@@ -91,11 +190,21 @@ export default function UploadReport({ recipients }: UploadReportProps) {
               label="To"
               value={to}
               onChange={(e) => setTo(e.target.value)}
-              options={recipientOptions}
-              placeholder="Select recipient"
+              options={availableRecipients}
+              placeholder={loadingRecipients ? "Loading recipients..." : availableRecipients.length > 0 ? "Select recipient" : "No recipients available"}
               required
-              hint="Choose the recipient of this report"
+              hint={loadingRecipients ? "Loading available recipients..." : availableRecipients.length > 0 ? "Choose the recipient of this report" : "No recipients available. Please refresh the page."}
             />
+            
+            {loadingRecipients && (
+              <div className="text-sm text-blue-600">Loading recipients...</div>
+            )}
+            
+            {error && (
+              <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
+                {error}
+              </div>
+            )}
 
             <FormInput
               label="Subject"
@@ -132,10 +241,11 @@ export default function UploadReport({ recipients }: UploadReportProps) {
               </button>
               <button
                 type="submit"
-                className="inline-flex items-center gap-2 px-5 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 shadow-sm transition-all duration-200 hover:shadow-lg hover:shadow-blue-500/30 hover:scale-105 active:scale-95"
+                disabled={sending || loadingRecipients || availableRecipients.length === 0}
+                className="inline-flex items-center gap-2 px-5 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 shadow-sm transition-all duration-200 hover:shadow-lg hover:shadow-blue-500/30 hover:scale-105 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <Send size={16} />
-                {buttonText}
+                {sending ? "Sending..." : buttonText}
               </button>
             </div>
           </form>

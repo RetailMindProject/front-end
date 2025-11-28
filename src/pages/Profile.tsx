@@ -1,81 +1,122 @@
-import { useState } from "react";
-import { useLocation } from "react-router-dom";
+import { useState, useEffect } from "react";
 import { User, Mail, Phone, MapPin, Save, X } from "lucide-react";
 import ProfileAvatar from "../components/profile/ProfileAvatar";
 import ProfileInput from "../components/profile/ProfileInput";
 import ProfileSection from "../components/profile/ProfileSection";
 import ProfileBanner from "../components/profile/ProfileBanner";
 import type { ProfileFormData } from "../components/profile/types";
+import { getUserInfo, getCurrentRole, decodeJWT, getCurrentToken, setUserInfo } from "../services/tokens";
+import { getCurrentUserProfile } from "../services/auth.api";
 
 function useRoleAndName() {
-  const { pathname } = useLocation();
-  if (pathname.startsWith("/ceo")) {
-    return { 
-      role: "CEO", 
-      name: "Ahmad Ali",
-      allowPhotoChange: true,
-      avatarImage: "/picture/ceo.png",
-      initialData: {
-        firstName: "Ahmad",
-        lastName: "Ali",
-        address: "Ramallah - Palestine",
-        email: "ahmad@retailmind.com",
-        phone: "059-123-4567",
-      }
-    };
+  const userInfo = getUserInfo();
+  const currentRole = getCurrentRole();
+  const token = getCurrentToken();
+  
+  let firstName = "";
+  let lastName = "";
+  let email = "";
+  let phone = "";
+  let address = "";
+  
+  if (userInfo) {
+    firstName = userInfo.firstName || "";
+    lastName = userInfo.lastName || "";
+    email = userInfo.email || "";
+    phone = userInfo.phone || "";
+    address = userInfo.address || "";
   }
-  if (pathname.startsWith("/store-manager")) {
-    return { 
-      role: "Store Manager", 
-      name: "Moath Saleh",
-      allowPhotoChange: false,
-      avatarImage: "/picture/storemanager.png",
-      initialData: {
-        firstName: "Moath",
-        lastName: "Saleh",
-        address: "Nablus - Palestine",
-        email: "moath@retailmind.com",
-        phone: "059-123-4567",
+  
+  if (token) {
+    const decoded = decodeJWT(token);
+    if (decoded) {
+      if (!firstName) firstName = decoded.firstName || decoded.first_name || decoded.firstName || "";
+      if (!lastName) lastName = decoded.lastName || decoded.last_name || decoded.lastName || "";
+      if (!email) email = decoded.email || decoded.sub || decoded.username || "";
+      if (!phone) {
+        phone = decoded.phone || decoded.phoneNumber || decoded.phone_number || 
+                decoded.userPhone || decoded.user_phone || "";
       }
-    };
-  }
-  if (pathname.startsWith("/inventory-manager")) {
-    return { 
-      role: "Inventory Manager", 
-      name: "Sara Mohammed",
-      allowPhotoChange: true,
-      avatarImage: "/picture/inventorymanager.png",
-      initialData: {
-        firstName: "Sara",
-        lastName: "Mohammed",
-        address: "Jerusalem - Palestine",
-        email: "sara@retailmind.com",
-        phone: "059-123-4567",
+      if (!address) {
+        address = decoded.address || decoded.userAddress || decoded.user_address || 
+                  decoded.userAddress || decoded.user_address || "";
       }
-    };
+    }
   }
+  
+  // Determine role and avatar
+  let role = "Dashboard";
+  let allowPhotoChange = false;
+  let avatarImage: string | undefined = undefined;
+  
+  if (currentRole === "CEO" || userInfo?.role === "CEO") {
+    role = "CEO";
+    allowPhotoChange = true;
+    avatarImage = "/picture/ceo.png";
+  } else if (currentRole === "STORE_MANAGER" || userInfo?.role === "STORE_MANAGER") {
+    role = "Store Manager";
+    allowPhotoChange = false;
+    avatarImage = "/picture/storemanager.png";
+  } else if (currentRole === "INVENTORY_MANAGER" || userInfo?.role === "INVENTORY_MANAGER") {
+    role = "Inventory Manager";
+    allowPhotoChange = true;
+    avatarImage = "/picture/inventorymanager.png";
+  }
+  
   return { 
-    role: "Dashboard", 
-    name: "Guest",
-    allowPhotoChange: false,
-    avatarImage: undefined,
+    role, 
+    name: `${firstName} ${lastName}`.trim() || email || "Guest",
+    allowPhotoChange,
+    avatarImage,
     initialData: {
-      firstName: "",
-      lastName: "",
-      address: "",
-      email: "",
-      phone: "",
+      firstName,
+      lastName,
+      address: address || "Not provided",
+      email,
+      phone: phone || "Not provided",
     }
   };
 }
 
 export default function Profile() {
-  const { initialData, allowPhotoChange, avatarImage } = useRoleAndName();
-  const [form, setForm] = useState<ProfileFormData>(initialData);
+  const { initialData: defaultInitialData, allowPhotoChange, avatarImage } = useRoleAndName();
+  const [form, setForm] = useState<ProfileFormData>(defaultInitialData);
   const [isEdited, setIsEdited] = useState(false);
+  const [loading, setLoading] = useState(true);
 
-  // Debug: Check if avatarImage is being passed correctly
-  console.log('Profile - avatarImage:', avatarImage);
+  useEffect(() => {
+    const loadUserProfile = async () => {
+      setLoading(true);
+      const result = await getCurrentUserProfile();
+      
+      if (result.data) {
+        const profileData: ProfileFormData = {
+          firstName: result.data.firstName || "",
+          lastName: result.data.lastName || "",
+          email: result.data.email || "",
+          phone: result.data.phone || "Not provided",
+          address: result.data.address || "Not provided",
+        };
+        
+        setForm(profileData);
+        
+        setUserInfo({
+          firstName: result.data.firstName,
+          lastName: result.data.lastName,
+          email: result.data.email,
+          phone: result.data.phone,
+          address: result.data.address,
+          role: result.data.role as any,
+        });
+      } else {
+        setForm(defaultInitialData);
+      }
+      
+      setLoading(false);
+    };
+    
+    loadUserProfile();
+  }, []);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
@@ -90,7 +131,7 @@ export default function Profile() {
   };
 
   const handleCancel = () => {
-    setForm(initialData);
+    setForm(defaultInitialData);
     setIsEdited(false);
   };
 
@@ -127,17 +168,24 @@ export default function Profile() {
 
           {/* Form Content */}
           <div className="pt-20 px-8 pb-8">
-            <div className="mb-6">
-              <h2 className="text-2xl font-bold text-slate-900">
-                {form.firstName} {form.lastName}
-              </h2>
-              <p className="text-slate-500 flex items-center gap-2 mt-1">
-                <Mail size={16} />
-                {form.email}
-              </p>
-            </div>
+            {loading ? (
+              <div className="flex items-center justify-center py-12">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                <span className="ml-3 text-slate-600">Loading profile...</span>
+              </div>
+            ) : (
+              <>
+                <div className="mb-6">
+                  <h2 className="text-2xl font-bold text-slate-900">
+                    {form.firstName} {form.lastName}
+                  </h2>
+                  <p className="text-slate-500 flex items-center gap-2 mt-1">
+                    <Mail size={16} />
+                    {form.email}
+                  </p>
+                </div>
 
-            <div className="space-y-6">
+                <div className="space-y-6">
               {/* Personal Information */}
               <ProfileSection
                 title="Personal Information"
@@ -202,28 +250,30 @@ export default function Profile() {
                 />
               </ProfileSection>
 
-              {/* Action Buttons */}
-              <div className="flex gap-4 justify-end pt-6 border-t border-slate-200">
-                <button
-                  type="button"
-                  onClick={handleCancel}
-                  disabled={!isEdited}
-                  className="h-12 px-6 rounded-xl border-2 border-slate-200 text-slate-700 font-semibold hover:bg-slate-50 transition flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  <X size={18} />
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={handleSave}
-                  disabled={!isEdited}
-                  className="h-12 px-8 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-semibold hover:from-blue-700 hover:to-indigo-700 transition shadow-lg hover:shadow-xl flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  <Save size={18} />
-                  Save Changes
-                </button>
+                {/* Action Buttons */}
+                <div className="flex gap-4 justify-end pt-6 border-t border-slate-200">
+                  <button
+                    type="button"
+                    onClick={handleCancel}
+                    disabled={!isEdited}
+                    className="h-12 px-6 rounded-xl border-2 border-slate-200 text-slate-700 font-semibold hover:bg-slate-50 transition flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <X size={18} />
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleSave}
+                    disabled={!isEdited}
+                    className="h-12 px-8 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-semibold hover:from-blue-700 hover:to-indigo-700 transition shadow-lg hover:shadow-xl flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <Save size={18} />
+                    Save Changes
+                  </button>
+                </div>
               </div>
-            </div>
+              </>
+            )}
           </div>
         </div>
       </div>
