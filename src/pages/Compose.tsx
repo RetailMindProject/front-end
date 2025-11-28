@@ -18,7 +18,6 @@ export default function Compose() {
     recipientOptions = [
       { value: "ceo", label: "CEO" },
       { value: "inventory_manager", label: "Inventory Manager" },
-      { value: "store_manager", label: "Store Manager" },
     ];
   } else if (pathname.startsWith("/inventory-manager")) {
     // Inventory Manager can send to Store Manager and CEO

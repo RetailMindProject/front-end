@@ -2,8 +2,8 @@ import { useEffect, useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { MessageSquare, X } from "lucide-react";
 import type { Message } from "./messages/types";
-import { getMockMessages } from "./messages/utils";
 import MessageCard from "./messages/MessageCard";
+import { messagesApi } from "../services/messages.api";
 
 interface MessagesPanelProps {
   isOpen: boolean;
@@ -13,15 +13,26 @@ interface MessagesPanelProps {
 
 export default function MessagesPanel({ isOpen, onClose, onMessagesChange }: MessagesPanelProps) {
   const [messages, setMessages] = useState<Message[]>([]);
+  const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
   const { pathname } = useLocation();
 
   useEffect(() => {
-    const mockMessages = getMockMessages();
-    setMessages(mockMessages);
-    onMessagesChange?.(mockMessages);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    const loadMessages = async () => {
+      if (!isOpen) return;
+      
+      setLoading(true);
+      const result = await messagesApi.getInboxMessages();
+      if (result.data) {
+        const recentMessages = result.data.slice(0, 5);
+        setMessages(recentMessages);
+        onMessagesChange?.(recentMessages);
+      }
+      setLoading(false);
+    };
+
+    loadMessages();
+  }, [isOpen, onMessagesChange]);
 
   const unreadCount = messages.filter((m) => !m.read).length;
 
@@ -39,17 +50,18 @@ export default function MessagesPanel({ isOpen, onClose, onMessagesChange }: Mes
     return `/store-manager/message/${messageId}`;
   };
 
-  const handleMessageClick = (msg: Message) => {
-    // Mark as read
-    setMessages((prev) => {
-      const updated = prev.map((m) => (m.id === msg.id ? { ...m, read: true } : m));
-      if (onMessagesChange) {
-        onMessagesChange(updated);
-      }
-      return updated;
-    });
+  const handleMessageClick = async (msg: Message) => {
+    if (!msg.read) {
+      await messagesApi.markAsRead(msg.id);
+      setMessages((prev) => {
+        const updated = prev.map((m) => (m.id === msg.id ? { ...m, read: true } : m));
+        if (onMessagesChange) {
+          onMessagesChange(updated);
+        }
+        return updated;
+      });
+    }
     
-    // Navigate to message detail
     onClose();
     navigate(getMessageRoute(msg.id));
   };
@@ -88,7 +100,12 @@ export default function MessagesPanel({ isOpen, onClose, onMessagesChange }: Mes
 
         {/* Messages List */}
         <div className="max-h-[500px] overflow-y-auto">
-          {messages.length === 0 ? (
+          {loading ? (
+            <div className="px-4 py-8 text-center text-sm text-slate-500">
+              <div className="inline-block animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600 mb-2"></div>
+              <p>Loading messages...</p>
+            </div>
+          ) : messages.length === 0 ? (
             <div className="px-4 py-8 text-center text-sm text-slate-500">
               No messages yet
             </div>

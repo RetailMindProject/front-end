@@ -52,8 +52,14 @@ export default function CreateAccountForm({ allowedRoles, title, onSubmit, initi
 
     if (!formData.password || !formData.password.trim()) {
       newErrors.password = "Password is required";
-    } else if (formData.password.length < 6) {
-      newErrors.password = "Password must be at least 6 characters";
+    } else if (formData.password.length < 8) {
+      newErrors.password = "Password must be at least 8 characters";
+    } else {
+      // Check password complexity (at least one digit, one lowercase, one uppercase, and one special character)
+      const passwordRegex = /^(?=.*[0-9])(?=.*[a-z])(?=.*[A-Z])(?=.*[@#$%^&+=]).*$/;
+      if (!passwordRegex.test(formData.password)) {
+        newErrors.password = "Password must contain at least one digit, one lowercase, one uppercase, and one special character";
+      }
     }
 
     if (!formData.confirmPassword || !formData.confirmPassword.trim()) {

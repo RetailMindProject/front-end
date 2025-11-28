@@ -1,17 +1,63 @@
 import { useState } from "react";
+import { useNavigate, Link } from "react-router-dom";
 import AuthCard from "../components/AuthCard";
 import Logo from "../components/Logo";
 import FeatureItem from "../components/FeatureItem";
+import { login } from "../services/auth.api";
+import type { UserRole } from "../services/tokens";
 
 export default function Login() {
+  const navigate = useNavigate();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const getRoleRoute = (role: UserRole): string => {
+    switch (role) {
+      case "CEO":
+        return "/ceo";
+      case "STORE_MANAGER":
+        return "/store-manager";
+      case "INVENTORY_MANAGER":
+        return "/inventory-manager";
+      default:
+        return "/login";
+    }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    console.log("Login:", { email, password, rememberMe });
+    setError(null);
+    setLoading(true);
+
+    // Basic validation
+    if (!email || !password) {
+      setError("Please fill in all fields");
+      setLoading(false);
+      return;
+    }
+
+    try {
+      const result = await login(email, password);
+
+      if (result.error) {
+        setError(result.error.message || "Login failed. Please check your credentials.");
+        setLoading(false);
+        return;
+      }
+
+      if (result.data) {
+        // Success - redirect based on role
+        const route = getRoleRoute(result.data.role);
+        navigate(route, { replace: true });
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "An unexpected error occurred");
+      setLoading(false);
+    }
   };
 
   return (
@@ -59,14 +105,24 @@ export default function Login() {
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-8">
+          {error && (
+            <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">
+              {error}
+            </div>
+          )}
+
           <div>
             <label className="block text-sm mb-2">Email</label>
             <input
               type="email"
               value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              onChange={(e) => {
+                setEmail(e.target.value);
+                setError(null);
+              }}
               placeholder="you@company.com"
-              className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              disabled={loading}
+              className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 disabled:cursor-not-allowed"
             />
           </div>
 
@@ -84,9 +140,13 @@ export default function Login() {
             <input
               type={showPassword ? "text" : "password"}
               value={password}
-              onChange={(e) => setPassword(e.target.value)}
+              onChange={(e) => {
+                setPassword(e.target.value);
+                setError(null);
+              }}
               placeholder="••••••••"
-              className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              disabled={loading}
+              className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 disabled:cursor-not-allowed"
             />
           </div>
 
@@ -105,9 +165,10 @@ export default function Login() {
 
           <button
             type="submit"
-            className="w-full bg-[#0066FF] text-white py-3 rounded-lg font-semibold hover:bg-blue-700 transition-colors focus:outline-none focus:ring-4 focus:ring-blue-200"
+            disabled={loading}
+            className="w-full bg-[#0066FF] text-white py-3 rounded-lg font-semibold hover:bg-blue-700 transition-colors focus:outline-none focus:ring-4 focus:ring-blue-200 disabled:bg-blue-400 disabled:cursor-not-allowed"
           >
-            Sign in
+            {loading ? "Signing in..." : "Sign in"}
           </button>
 
           <p className="text-center text-sm text-gray-500">
@@ -116,9 +177,9 @@ export default function Login() {
 
           <div className="text-center text-sm">
             <span className="text-gray-500">First time here?</span>{" "}
-            <a href="#" className="text-[#0066FF] hover:underline">
+            <Link to="/register" className="text-[#0066FF] hover:underline">
               Create an account
-            </a>
+            </Link>
           </div>
         </form>
       </AuthCard>

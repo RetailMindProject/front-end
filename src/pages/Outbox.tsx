@@ -1,11 +1,11 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { Send } from "lucide-react";
 import type { SentMessage } from "../components/messages/types";
-import { getMockSentMessages } from "../components/messages/utils";
 import OutboxHeader from "../components/messages/OutboxHeader";
 import OutboxFilters from "../components/messages/OutboxFilters";
 import OutboxMessageCard from "../components/messages/OutboxMessageCard";
+import { messagesApi } from "../services/messages.api";
 
 export default function Outbox() {
   const navigate = useNavigate();
@@ -13,17 +13,25 @@ export default function Outbox() {
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "sent" | "delivered" | "read">("all");
   const [recipientFilter, setRecipientFilter] = useState<"all" | "CEO" | "Store Manager" | "Inventory Manager">("all");
+  const [allMessages, setAllMessages] = useState<SentMessage[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
-  // Determine current role
-  const currentRole = useMemo(() => {
-    if (pathname.startsWith("/ceo")) return "CEO";
-    if (pathname.startsWith("/store-manager")) return "Store Manager";
-    if (pathname.startsWith("/inventory-manager")) return "Inventory Manager";
-    return "Store Manager";
-  }, [pathname]);
+  useEffect(() => {
+    const loadMessages = async () => {
+      setLoading(true);
+      setError("");
+      const result = await messagesApi.getOutboxMessages();
+      if (result.error) {
+        setError(result.error);
+      } else if (result.data) {
+        setAllMessages(result.data);
+      }
+      setLoading(false);
+    };
 
-  // Get sent messages
-  const allMessages = useMemo(() => getMockSentMessages(currentRole), [currentRole]);
+    loadMessages();
+  }, []);
 
   // Filter messages
   const filteredMessages = useMemo(() => {
@@ -42,9 +50,8 @@ export default function Outbox() {
   }, [allMessages, searchTerm, statusFilter, recipientFilter]);
 
   const handleMessageClick = (message: SentMessage) => {
-    // Navigate to message detail (we can reuse MessageDetail or create a SentMessageDetail)
     const basePath = pathname.split("/").slice(0, 2).join("/");
-    navigate(`${basePath}/message/${message.id}`);
+    navigate(`${basePath}/message/${message.id}?from=outbox`);
   };
 
   const handleCompose = () => {
@@ -71,7 +78,26 @@ export default function Outbox() {
 
         {/* Messages List */}
         <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-          {filteredMessages.length === 0 ? (
+          {loading ? (
+            <div className="px-6 py-16 text-center">
+              <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+              <p className="text-sm text-slate-600 mt-4">Loading messages...</p>
+            </div>
+          ) : error ? (
+            <div className="px-6 py-16 text-center">
+              <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-red-100 mb-4">
+                <Send className="h-8 w-8 text-red-400" />
+              </div>
+              <h3 className="text-lg font-semibold text-slate-800 mb-2">Error loading messages</h3>
+              <p className="text-sm text-slate-600 mb-6">{error}</p>
+              <button
+                onClick={() => window.location.reload()}
+                className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition-all duration-200"
+              >
+                Retry
+              </button>
+            </div>
+          ) : filteredMessages.length === 0 ? (
             <div className="px-6 py-16 text-center">
               <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-slate-100 mb-4">
                 <Send className="h-8 w-8 text-slate-400" />

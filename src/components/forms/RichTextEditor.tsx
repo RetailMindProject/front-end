@@ -1,4 +1,4 @@
-import React, { useMemo } from "react";
+import React, { useMemo, useRef, useEffect } from "react";
 
 interface RichTextEditorProps {
   label: string;
@@ -10,6 +10,7 @@ interface RichTextEditorProps {
   showWordCount?: boolean;
   showToolbar?: boolean;
   className?: string;
+  onFocus?: () => void;
 }
 
 export default function RichTextEditor({
@@ -22,10 +23,25 @@ export default function RichTextEditor({
   showWordCount = true,
   showToolbar = true,
   className = "",
+  onFocus,
 }: RichTextEditorProps) {
   const wordCount = useMemo(() => {
     return value.trim().split(/\s+/).filter((word) => word.length > 0).length;
   }, [value]);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    const textarea = textareaRef.current;
+    if (textarea && onFocus) {
+      const handleFocus = () => {
+        setTimeout(() => {
+          onFocus();
+        }, 100);
+      };
+      textarea.addEventListener("focus", handleFocus);
+      return () => textarea.removeEventListener("focus", handleFocus);
+    }
+  }, [onFocus]);
 
   return (
     <div>
@@ -75,6 +91,7 @@ export default function RichTextEditor({
       )}
 
       <textarea
+        ref={textareaRef}
         value={value}
         onChange={onChange}
         rows={rows}

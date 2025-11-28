@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Send } from "lucide-react";
 import RichTextEditor from "../forms/RichTextEditor";
 import FileUpload from "../forms/FileUpload";
@@ -20,6 +20,15 @@ export default function ReplyForm({
 }: ReplyFormProps) {
   const [reply, setReply] = useState(initialReply);
   const [files, setFiles] = useState<File[]>([]);
+  const formRef = useRef<HTMLDivElement>(null);
+
+  const handleTextareaFocus = () => {
+    setTimeout(() => {
+      if (formRef.current) {
+        formRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+    }, 200);
+  };
 
   const handleFileChange = (newFiles: File[]) => {
     setFiles(newFiles);
@@ -45,7 +54,7 @@ export default function ReplyForm({
   };
 
   return (
-    <div className={`bg-white rounded-2xl shadow-sm border border-slate-100 ${className}`}>
+    <div ref={formRef} className={`bg-white rounded-2xl shadow-sm border border-slate-100 ${className}`}>
       <div className="p-6 border-b border-slate-200">
         <h3 className="text-lg font-semibold text-slate-800">Reply to {recipientName}</h3>
         <p className="text-sm text-slate-500 mt-1">
@@ -63,6 +72,7 @@ export default function ReplyForm({
           required
           showWordCount
           showToolbar
+          onFocus={handleTextareaFocus}
         />
 
         <FileUpload
