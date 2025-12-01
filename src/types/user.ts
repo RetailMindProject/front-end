@@ -7,8 +7,18 @@ export interface CreateAccountFormData {
   phone: string;
   address: string;
   role: UserRole;
-  password?: string;
-  confirmPassword?: string;
+  password: string;
+  confirmPassword: string;
+}
+
+export interface EditAccountFormData {
+  first_name: string;
+  last_name: string;
+  email: string;
+  phone: string;
+  address: string;
+  role: UserRole;
+  is_active: boolean;
 }
 
 export interface CreateAccountProps {
@@ -17,13 +27,17 @@ export interface CreateAccountProps {
   onSubmit?: (data: CreateAccountFormData) => void;
   initialData?: Partial<CreateAccountFormData>;
 }
+
+export interface EditAccountProps {
+  allowedRoles: UserRole[];
+  title?: string;
+  onSubmit?: (data: EditAccountFormData) => void;
+  initialData?: Partial<EditAccountFormData>;
+}
   
 // Extended user interface for account management
-export interface UserAccount extends CreateAccountFormData {
+export interface UserAccount extends EditAccountFormData {
   id: string;
-  is_active: boolean;
   created_at: string;
   updated_at: string;
 }
-
-

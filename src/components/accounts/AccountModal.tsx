@@ -1,6 +1,7 @@
 import React from "react";
 import Modal from "../sessions/Modal";
 import CreateAccountForm from "../CreateAccountForm";
+import EditAccountForm from "../EditAccountForm";
 import type { UserRole, UserAccount } from "../../types/user";
 
 interface AccountModalProps {
@@ -24,11 +25,19 @@ export default function AccountModal({
 
   return (
     <Modal onClose={onClose} title={mode === 'create' ? 'Add New Account' : 'Edit Account'}>
-      <CreateAccountForm
-        allowedRoles={allowedRoles}
-        onSubmit={onSave}
-        initialData={account}
-      />
+      {mode === 'edit' ? (
+        <EditAccountForm
+          allowedRoles={allowedRoles}
+          onSubmit={onSave}
+          initialData={account}
+        />
+      ) : (
+        <CreateAccountForm
+          allowedRoles={allowedRoles}
+          onSubmit={onSave}
+          initialData={account}
+        />
+      )}
     </Modal>
   );
 }

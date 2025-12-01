@@ -29,7 +29,25 @@ async function apiRequest<T>(
       headers,
     });
 
-    const data = await response.json();
+    // Check content type before parsing
+    const contentType = response.headers.get("content-type");
+    let data: any;
+    
+    if (contentType && contentType.includes("application/json")) {
+      try {
+        data = await response.json();
+      } catch (jsonError) {
+        const text = await response.text();
+        console.error("Failed to parse JSON response:", text);
+        return {
+          error: `Invalid JSON response: ${text}`,
+          status: response.status,
+        };
+      }
+    } else {
+      const text = await response.text();
+      data = { message: text || "Response is not JSON" };
+    }
 
     if (!response.ok) {
       // Handle 401 Unauthorized - redirect to login
@@ -42,7 +60,7 @@ async function apiRequest<T>(
       }
       
       return {
-        error: data.message || `HTTP error! status: ${response.status}`,
+        error: data.message || data.error || `HTTP error! status: ${response.status}`,
         status: response.status,
       };
     }
@@ -52,6 +70,7 @@ async function apiRequest<T>(
       status: response.status,
     };
   } catch (error) {
+    console.error("API request error:", error);
     return {
       error: error instanceof Error ? error.message : "Network error occurred",
       status: 0,
