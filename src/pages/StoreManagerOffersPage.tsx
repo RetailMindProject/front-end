@@ -1,57 +1,44 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { Plus } from "lucide-react";
 import { Card, CardTitle, CardValue, CardHint } from "../components";
 import OfferForm, { type OfferFormData } from "../components/offers/OfferForm";
 import OffersTable, { type Offer } from "../components/offers/OffersTable";
-
-// Mock data
-const mockOffers: Offer[] = [
-  {
-    id: "o1",
-    title: "Summer Sale 2025",
-    offerType: "PRODUCT",
-    discountType: "PERCENTAGE",
-    discountValue: 20,
-    startAt: "2025-06-01T00:00:00",
-    endAt: "2025-08-31T23:59:59",
-    isActive: true,
-  },
-  {
-    id: "o2",
-    title: "Electronics Bundle",
-    offerType: "BUNDLE",
-    discountType: "FIXED_AMOUNT",
-    discountValue: 50,
-    startAt: "2025-10-01T00:00:00",
-    endAt: "2025-10-31T23:59:59",
-    isActive: true,
-  },
-  {
-    id: "o3",
-    title: "Free Shipping Over $100",
-    offerType: "ORDER",
-    discountType: "FIXED_AMOUNT",
-    discountValue: 10,
-    startAt: "2025-09-01T00:00:00",
-    endAt: "2025-12-31T23:59:59",
-    isActive: true,
-  },
-  {
-    id: "o4",
-    title: "Groceries Discount",
-    offerType: "CATEGORY",
-    discountType: "PERCENTAGE",
-    discountValue: 15,
-    startAt: "2025-01-01T00:00:00",
-    endAt: "2025-01-31T23:59:59",
-    isActive: false,
-  },
-];
+import { offersApi, type OfferResponse } from "../services/offers.api";
 
 export default function StoreManagerOffersPage() {
-  const [offers, setOffers] = useState<Offer[]>(mockOffers);
+  const [offers, setOffers] = useState<Offer[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [editingOffer, setEditingOffer] = useState<Offer | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  // Fetch offers from API on component mount
+  useEffect(() => {
+    const loadOffers = async () => {
+      setLoading(true);
+      try {
+        const fetchedOffers = await offersApi.fetchOffers();
+        if (fetchedOffers) {
+          // Convert OfferResponse[] to Offer[]
+          const convertedOffers: Offer[] = fetchedOffers.map((offer: OfferResponse) => ({
+            id: offer.id.toString(),
+            title: offer.title,
+            offerType: offer.offerType,
+            discountType: offer.discountType,
+            discountValue: offer.discountValue,
+            startAt: offer.startAt,
+            endAt: offer.endAt,
+            isActive: offer.isActive,
+          }));
+          setOffers(convertedOffers);
+        }
+      } catch (error) {
+        console.error("Error loading offers:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    loadOffers();
+  }, []);
 
   const stats = useMemo(() => {
     const active = offers.filter((o) => o.isActive).length;
@@ -68,45 +55,153 @@ export default function StoreManagerOffersPage() {
     setShowForm(true);
   };
 
-  const handleEdit = (offer: Offer) => {
-    setEditingOffer(offer);
-    setShowForm(true);
+  const handleEdit = async (offer: Offer) => {
+    // Fetch full offer details from API to get all data (products, categories, bundleItems, etc.)
+    try {
+      const fullOffer = await offersApi.fetchOfferById(parseInt(offer.id));
+      if (fullOffer) {
+        // Convert OfferResponse to Offer with all necessary data
+        const editingOfferData: Offer & { 
+          code?: string; 
+          description?: string;
+          productIds?: number[];
+          categoryIds?: number[];
+          minOrderAmount?: number;
+          applyOnce?: boolean;
+          bundleItems?: { productId: number; requiredQty: number }[];
+        } = {
+          ...offer,
+          id: fullOffer.id.toString(),
+          code: fullOffer.code,
+          description: fullOffer.description || "",
+          productIds: fullOffer.products?.map(p => p.id) || [],
+          categoryIds: fullOffer.categories?.map((c: any) => c.id) || [],
+          minOrderAmount: fullOffer.minOrderAmount || 0,
+          applyOnce: fullOffer.applyOnce ?? true,
+          bundleItems: fullOffer.bundleItems?.map((item: any) => ({
+            productId: item.productId,
+            requiredQty: item.requiredQty || 1
+          })) || [],
+        };
+        setEditingOffer(editingOfferData as any);
+        setShowForm(true);
+      } else {
+        // Fallback: use the offer from the list if API call fails
+        setEditingOffer(offer);
+        setShowForm(true);
+      }
+    } catch (error) {
+      console.error("Error fetching offer details:", error);
+      // Fallback: use the offer from the list if API call fails
+      setEditingOffer(offer);
+      setShowForm(true);
+    }
   };
 
-  const handleSave = (data: OfferFormData) => {
-    if (editingOffer) {
-      // Update existing
-      setOffers(
-        offers.map((o) =>
-          o.id === editingOffer.id
-            ? {
-                ...o,
-                ...data,
-                id: o.id,
-              }
-            : o
-        )
-      );
-    } else {
-      // Create new
-      const newOffer: Offer = {
-        id: `o${Date.now()}`,
-        ...data,
-      };
-      setOffers([...offers, newOffer]);
+  const handleSave = async (data: OfferFormData) => {
+    // Note: The actual API call is handled in OfferForm component
+    // This function is called after successful creation
+    // Reload offers from API to get the latest data
+    try {
+      const fetchedOffers = await offersApi.fetchOffers();
+      if (fetchedOffers) {
+        // Convert OfferResponse[] to Offer[]
+        const convertedOffers: Offer[] = fetchedOffers.map((offer: OfferResponse) => ({
+          id: offer.id.toString(),
+          title: offer.title,
+          offerType: offer.offerType,
+          discountType: offer.discountType,
+          discountValue: offer.discountValue,
+          startAt: offer.startAt,
+          endAt: offer.endAt,
+          isActive: offer.isActive,
+        }));
+        setOffers(convertedOffers);
+      }
+    } catch (error) {
+      console.error("Error reloading offers:", error);
     }
     setShowForm(false);
     setEditingOffer(null);
   };
 
-  const handleDeactivate = (id: string) => {
-    if (confirm("Are you sure you want to deactivate this offer?")) {
-      setOffers(offers.map((o) => (o.id === id ? { ...o, isActive: false } : o)));
+  const handleToggleActive = async (id: string) => {
+    const offer = offers.find((o) => o.id === id);
+    if (!offer) return;
+
+    const currentStatus = offer.isActive;
+    const action = currentStatus ? "deactivate" : "activate";
+    
+    if (!confirm(`Are you sure you want to ${action} this offer?`)) {
+      return;
+    }
+
+    try {
+      const result = await offersApi.updateOfferStatus(parseInt(id));
+      
+      if (result.error) {
+        alert(`Error ${action === "activate" ? "activating" : "deactivating"} offer: ${result.error}`);
+        return;
+      }
+
+      // Update the offer in the list with the new status from the response
+      if (result.data) {
+        setOffers(offers.map((o) => (o.id === id ? { ...o, isActive: result.data!.isActive } : o)));
+      } else {
+        // Fallback: toggle the status if response doesn't have data
+        setOffers(offers.map((o) => (o.id === id ? { ...o, isActive: !currentStatus } : o)));
+      }
+    } catch (error) {
+      console.error(`Error ${action}ing offer:`, error);
+      alert(`An error occurred while ${action}ing the offer`);
     }
   };
 
-  const handleView = (offer: Offer) => {
-    alert(`Viewing offer: ${offer.title}\nType: ${offer.offerType}\nDiscount: ${offer.discountType === "PERCENTAGE" ? `${offer.discountValue}%` : `$${offer.discountValue}`}`);
+  const handleView = async (offer: Offer) => {
+    // Fetch full offer details from API to get all data (products, categories, bundleItems, etc.)
+    try {
+      const fullOffer = await offersApi.fetchOfferById(parseInt(offer.id));
+      if (fullOffer) {
+        // Convert OfferResponse to Offer with all necessary data
+        const viewingOfferData: Offer & { 
+          code?: string; 
+          description?: string;
+          productIds?: number[];
+          categoryIds?: number[];
+          minOrderAmount?: number;
+          applyOnce?: boolean;
+          bundleItems?: { productId: number; requiredQty: number }[];
+          viewMode?: boolean;
+        } = {
+          ...offer,
+          id: fullOffer.id.toString(),
+          code: fullOffer.code,
+          description: fullOffer.description || "",
+          productIds: fullOffer.products?.map(p => p.id) || [],
+          categoryIds: fullOffer.categories?.map((c: any) => c.id) || [],
+          minOrderAmount: fullOffer.minOrderAmount || 0,
+          applyOnce: fullOffer.applyOnce ?? true,
+          bundleItems: fullOffer.bundleItems?.map((item: any) => ({
+            productId: item.productId,
+            requiredQty: item.requiredQty || 1
+          })) || [],
+          viewMode: true, // Mark as view mode
+        };
+        setEditingOffer(viewingOfferData as any);
+        setShowForm(true);
+      } else {
+        // Fallback: use the offer from the list if API call fails
+        const viewingOfferData = { ...offer, viewMode: true } as any;
+        setEditingOffer(viewingOfferData);
+        setShowForm(true);
+      }
+    } catch (error) {
+      console.error("Error fetching offer details:", error);
+      // Fallback: use the offer from the list if API call fails
+      const viewingOfferData = { ...offer, viewMode: true } as any;
+      setEditingOffer(viewingOfferData);
+      setShowForm(true);
+    }
   };
 
   return (
@@ -146,12 +241,16 @@ export default function StoreManagerOffersPage() {
       </div>
 
       {/* Offers Table */}
-      <OffersTable offers={offers} onEdit={handleEdit} onDeactivate={handleDeactivate} onView={handleView} />
+      {loading ? (
+        <div className="text-center py-8 text-slate-500">Loading offers...</div>
+      ) : (
+        <OffersTable offers={offers} onEdit={handleEdit} onToggleActive={handleToggleActive} onView={handleView} />
+      )}
 
       {/* Offer Form Modal */}
       {showForm && (
         <OfferForm
-          mode={editingOffer ? "edit" : "create"}
+          mode={editingOffer ? (editingOffer.viewMode ? "view" : "edit") : "create"}
           initialData={editingOffer || undefined}
           onSubmit={handleSave}
           onClose={() => {
