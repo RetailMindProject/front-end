@@ -1,4 +1,3 @@
-import React from "react";
 import { ResponsiveContainer, PieChart, Pie, Cell, Legend, Tooltip } from "recharts";
 
 export type CategoryItem = { name: string; value: number };

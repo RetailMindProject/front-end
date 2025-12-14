@@ -35,7 +35,7 @@ export const reportsApi = {
     return delay({ granularity, data });
   },
 
-  async fetchSalesTable({ filters, page, size, sort }: { filters: ReportFilters; page: number; size: number; sort?: string; }) {
+  async fetchSalesTable({ page, size }: { filters: ReportFilters; page: number; size: number; sort?: string; }) {
     const rows: SalesRow[] = Array.from({ length: size }).map((_, idx) => ({
       date: "2025-10-2" + ((page*size+idx)%10),
       invoiceId: "INV-" + (10000 + page*size + idx),
@@ -51,7 +51,7 @@ export const reportsApi = {
     return delay({ data: rows, total: 200 });
   },
 
-  async exportReport({ type, filters, columns }: { type: "csv"|"xlsx"|"pdf"; filters: ReportFilters; columns: string[] }) {
+  async exportReport({ type }: { type: "csv"|"xlsx"|"pdf"; filters: ReportFilters; columns: string[] }) {
     const url = URL.createObjectURL(new Blob(["mock export"], { type: "text/plain" }));
     return delay({ url, type });
   },

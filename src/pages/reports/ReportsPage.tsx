@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import RoleGate from "../../components/reports/RoleGate";
 import FiltersBar from "../../components/reports/FiltersBar";
 import KpiGrid from "../../components/reports/KpiGrid";

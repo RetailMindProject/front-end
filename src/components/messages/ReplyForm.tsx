@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useRef } from "react";
 import { Send } from "lucide-react";
 import RichTextEditor from "../forms/RichTextEditor";
 import FileUpload from "../forms/FileUpload";

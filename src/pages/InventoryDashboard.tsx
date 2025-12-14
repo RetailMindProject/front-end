@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { Card, CardTitle, CardValue, CardHint, SalesLineChart, CategoryPieChart, BarChart } from "../components";
 import { dashboardApi, type InventorySummary, type RecentMovement, type CategoryMovement, type CategorySales, type TopProductMovement, type WeeklyTrend } from "../services/dashboard.api";
 
@@ -41,7 +41,7 @@ const recentMovements = [
   { date: "2025-01-27", product: "Yogurt Pack", type: "IN", quantity: 100, category: "Groceries" },
 ];
 
-const fmt = new Intl.NumberFormat(undefined, { style: "currency", currency: "USD", maximumFractionDigits: 0 });
+// const fmt = new Intl.NumberFormat(undefined, { style: "currency", currency: "USD", maximumFractionDigits: 0 });
 
 export default function InventoryDashboard() {
   const [inventoryData, setInventoryData] = useState<InventorySummary | null>(null);

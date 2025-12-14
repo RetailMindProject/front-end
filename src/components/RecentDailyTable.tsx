@@ -1,4 +1,3 @@
-import React from "react";
 
 export type Daily = { date: string; amount: number; orders: number };
 const fmt = new Intl.NumberFormat(undefined, { style: "currency", currency: "USD", maximumFractionDigits: 0 });

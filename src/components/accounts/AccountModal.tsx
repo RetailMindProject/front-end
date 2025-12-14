@@ -1,4 +1,3 @@
-import React from "react";
 import Modal from "../sessions/Modal";
 import CreateAccountForm from "../CreateAccountForm";
 import type { UserRole, UserAccount } from "../../types/user";
@@ -27,7 +26,7 @@ export default function AccountModal({
       <CreateAccountForm
         allowedRoles={allowedRoles}
         onSubmit={onSave}
-        initialData={account}
+        initialData={account ?? undefined}
       />
     </Modal>
   );

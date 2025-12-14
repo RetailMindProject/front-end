@@ -1,5 +1,7 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import type { ChangeEvent } from 'react';
+import type { ProductDTO } from '../../services/products.api';
+import { storeProductsApi } from '../../services/store-products.api';
 
 interface Product {
   id: string | number;
@@ -13,26 +15,135 @@ interface Product {
   wholesalePrice?: number;
   unit?: string;
   image?: string | null;
+  imageUrl?: string | null;
+  primaryImageUrl?: string | null;
 }
 
 interface AddProductFromInventoryModalProps {
-  inventoryProducts: Product[];
+  inventoryProducts: ProductDTO[];
   storeProducts: Product[];
   isOpen: boolean;
   onClose: () => void;
-  onSelect: (product: Product) => void;
+  onSelect: (product: ProductDTO, quantity: number) => void | Promise<void>;
+  onAdjustQuantity?: (productId: number, quantity: number, isIncrease: boolean) => Promise<void>;
+  getAvailableInventoryProducts?: () => Promise<(ProductDTO & { warehouseQuantity?: number; storeQuantity?: number })[]>;
 }
 
-const AddProductFromInventoryModal = ({ inventoryProducts, storeProducts, isOpen, onClose, onSelect }: AddProductFromInventoryModalProps) => {
+const AddProductFromInventoryModal = ({ 
+  inventoryProducts, 
+  storeProducts: _storeProducts, 
+  isOpen, 
+  onClose, 
+  onSelect,
+  onAdjustQuantity: _onAdjustQuantity,
+  getAvailableInventoryProducts
+}: AddProductFromInventoryModalProps) => {
   const [searchTerm, setSearchTerm] = useState('');
-  const [searchResults, setSearchResults] = useState<Product[]>([]);
+  const [searchResults, setSearchResults] = useState<(ProductDTO & { warehouseQuantity?: number; storeQuantity?: number })[]>([]);
   const [isSearching, setIsSearching] = useState(false);
+  const [availableProducts, setAvailableProducts] = useState<(ProductDTO & { warehouseQuantity?: number; storeQuantity?: number })[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [selectedProduct, setSelectedProduct] = useState<(ProductDTO & { warehouseQuantity?: number; storeQuantity?: number }) | null>(null);
+  const [quantity, setQuantity] = useState<string>('1');
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const scrollPositionRef = useRef<number>(0);
+  // Track pending transfer quantities (productId -> quantity to transfer)
+  const [pendingQuantities, setPendingQuantities] = useState<Map<number | string, number>>(new Map());
+  // Track quantity input values for each product (productId -> input value string)
+  const [quantityInputs, setQuantityInputs] = useState<Map<number | string, string>>(new Map());
+
+  useEffect(() => {
+    if (isOpen) {
+      loadAvailableProducts();
+      // Clear pending quantities and inputs when modal opens
+      setPendingQuantities(new Map());
+      setQuantityInputs(new Map());
+    }
+  }, [isOpen, inventoryProducts]);
+
+  const loadAvailableProducts = async (preserveScroll = false) => {
+    // Save scroll position before loading
+    if (preserveScroll && scrollContainerRef.current) {
+      scrollPositionRef.current = scrollContainerRef.current.scrollTop;
+    }
+    
+    setLoading(true);
+    try {
+      let products: (ProductDTO & { warehouseQuantity?: number; storeQuantity?: number })[] = [];
+      
+      if (getAvailableInventoryProducts) {
+        // Use the provided function to get products with warehouseQuantity > 0 from stocks_snapshot
+        products = await getAvailableInventoryProducts() as (ProductDTO & { warehouseQuantity?: number; storeQuantity?: number })[];
+      } else {
+        // Fallback: Get all products and check their warehouse quantities
+        try {
+          const { productsApi } = await import('../../services/products.api');
+          const allProductsRes = await productsApi.filter({
+            page: 0,
+            size: 1000,
+            isActive: true
+          });
+          
+          if (allProductsRes.data) {
+            const allProducts = Array.isArray((allProductsRes.data as unknown as ProductDTO[]))
+              ? (allProductsRes.data as unknown as ProductDTO[])
+              : allProductsRes.data.content || [];
+            
+            // Check warehouse quantity for each product
+            for (const product of allProducts) {
+              try {
+                const stockRes = await storeProductsApi.getByProductId(product.id);
+                if (stockRes.data && (stockRes.data.warehouseQuantity ?? 0) > 0) {
+                  products.push({
+                    ...product,
+                    warehouseQuantity: stockRes.data.warehouseQuantity,
+                    storeQuantity: stockRes.data.storeQuantity
+                  });
+                }
+              } catch (err) {
+                // If product not found in stock_snapshot, skip it
+                continue;
+              }
+            }
+          }
+        } catch (err) {
+          console.error('Failed to load products from API:', err);
+        }
+      }
+      
+      // Sort products by warehouseQuantity descending (highest first)
+      products.sort((a, b) => {
+        const aQty = a.warehouseQuantity || 0;
+        const bQty = b.warehouseQuantity || 0;
+        return bQty - aQty; // Descending order
+      });
+      
+      // Add originalIndex to maintain order during updates
+      const productsWithIndex = products.map((p, index) => ({
+        ...p,
+        originalIndex: index
+      }));
+      
+      // Show ALL products with warehouse stock (no filtering by store quantity)
+      setAvailableProducts(productsWithIndex);
+      
+      // Restore scroll position after a brief delay to allow DOM to update
+      if (preserveScroll) {
+        setTimeout(() => {
+          if (scrollContainerRef.current) {
+            scrollContainerRef.current.scrollTop = scrollPositionRef.current;
+          }
+        }, 50);
+      }
+    } catch (err) {
+      console.error('Failed to load available products:', err);
+      setAvailableProducts([]);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   if (!isOpen) return null;
-
-  const availableProducts = inventoryProducts.filter(
-    invProduct => !storeProducts.some(storeProduct => storeProduct.id === invProduct.id)
-  );
 
   const handleSearchChange = (e: ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
@@ -42,10 +153,16 @@ const AddProductFromInventoryModal = ({ inventoryProducts, storeProducts, isOpen
       const results = availableProducts.filter(product =>
         product.name.toLowerCase().includes(value.toLowerCase()) ||
         (product.description && product.description.toLowerCase().includes(value.toLowerCase())) ||
-        (product.category && product.category.toLowerCase().includes(value.toLowerCase())) ||
+        (product.category && typeof product.category === 'string' && product.category.toLowerCase().includes(value.toLowerCase())) ||
         (product.sku && product.sku.toLowerCase().includes(value.toLowerCase())) ||
         (product.brand && product.brand.toLowerCase().includes(value.toLowerCase()))
       );
+      // Sort search results by originalIndex to maintain order from availableProducts
+      results.sort((a, b) => {
+        const aIdx = (a as any).originalIndex ?? 0;
+        const bIdx = (b as any).originalIndex ?? 0;
+        return aIdx - bIdx; // Maintain original order
+      });
       setSearchResults(results);
       setIsSearching(true);
     } else {
@@ -54,12 +171,64 @@ const AddProductFromInventoryModal = ({ inventoryProducts, storeProducts, isOpen
     }
   };
 
-  const handleSelect = (product: Product) => {
-    onSelect(product);
-    setSearchTerm('');
-    setSearchResults([]);
-    setIsSearching(false);
+  const handleSelect = async (product: ProductDTO & { warehouseQuantity?: number; storeQuantity?: number }, qtyOverride?: number) => {
+    const productId = typeof product.id === 'string' ? parseInt(product.id) : product.id;
+    // Get quantity from input field, pending quantity, or override
+    const inputQty = quantityInputs.get(productId);
+    const pendingQty = pendingQuantities.get(productId) || 0;
+    let qty: number;
+    
+    if (qtyOverride !== undefined) {
+      qty = qtyOverride;
+    } else if (inputQty && inputQty.trim() !== '') {
+      qty = parseInt(inputQty) || 0;
+    } else if (pendingQty > 0) {
+      qty = pendingQty;
+    } else {
+      qty = 1;
+    }
+    
+    const maxQty = product.warehouseQuantity || 0;
+    
+    if (qty <= 0) {
+      alert('Please enter a valid quantity');
+      return;
+    }
+    if (qty > maxQty) {
+      alert(`Cannot transfer more than ${maxQty} units (available in warehouse)`);
+      return;
+    }
+    try {
+      await onSelect(product, qty);
+      // Clear pending quantity and input for this product after successful transfer
+      setPendingQuantities(prev => {
+        const newMap = new Map(prev);
+        newMap.delete(productId);
+        return newMap;
+      });
+      setQuantityInputs(prev => {
+        const newMap = new Map(prev);
+        newMap.delete(productId);
+        return newMap;
+      });
+      // Reload products to refresh quantities
+      await loadAvailableProducts();
+      // Only close modal if not a quick transfer (quantity input form)
+      if (!qtyOverride && pendingQty === 0 && !inputQty) {
+        onClose();
+        setSearchTerm('');
+        setSearchResults([]);
+        setIsSearching(false);
+        setSelectedProduct(null);
+        setQuantity('1');
+      }
+    } catch (err) {
+      console.error('Transfer failed:', err);
+      alert(err instanceof Error ? err.message : 'Transfer failed');
+      // Don't close modal on error so user can try again
+    }
   };
+
 
   const displayProducts = isSearching ? searchResults : availableProducts;
 
@@ -82,8 +251,91 @@ const AddProductFromInventoryModal = ({ inventoryProducts, storeProducts, isOpen
           </button>
         </div>
         
-        <div className="flex-1 overflow-y-auto px-6 py-6">
-          <div className="mb-6">
+        <div className="flex-1 flex flex-col overflow-hidden px-6 py-6">
+          {selectedProduct ? (
+            <div className="space-y-4">
+              <div className="flex items-center gap-4 p-4 border border-slate-200 rounded-lg bg-slate-50">
+                <div className="flex-shrink-0">
+                  {(() => {
+                    const imageUrl = selectedProduct.imageUrl || selectedProduct.primaryImageUrl || 
+                      (selectedProduct.images && selectedProduct.images.length > 0 ? selectedProduct.images[0].url : null);
+                    return imageUrl ? (
+                      <img 
+                        src={imageUrl} 
+                        alt={selectedProduct.name} 
+                        className="w-20 h-20 object-cover rounded-lg border border-slate-200"
+                      />
+                    ) : (
+                      <div className="w-20 h-20 bg-amber-100 border border-amber-200 rounded-lg flex items-center justify-center">
+                        <span className="text-3xl">📦</span>
+                      </div>
+                    );
+                  })()}
+                </div>
+                <div className="flex-1">
+                  <h4 className="text-lg font-semibold text-slate-800 mb-1">{selectedProduct.name}</h4>
+                  <div className="flex items-center gap-4 text-sm text-slate-600">
+                    <span>{typeof selectedProduct.category === 'string' ? selectedProduct.category : 'No category'}</span>
+                    <span className="font-medium text-blue-600">${(selectedProduct.price || 0).toFixed(2)}</span>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setSelectedProduct(null)}
+                  className="px-3 py-1.5 text-sm text-slate-600 hover:text-slate-800 hover:bg-slate-200 rounded-lg transition-colors"
+                >
+                  Change
+                </button>
+              </div>
+              
+              <div className="space-y-3">
+                <div className="grid grid-cols-2 gap-4 p-4 bg-slate-50 rounded-lg">
+                  <div>
+                    <label className="block text-xs font-medium text-slate-600 mb-1">Warehouse Quantity</label>
+                    <p className="text-lg font-semibold text-blue-600">{selectedProduct.warehouseQuantity || 0}</p>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-600 mb-1">Current Store Quantity</label>
+                    <p className="text-lg font-semibold text-green-600">{selectedProduct.storeQuantity || 0}</p>
+                  </div>
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">
+                    Quantity to Transfer <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    max={selectedProduct.warehouseQuantity || 0}
+                    value={quantity}
+                    onChange={(e) => setQuantity(e.target.value)}
+                    className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="Enter quantity"
+                  />
+                  <p className="mt-1 text-xs text-slate-500">
+                    Enter the quantity to transfer from warehouse to store (max: {selectedProduct.warehouseQuantity || 0})
+                  </p>
+                </div>
+                
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => handleSelect(selectedProduct)}
+                    className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition-colors"
+                  >
+                    Transfer to Store
+                  </button>
+                  <button
+                    onClick={() => setSelectedProduct(null)}
+                    className="px-4 py-2 border border-slate-300 hover:bg-slate-100 text-slate-700 font-medium rounded-lg transition-colors"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <>
+              <div className="mb-4 flex-shrink-0">
             <input
               type="text"
               value={searchTerm}
@@ -92,71 +344,181 @@ const AddProductFromInventoryModal = ({ inventoryProducts, storeProducts, isOpen
               className="w-full px-4 py-2.5 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
             />
             <p className="mt-2 text-sm text-slate-600">
-              {isSearching 
+                  {loading ? 'Loading available products...' :
+                   isSearching 
                 ? `${searchResults.length} product${searchResults.length !== 1 ? 's' : ''} found`
-                : `${availableProducts.length} available product${availableProducts.length !== 1 ? 's' : ''}`
+                    : `${availableProducts.length} available product${availableProducts.length !== 1 ? 's' : ''} (with warehouse stock)`
               }
             </p>
           </div>
 
-          {displayProducts.length > 0 ? (
-            <div className="space-y-3 max-h-[500px] overflow-y-auto">
-              {displayProducts.map(product => (
+              {loading ? (
+                <div className="text-center py-12">
+                  <p className="text-slate-600">Loading available products...</p>
+                </div>
+              ) : displayProducts.length > 0 ? (
+                <div ref={scrollContainerRef} className="flex-1 overflow-y-auto space-y-3 pr-2">
+                  {displayProducts.map(product => {
+                    const imageUrl = product.imageUrl || product.primaryImageUrl || 
+                      (product.images && product.images.length > 0 ? product.images[0].url : null);
+                    const warehouseQty = product.warehouseQuantity || 0;
+                    const storeQty = product.storeQuantity || 0;
+                    const productId = typeof product.id === 'string' ? parseInt(product.id) : product.id;
+                    
+                    return (
                 <div 
                   key={product.id} 
-                  className="flex items-center gap-4 p-4 border border-slate-200 rounded-lg hover:bg-slate-50 hover:border-blue-300 transition-colors cursor-pointer"
-                  onClick={() => handleSelect(product)}
+                        className="flex items-center gap-4 p-4 border border-slate-200 rounded-lg hover:bg-slate-50 hover:border-blue-300 transition-colors"
                 >
                   <div className="flex-shrink-0">
-                    {product.image ? (
+                          {imageUrl ? (
                       <img 
-                        src={product.image} 
+                              src={imageUrl} 
                         alt={product.name} 
                         className="w-16 h-16 object-cover rounded-lg border border-slate-200"
                       />
                     ) : (
                       <div className="w-16 h-16 bg-amber-100 border border-amber-200 rounded-lg flex items-center justify-center">
-                        <span className="text-2xl">📦</span>
+                        <span className="text-2l">📦</span>
                       </div>
                     )}
                   </div>
                   
                   <div className="flex-1 min-w-0">
-                    <h4 className="text-base font-semibold text-slate-800 mb-1">{product.name}</h4>
-                    <div className="flex items-center gap-4 text-sm text-slate-600">
-                      <span>{product.category || 'No category'}</span>
-                      <span className="font-medium text-blue-600">${(product.price || 0).toFixed(2)}</span>
+                          <h4 className="text-base font-semibold text-slate-800 mb-1">{product.name || 'Unknown Product'}</h4>
+                          <div className="flex items-center gap-4 text-sm text-slate-600 mb-2">
+                            <span>
+                              {(() => {
+                                if (typeof product.category === 'string') return product.category;
+                                if (product.category && typeof product.category === 'object') {
+                                  const cat = product.category as any;
+                                  return cat.name || cat.title || 'No category';
+                                }
+                                return 'No category';
+                              })()}
+                            </span>
+                            <span className="font-medium text-blue-600">
+                              ${((product.price || product.defaultPrice || 0) > 0 ? (product.price || product.defaultPrice || 0) : 0).toFixed(2)}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-4 text-xs">
+                            <span className="text-slate-500">
+                              Warehouse: <span className="font-semibold text-blue-600">{warehouseQty}</span>
+                            </span>
+                            <span className="text-slate-500">
+                              Store: <span className="font-semibold text-green-600">{storeQty}</span>
+                            </span>
                     </div>
-                    {product.description && (
-                      <p className="text-xs text-slate-500 mt-1 line-clamp-2">
-                        {product.description}
-                      </p>
-                    )}
                   </div>
                   
-                  <div className="flex-shrink-0">
+                        <div className="flex-shrink-0 flex items-center gap-2">
+                          <button 
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              e.preventDefault();
+                              
+                              const currentInput = quantityInputs.get(productId) || '';
+                              const currentValue = parseInt(currentInput) || 0;
+                              
+                              if (currentValue <= 0) return;
+                              
+                              // Decrease quantity input (local only, no API call)
+                              const newValue = Math.max(0, currentValue - 1);
+                              setQuantityInputs(prev => {
+                                const newMap = new Map(prev);
+                                if (newValue > 0) {
+                                  newMap.set(productId, String(newValue));
+                                } else {
+                                  newMap.delete(productId);
+                                }
+                                return newMap;
+                              });
+                            }}
+                            disabled={(parseInt(quantityInputs.get(productId) || '0') || 0) <= 0}
+                            className="px-3 py-2 bg-red-100 hover:bg-red-200 disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed text-red-700 font-medium rounded-lg transition-colors"
+                            title="Decrease quantity"
+                          >
+                            −
+                          </button>
+                          <input
+                            type="number"
+                            min="0"
+                            max={warehouseQty}
+                            value={quantityInputs.get(productId) || ''}
+                            onChange={(e) => {
+                              const value = e.target.value;
+                              setQuantityInputs(prev => {
+                                const newMap = new Map(prev);
+                                if (value.trim() === '') {
+                                  newMap.delete(productId);
+                                } else {
+                                  const numValue = parseInt(value) || 0;
+                                  if (numValue >= 0 && numValue <= warehouseQty) {
+                                    newMap.set(productId, value);
+                                  }
+                                }
+                                return newMap;
+                              });
+                            }}
+                            onClick={(e) => e.stopPropagation()}
+                            className="w-16 px-2 py-2 text-center border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                            placeholder="0"
+                          />
+                          <button 
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              e.preventDefault();
+                              
+                              if (warehouseQty <= 0) return;
+                              
+                              const currentInput = quantityInputs.get(productId) || '';
+                              const currentValue = parseInt(currentInput) || 0;
+                              const maxAvailable = warehouseQty;
+                              
+                              // Increase quantity input (local only, no API call)
+                              // Don't allow more than available in warehouse
+                              if (currentValue < maxAvailable) {
+                                setQuantityInputs(prev => {
+                                  const newMap = new Map(prev);
+                                  newMap.set(productId, String(currentValue + 1));
+                                  return newMap;
+                                });
+                              }
+                            }}
+                            disabled={warehouseQty <= 0 || (parseInt(quantityInputs.get(productId) || '0') || 0) >= warehouseQty}
+                            className="px-3 py-2 bg-green-100 hover:bg-green-200 disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed text-green-700 font-medium rounded-lg transition-colors"
+                            title="Increase quantity"
+                          >
+                            +
+                          </button>
                     <button 
-                      onClick={(e) => {
+                            onClick={async (e) => {
                         e.stopPropagation();
-                        handleSelect(product);
+                              // Transfer with quantity from input (or 1 if no input)
+                              await handleSelect(product);
                       }}
-                      className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition-colors"
+                            disabled={warehouseQty <= 0}
+                            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white font-medium rounded-lg transition-colors"
+                            title="Transfer to store"
                     >
-                      Add to Store
+                            Transfer
                     </button>
                   </div>
                 </div>
-              ))}
+                    );
+                  })}
             </div>
           ) : (
             <div className="text-center py-12">
               <p className="text-slate-600 mb-2">No products available to add.</p>
               <p className="text-sm text-slate-500">
                 {availableProducts.length === 0 && inventoryProducts.length > 0
-                  ? 'All inventory products are already in the store.'
+                      ? 'No products in warehouse with available stock, or all products are already in the store.'
                   : 'No products in inventory.'}
               </p>
             </div>
+              )}
+            </>
           )}
         </div>
         

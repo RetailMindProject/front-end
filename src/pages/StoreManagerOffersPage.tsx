@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import { useState, useMemo } from "react";
 import { Plus } from "lucide-react";
 import { Card, CardTitle, CardValue, CardHint } from "../components";
 import OfferForm, { type OfferFormData } from "../components/offers/OfferForm";

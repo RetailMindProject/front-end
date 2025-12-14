@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { Bell } from "lucide-react";
 
 type Item = { id: string; title: string; body: string; from: string; createdAt: string; read?: boolean };
