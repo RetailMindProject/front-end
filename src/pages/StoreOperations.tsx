@@ -5,6 +5,10 @@ import { productsApi, type ProductDTO } from '../services/products.api';
 
 type UIStoreProduct = StoreProductResponseDTO & {
   imageUrl?: string | null;
+  orders?: number;
+  sales?: number;
+  createdAt?: string;
+  updatedAt?: string;
 };
 
 export default function StoreOperations() {
@@ -15,11 +19,11 @@ export default function StoreOperations() {
   const [filters, setFilters] = useState({
     brand: '',
     sku: '',
-    category: '',
     minPrice: '',
     maxPrice: '',
     isActive: ''
   });
+  const [sortBy, setSortBy] = useState<'sales' | 'none'>('none');
 
   const fetchStoreProducts = async (filterOverrides?: typeof filters) => {
     try {
@@ -38,14 +42,7 @@ export default function StoreOperations() {
       });
       
       if (res.data) {
-        // Filter by category on the frontend if provided (since API might not support it)
         let content = res.data.content || [];
-        if (activeFilters.category) {
-          content = content.filter(p => {
-            const category = p.category || '';
-            return category.toLowerCase().includes(activeFilters.category.toLowerCase());
-          });
-        }
         
         // Fetch full product details for each store product to get correct name, price, etc.
         const normalizedResults: (UIStoreProduct | null)[] = await Promise.all(
@@ -99,7 +96,11 @@ export default function StoreOperations() {
                   primaryImageUrl: fullProduct.primaryImageUrl || p.primaryImageUrl,
                   images: fullProduct.images || p.images,
                   warehouseQuantity: warehouseQty,
-                  storeQuantity: storeQty
+                  storeQuantity: storeQty,
+                  orders: (fullProduct as any).orders || (p as any).orders || 0,
+                  createdAt: fullProduct.createdAt || p.createdAt,
+                  updatedAt: fullProduct.updatedAt || p.updatedAt,
+                  sales: (fullProduct as any).sales || (p as any).sales || 0
                 };
                 return result;
               }
@@ -128,7 +129,17 @@ export default function StoreOperations() {
         );
         
         // Filter out null values (products with storeQty <= 0)
-        const normalized = normalizedResults.filter((p): p is UIStoreProduct => p !== null);
+        let normalized = normalizedResults.filter((p): p is UIStoreProduct => p !== null);
+        
+        // Apply sorting by sales (most sold)
+        if (sortBy === 'sales') {
+          normalized.sort((a, b) => {
+            const salesA = (a as any).sales || (a as any).orders || 0;
+            const salesB = (b as any).sales || (b as any).orders || 0;
+            return salesB - salesA; // Most sold first
+          });
+        }
+        
         setStoreProducts(normalized);
       } else {
         setError(res.error || 'Failed to load store products');
@@ -298,22 +309,22 @@ export default function StoreOperations() {
     const resetFilters = {
       brand: '',
       sku: '',
-      category: '',
       minPrice: '',
       maxPrice: '',
       isActive: ''
     };
     // Set filters state and immediately fetch with reset filters
     setFilters(resetFilters);
+    setSortBy('none');
     // Fetch with empty filters immediately (don't wait for state update)
     fetchStoreProducts(resetFilters);
   };
 
-  // Load products on mount and when filters change
+  // Load products on mount and when filters or sort change
   useEffect(() => {
     fetchStoreProducts();
     fetchInventoryProducts();
-  }, []);
+  }, [sortBy]);
 
   // Get available inventory products (those with warehouseQuantity > 0 from stocks_snapshot)
   const getAvailableInventoryProducts = async (): Promise<(ProductDTO & { warehouseQuantity?: number; storeQuantity?: number })[]> => {
@@ -428,7 +439,7 @@ export default function StoreOperations() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50">
       {/* Header Section */}
-      <header className="sticky top-0 z-10 border-b border-indigo-200/50 bg-white/80 backdrop-blur-md shadow-sm">
+      <header className="border-b border-indigo-200/50 bg-white/80 backdrop-blur-md shadow-sm">
         <div className="h-0.5 bg-gradient-to-r from-indigo-500 via-blue-500 to-indigo-500"></div>
         <div className="px-6 py-6">
           <div className="flex items-center gap-4">
@@ -465,6 +476,8 @@ export default function StoreOperations() {
           onApplyFilters={handleApplyFilters}
           onResetFilters={handleResetFilters}
           getAvailableInventoryProducts={getAvailableInventoryProducts}
+          sortBy={sortBy}
+          onSortChange={setSortBy}
         />
       </div>
     </div>

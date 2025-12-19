@@ -2,6 +2,8 @@ import { useState, useEffect, useRef } from 'react';
 import type { ChangeEvent } from 'react';
 import type { ProductDTO } from '../../services/products.api';
 import { storeProductsApi } from '../../services/store-products.api';
+import { productsApi } from '../../services/products.api';
+import AuthenticatedImage from './AuthenticatedImage';
 
 interface Product {
   id: string | number;
@@ -118,8 +120,44 @@ const AddProductFromInventoryModal = ({
         return bQty - aQty; // Descending order
       });
       
+      // Fetch categories for all products in parallel
+      const productsWithCategories = await Promise.all(
+        products.map(async (p) => {
+          let categoryName: string | undefined = typeof p.category === 'string' 
+            ? p.category 
+            : undefined;
+          
+          // Fetch category from product categories endpoint if not already available
+          if (!categoryName && p.id) {
+            try {
+              const catRes = await productsApi.getProductCategories(p.id);
+              if (catRes.data && catRes.data.length > 0) {
+                // Sort categories by ID for consistency
+                const sortedCategories = [...catRes.data].sort((a, b) => a.id - b.id);
+                // Find subcategory (one with parentId) or use first one
+                const subCategory = sortedCategories.find(cat => cat.parentId !== null && cat.parentId !== undefined) || sortedCategories[0];
+                categoryName = subCategory.name;
+              }
+            } catch (err) {
+              console.error(`Failed to load category for product ${p.id}:`, err);
+            }
+          }
+          
+          // Extract category from nested structure if needed
+          if (!categoryName && p.category && typeof p.category === 'object') {
+            const catObj = p.category as any;
+            categoryName = catObj.name || catObj.title;
+          }
+          
+          return {
+            ...p,
+            category: categoryName,
+          };
+        })
+      );
+      
       // Add originalIndex to maintain order during updates
-      const productsWithIndex = products.map((p, index) => ({
+      const productsWithIndex = productsWithCategories.map((p, index) => ({
         ...p,
         originalIndex: index
       }));
@@ -259,11 +297,20 @@ const AddProductFromInventoryModal = ({
                   {(() => {
                     const imageUrl = selectedProduct.imageUrl || selectedProduct.primaryImageUrl || 
                       (selectedProduct.images && selectedProduct.images.length > 0 ? selectedProduct.images[0].url : null);
-                    return imageUrl ? (
-                      <img 
-                        src={imageUrl} 
-                        alt={selectedProduct.name} 
+                    let normalizedUrl = imageUrl;
+                    if (imageUrl && !imageUrl.startsWith('http') && selectedProduct.id) {
+                      normalizedUrl = productsApi.normalizeImageUrl(imageUrl, selectedProduct.id);
+                    }
+                    return normalizedUrl ? (
+                      <AuthenticatedImage
+                        src={normalizedUrl}
+                        alt={selectedProduct.name}
                         className="w-20 h-20 object-cover rounded-lg border border-slate-200"
+                        fallbackIcon={
+                          <div className="w-20 h-20 bg-amber-100 border border-amber-200 rounded-lg flex items-center justify-center">
+                            <span className="text-3xl">📦</span>
+                          </div>
+                        }
                       />
                     ) : (
                       <div className="w-20 h-20 bg-amber-100 border border-amber-200 rounded-lg flex items-center justify-center">
@@ -371,17 +418,28 @@ const AddProductFromInventoryModal = ({
                         className="flex items-center gap-4 p-4 border border-slate-200 rounded-lg hover:bg-slate-50 hover:border-blue-300 transition-colors"
                 >
                   <div className="flex-shrink-0">
-                          {imageUrl ? (
-                      <img 
-                              src={imageUrl} 
-                        alt={product.name} 
-                        className="w-16 h-16 object-cover rounded-lg border border-slate-200"
-                      />
-                    ) : (
-                      <div className="w-16 h-16 bg-amber-100 border border-amber-200 rounded-lg flex items-center justify-center">
-                        <span className="text-2l">📦</span>
-                      </div>
-                    )}
+                    {(() => {
+                      let normalizedUrl = imageUrl;
+                      if (imageUrl && !imageUrl.startsWith('http') && product.id) {
+                        normalizedUrl = productsApi.normalizeImageUrl(imageUrl, product.id);
+                      }
+                      return normalizedUrl ? (
+                        <AuthenticatedImage
+                          src={normalizedUrl}
+                          alt={product.name}
+                          className="w-16 h-16 object-cover rounded-lg border border-slate-200"
+                          fallbackIcon={
+                            <div className="w-16 h-16 bg-amber-100 border border-amber-200 rounded-lg flex items-center justify-center">
+                              <span className="text-2xl">📦</span>
+                            </div>
+                          }
+                        />
+                      ) : (
+                        <div className="w-16 h-16 bg-amber-100 border border-amber-200 rounded-lg flex items-center justify-center">
+                          <span className="text-2xl">📦</span>
+                        </div>
+                      );
+                    })()}
                   </div>
                   
                   <div className="flex-1 min-w-0">

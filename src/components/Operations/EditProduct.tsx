@@ -1100,8 +1100,10 @@ const EditProduct = ({ products, productId, onUpdate, onCancel, loading = false 
       newErrors.wholesalePrice = 'Please enter a valid wholesale price';
     }
     
-    if (!formData.description.trim()) {
-      newErrors.description = 'Product description is required';
+    // Description is optional, no validation needed
+    
+    if (!formData.unit.trim()) {
+      newErrors.unit = 'Unit is required';
     }
     
     if (!formData.category.trim()) {
@@ -1288,7 +1290,7 @@ const EditProduct = ({ products, productId, onUpdate, onCancel, loading = false 
 
         <div>
           <label htmlFor="description" className="block text-sm font-medium text-slate-700 mb-1.5">
-            Description <span className="text-red-500">*</span>
+            Description
           </label>
           <textarea
             id="description"
@@ -1369,7 +1371,7 @@ const EditProduct = ({ products, productId, onUpdate, onCancel, loading = false 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div>
           <label htmlFor="unit" className="block text-sm font-medium text-slate-700 mb-1.5">
-            Unit
+            Unit <span className="text-red-500">*</span>
           </label>
           <input
             type="text"
@@ -1380,6 +1382,9 @@ const EditProduct = ({ products, productId, onUpdate, onCancel, loading = false 
             className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
             placeholder="e.g., piece, kg, liter, box"
           />
+          {errors.unit && (
+            <p className="mt-1 text-xs text-red-600">{errors.unit}</p>
+          )}
           </div>
 
           <div>

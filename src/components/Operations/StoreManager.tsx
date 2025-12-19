@@ -19,7 +19,6 @@ interface StoreManagerProps {
   filters?: {
     brand: string;
     sku: string;
-    category: string;
     minPrice: string;
     maxPrice: string;
     isActive: string;
@@ -28,12 +27,14 @@ interface StoreManagerProps {
   onApplyFilters?: () => void;
   onResetFilters?: () => void;
   getAvailableInventoryProducts?: () => Promise<ProductDTO[]>;
+  sortBy?: 'sales' | 'none';
+  onSortChange?: (sortBy: 'sales' | 'none') => void;
 }
 
 const StoreManager = ({ 
   storeProducts, 
   inventoryProducts, 
-  onDelete, 
+  onDelete,
   onAddFromInventory,
   onAdjustQuantity,
   loading = false,
@@ -41,7 +42,9 @@ const StoreManager = ({
   onFilterChange,
   onApplyFilters,
   onResetFilters,
-  getAvailableInventoryProducts
+  getAvailableInventoryProducts,
+  sortBy = 'none',
+  onSortChange
 }: StoreManagerProps) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [searchResults, setSearchResults] = useState<(StoreProductResponseDTO & { imageUrl?: string | null })[]>([]);
@@ -50,6 +53,14 @@ const StoreManager = ({
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState({ isOpen: false, productId: null as string | number | null, productName: '' });
+  const [revertModal, setRevertModal] = useState({ 
+    isOpen: false, 
+    productId: null as number | null, 
+    productName: '', 
+    storeQuantity: 0 
+  });
+  const [revertQuantity, setRevertQuantity] = useState<string>('');
+  const [revertMode, setRevertMode] = useState<'all' | 'quantity'>('all');
   const [showFilters, setShowFilters] = useState(false);
 
   const handleSearchChange = (e: ChangeEvent<HTMLInputElement>) => {
@@ -72,7 +83,17 @@ const StoreManager = ({
 
 
   const handleDelete = (id: string | number, name: string) => {
-    setDeleteConfirm({ isOpen: true, productId: id, productName: name });
+    // Find the product to get store quantity
+    const product = storeProducts.find(p => p.productId === id);
+    const storeQty = product?.storeQty || product?.storeQuantity || 0;
+    setRevertModal({ 
+      isOpen: true, 
+      productId: typeof id === 'string' ? parseInt(id) : id, 
+      productName: name,
+      storeQuantity: storeQty
+    });
+    setRevertQuantity('');
+    setRevertMode('all');
   };
 
   const handleConfirmDelete = () => {
@@ -87,6 +108,63 @@ const StoreManager = ({
 
   const handleCancelDelete = () => {
     setDeleteConfirm({ isOpen: false, productId: null, productName: '' });
+  };
+
+  const handleConfirmRevert = async () => {
+    if (revertModal.productId === null) return;
+    
+    let quantityToRevert: number;
+    if (revertMode === 'all') {
+      quantityToRevert = revertModal.storeQuantity;
+    } else {
+      const enteredQty = parseInt(revertQuantity) || 0;
+      if (enteredQty <= 0) {
+        alert('Please enter a valid quantity greater than 0');
+        return;
+      }
+      if (enteredQty > revertModal.storeQuantity) {
+        alert(`Cannot revert more than ${revertModal.storeQuantity} units (available in store)`);
+        return;
+      }
+      quantityToRevert = enteredQty;
+    }
+    
+    if (quantityToRevert <= 0) {
+      alert('No quantity to revert');
+      return;
+    }
+    
+    try {
+      if (onAdjustQuantity) {
+        await onAdjustQuantity(revertModal.productId, quantityToRevert, false);
+      }
+      setRevertModal({ isOpen: false, productId: null, productName: '', storeQuantity: 0 });
+      setRevertQuantity('');
+      setRevertMode('all');
+      // Refresh search results if searching
+      if (isSearching) {
+        const updatedResults = searchResults.map(p => {
+          if (p.productId === revertModal.productId) {
+            return {
+              ...p,
+              storeQty: (p.storeQty || 0) - quantityToRevert,
+              storeQuantity: (p.storeQuantity || 0) - quantityToRevert
+            };
+          }
+          return p;
+        });
+        setSearchResults(updatedResults);
+      }
+    } catch (err) {
+      console.error('Revert failed:', err);
+      alert(err instanceof Error ? err.message : 'Failed to revert product');
+    }
+  };
+
+  const handleCancelRevert = () => {
+    setRevertModal({ isOpen: false, productId: null, productName: '', storeQuantity: 0 });
+    setRevertQuantity('');
+    setRevertMode('all');
   };
 
   const clearSearch = () => {
@@ -278,12 +356,6 @@ const StoreManager = ({
                   onChange={(e) => onFilterChange('sku', e.target.value)}
                 />
                 <input
-                  placeholder="Category"
-                  className="px-2.5 py-1.5 text-sm border border-slate-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
-                  value={filters.category || ''}
-                  onChange={(e) => onFilterChange('category', e.target.value)}
-                />
-                <input
                   placeholder="Min Price"
                   type="number"
                   className="px-2.5 py-1.5 text-sm border border-slate-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
@@ -306,6 +378,16 @@ const StoreManager = ({
                   <option value="true">Active</option>
                   <option value="false">Inactive</option>
                 </select>
+                {onSortChange && (
+                  <select
+                    className="px-2.5 py-1.5 text-sm border border-slate-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    value={sortBy}
+                    onChange={(e) => onSortChange(e.target.value as 'sales' | 'none')}
+                  >
+                    <option value="none">Sort By</option>
+                    <option value="sales">Most Sold</option>
+                  </select>
+                )}
               </div>
               <div className="flex gap-2">
                 <button
@@ -388,7 +470,7 @@ const StoreManager = ({
                     <AuthenticatedImage
                       src={imageUrl}
                       alt={product.productName}
-                      className="w-16 h-16 object-cover rounded-lg border border-slate-200"
+                      className="w-16 h-16 object-contain rounded-lg border border-slate-200 bg-white p-1"
                       fallbackIcon={
                         <div className="w-16 h-16 bg-amber-100 border border-amber-200 rounded-lg flex items-center justify-center">
                           <span className="text-2xl">📦</span>
@@ -408,6 +490,9 @@ const StoreManager = ({
                   </span>
                   <span className="transition-transform duration-200 group-hover:translate-x-0.5">
                     Warehouse: {(product as any).warehouseQty || product.warehouseQuantity || 0} units
+                  </span>
+                  <span className="transition-transform duration-200 group-hover:translate-x-0.5">
+                    {(product as any).orders || 0} orders
                   </span>
                   <span className="font-medium text-blue-600 group-hover:text-blue-700 transition-colors duration-200">
                     ${((product.price || (product as any).defaultPrice || 0) > 0 ? (product.price || (product as any).defaultPrice || 0) : 0).toFixed(2)} price
@@ -477,6 +562,108 @@ const StoreManager = ({
         productName={deleteConfirm.productName}
         message={`Revert "${deleteConfirm.productName}" to the warehouse? This will return the product to the warehouse.`}
       />
+
+      {/* Revert Modal with Quantity Options */}
+      {revertModal.isOpen && (
+        <div 
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
+          onClick={handleCancelRevert}
+        >
+          <div 
+            className="bg-white rounded-2xl shadow-2xl max-w-md w-full mx-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-6 py-4 border-b">
+              <h2 className="text-xl font-semibold text-slate-800">
+                Revert to Warehouse
+              </h2>
+              <button 
+                className="text-slate-400 hover:text-slate-600 transition-colors text-2xl leading-none"
+                onClick={handleCancelRevert}
+              >
+                ×
+              </button>
+            </div>
+            
+            <div className="px-6 py-6">
+              <p className="text-base text-slate-700 mb-4">
+                Revert <span className="font-semibold">"{revertModal.productName}"</span> to the warehouse?
+              </p>
+              <p className="text-sm text-slate-500 mb-4">
+                Current store quantity: <span className="font-semibold text-blue-600">{revertModal.storeQuantity}</span>
+              </p>
+              
+              <div className="space-y-4">
+                <div className="flex gap-3">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="revertMode"
+                      value="all"
+                      checked={revertMode === 'all'}
+                      onChange={() => {
+                        setRevertMode('all');
+                        setRevertQuantity('');
+                      }}
+                      className="w-4 h-4 text-blue-600"
+                    />
+                    <span className="text-sm font-medium text-slate-700">Revert All ({revertModal.storeQuantity} units)</span>
+                  </label>
+                </div>
+                
+                <div className="flex gap-3">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="revertMode"
+                      value="quantity"
+                      checked={revertMode === 'quantity'}
+                      onChange={() => setRevertMode('quantity')}
+                      className="w-4 h-4 text-blue-600"
+                    />
+                    <span className="text-sm font-medium text-slate-700">Choose Quantity</span>
+                  </label>
+                </div>
+                
+                {revertMode === 'quantity' && (
+                  <div className="ml-6">
+                    <label className="block text-sm font-medium text-slate-700 mb-2">
+                      Quantity to Revert <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="number"
+                      min="1"
+                      max={revertModal.storeQuantity}
+                      value={revertQuantity}
+                      onChange={(e) => setRevertQuantity(e.target.value)}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      placeholder={`Enter quantity (max: ${revertModal.storeQuantity})`}
+                    />
+                    <p className="mt-1 text-xs text-slate-500">
+                      Maximum: {revertModal.storeQuantity} units
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
+            
+            <div className="flex items-center justify-end gap-3 px-6 py-4 border-t bg-slate-50/50">
+              <button 
+                className="px-4 py-2 border border-slate-300 hover:bg-slate-100 text-slate-700 font-medium rounded-lg transition-colors min-w-[80px]"
+                onClick={handleCancelRevert}
+              >
+                Cancel
+              </button>
+              <button 
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition-colors min-w-[80px]"
+                onClick={handleConfirmRevert}
+              >
+                Revert
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

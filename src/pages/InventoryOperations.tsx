@@ -9,13 +9,14 @@ type UIProduct = Omit<ProductDTO, 'category'> & {
   category?: string;
   price: number;
   imageUrl?: string | null; // Ensure imageUrl is available for display
+  warehouseQuantity?: number;
+  storeQuantity?: number;
 };
 
 export default function InventoryOperations() {
   const initialFilters = {
     brand: '',
     sku: '',
-    category: '',
     minPrice: '',
     maxPrice: '',
     isActive: ''
@@ -48,16 +49,8 @@ export default function InventoryOperations() {
         let content = Array.isArray((res.data as unknown as ProductDTO[]))
           ? (res.data as unknown as ProductDTO[])
           : res.data.content || [];
-        
-        // Filter by category on the frontend if provided
-        if (activeFilters.category) {
-          content = content.filter(p => {
-            const category = typeof p.category === 'string' ? p.category : 
-              (p.category && typeof p.category === 'object' ? (p.category as any).name || '' : '');
-            return category.toLowerCase().includes(activeFilters.category.toLowerCase());
-          });
-        }
-        // Fetch categories for all products in parallel
+        // Fetch categories and quantities for all products in parallel
+        const { storeProductsApi } = await import('../services/store-products.api');
         const normalized: UIProduct[] = await Promise.all(
           content.map(async (p) => {
             // Extract category: prefer expanded categories list (sub + parent) from backend
@@ -106,11 +99,30 @@ export default function InventoryOperations() {
               imageUrl = productsApi.normalizeImageUrl(p.imageUrl, p.id);
             }
             
+            // Fetch warehouse and store quantities
+            let warehouseQuantity = 0;
+            let storeQuantity = 0;
+            if (p.id) {
+              try {
+                const productId = typeof p.id === 'string' ? parseInt(p.id) : p.id;
+                const stockRes = await storeProductsApi.getByProductId(productId);
+                if (stockRes.data) {
+                  warehouseQuantity = (stockRes.data as any).warehouseQty || (stockRes.data as any).warehouseQuantity || 0;
+                  storeQuantity = (stockRes.data as any).storeQty || (stockRes.data as any).storeQuantity || 0;
+                }
+              } catch (err) {
+                // If product not found in stock_snapshot, quantities remain 0
+                console.warn(`No stock data for product ${p.id}:`, err);
+              }
+            }
+            
             return {
               ...p,
               category: categoryName,
               price: p.price ?? p.defaultPrice ?? 0,
               imageUrl: imageUrl || p.imageUrl, // Ensure imageUrl is set
+              warehouseQuantity,
+              storeQuantity,
             };
           })
         );
@@ -611,7 +623,7 @@ export default function InventoryOperations() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50">
       {/* Header Section */}
-      <header className="sticky top-0 z-10 border-b border-indigo-200/50 bg-white/80 backdrop-blur-md shadow-sm">
+      <header className="border-b border-indigo-200/50 bg-white/80 backdrop-blur-md shadow-sm">
         <div className="h-0.5 bg-gradient-to-r from-indigo-500 via-blue-500 to-indigo-500"></div>
         <div className="px-6 py-6">
           <div className="flex items-center gap-4">
@@ -636,26 +648,27 @@ export default function InventoryOperations() {
           </div>
         )}
         {/* Advanced Filters */}
-        <div className="mb-4">
-          <div className="flex items-center justify-between mb-3">
-            <button
-              onClick={() => setShowFilters(!showFilters)}
-              className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md transition-all duration-200 focus:outline-none focus:ring-1 focus:ring-slate-400 ${
-                showFilters 
-                  ? 'bg-blue-100 text-blue-700 hover:bg-blue-200 border border-blue-300' 
-                  : 'text-slate-700 hover:text-slate-900 hover:bg-slate-200 border border-slate-300'
-              }`}
-              title={showFilters ? 'Hide filters' : 'Show filters'}
-            >
-              <Filter size={16} className={showFilters ? 'text-blue-600' : 'text-slate-600'} />
-              {showFilters && (
-                <span className="ml-1 w-1.5 h-1.5 bg-blue-600 rounded-full"></span>
-              )}
-            </button>
-          </div>
+        {currentView === 'list' && (
+          <div className="mb-4">
+            <div className="flex items-center justify-between mb-3">
+              <button
+                onClick={() => setShowFilters(!showFilters)}
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md transition-all duration-200 focus:outline-none focus:ring-1 focus:ring-slate-400 ${
+                  showFilters 
+                    ? 'bg-blue-100 text-blue-700 hover:bg-blue-200 border border-blue-300' 
+                    : 'text-slate-700 hover:text-slate-900 hover:bg-slate-200 border border-slate-300'
+                }`}
+                title={showFilters ? 'Hide filters' : 'Show filters'}
+              >
+                <Filter size={16} className={showFilters ? 'text-blue-600' : 'text-slate-600'} />
+                {showFilters && (
+                  <span className="ml-1 w-1.5 h-1.5 bg-blue-600 rounded-full"></span>
+                )}
+              </button>
+            </div>
           {showFilters && (
             <>
-              <div className="grid grid-cols-1 md:grid-cols-6 gap-2">
+              <div className="grid grid-cols-1 md:grid-cols-5 gap-2">
                 <input
                   placeholder="Brand"
                   className="px-2.5 py-1.5 text-sm border border-slate-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
@@ -667,12 +680,6 @@ export default function InventoryOperations() {
                   className="px-2.5 py-1.5 text-sm border border-slate-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
                   value={filters.sku}
                   onChange={(e) => setFilters((p) => ({ ...p, sku: e.target.value }))}
-                />
-                <input
-                  placeholder="Category"
-                  className="px-2.5 py-1.5 text-sm border border-slate-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
-                  value={filters.category}
-                  onChange={(e) => setFilters((p) => ({ ...p, category: e.target.value }))}
                 />
                 <input
                   placeholder="Min Price"
@@ -718,7 +725,8 @@ export default function InventoryOperations() {
               </div>
             </>
           )}
-        </div>
+          </div>
+        )}
         {currentView === 'list' && (
           <ProductList 
             products={products} 

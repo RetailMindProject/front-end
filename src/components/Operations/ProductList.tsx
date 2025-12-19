@@ -22,6 +22,8 @@ interface Product {
   sales?: number;
   views?: number;
   subscribers?: number;
+  warehouseQuantity?: number;
+  storeQuantity?: number;
 }
 
 interface ProductListProps {
@@ -265,7 +267,7 @@ const ProductList = ({ products, onDelete, onEdit, onCreate, loading = false }: 
                     <AuthenticatedImage
                       src={imageUrl}
                       alt={product.name}
-                      className="w-16 h-16 object-cover rounded-lg border border-slate-200"
+                      className="w-16 h-16 object-contain rounded-lg border border-slate-200 bg-white p-1"
                       fallbackIcon={
                         <div className="w-16 h-16 bg-amber-100 border border-amber-200 rounded-lg flex items-center justify-center">
                           <span className="text-2xl">📦</span>
@@ -280,8 +282,12 @@ const ProductList = ({ products, onDelete, onEdit, onCreate, loading = false }: 
               <div className="flex-1 min-w-0">
                 <h4 className="text-base font-semibold text-blue-600 mb-1 group-hover:text-blue-700 transition-colors duration-200">{product.name}</h4>
                 <div className="flex items-center gap-4 text-sm text-slate-600 group-hover:text-slate-700 transition-colors duration-200">
-                  <span className="transition-transform duration-200 group-hover:translate-x-0.5">{product.views || 0} views</span>
-                  <span className="transition-transform duration-200 group-hover:translate-x-0.5">{product.orders || 0} orders</span>
+                  <span className="transition-transform duration-200 group-hover:translate-x-0.5">
+                    Inventory: {(product.warehouseQuantity ?? (product as any).warehouseQty ?? 0)} units
+                  </span>
+                  <span className="transition-transform duration-200 group-hover:translate-x-0.5">
+                    Store: {(product.storeQuantity ?? (product as any).storeQty ?? 0)} units
+                  </span>
                   <span className="transition-transform duration-200 group-hover:translate-x-0.5">${(product.sales || 0).toFixed(2)} sales</span>
                   <span className="font-medium text-blue-600 group-hover:text-blue-700 transition-colors duration-200">${(product.price || 0).toFixed(2)} price</span>
                 </div>
