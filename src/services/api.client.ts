@@ -29,20 +29,33 @@ async function apiRequest<T>(
       headers,
     });
 
-    // Handle 204 No Content
-    if (response.status === 204) {
-      return {
-        status: 204,
-      };
-    }
+// Handle 204 No Content
+if (response.status === 204) {
+  return {
+    status: 204,
+  };
+}
 
-    // Handle empty response
-    const contentType = response.headers.get("content-type");
-    let data;
-    if (contentType && contentType.includes("application/json")) {
-      data = await response.json();
-    } else {
-      data = {};
+// Check content type before parsing
+const contentType = response.headers.get("content-type");
+let data: any;
+
+if (contentType && contentType.includes("application/json")) {
+  try {
+    data = await response.json();
+  } catch (jsonError) {
+    const text = await response.text();
+    console.error("Failed to parse JSON response:", text);
+    return {
+      error: `Invalid JSON response: ${text}`,
+      status: response.status,
+    };
+  }
+} else {
+  const text = await response.text();
+  data = { message: text || "Response is not JSON" };
+}
+
     }
 
     if (!response.ok) {
@@ -56,7 +69,7 @@ async function apiRequest<T>(
       }
       
       return {
-        error: data.message || `HTTP error! status: ${response.status}`,
+        error: data.message || data.error || `HTTP error! status: ${response.status}`,
         status: response.status,
       };
     }
@@ -66,6 +79,7 @@ async function apiRequest<T>(
       status: response.status,
     };
   } catch (error) {
+    console.error("API request error:", error);
     return {
       error: error instanceof Error ? error.message : "Network error occurred",
       status: 0,
@@ -85,6 +99,12 @@ export const apiClient = {
   put: <T>(endpoint: string, body?: unknown) =>
     apiRequest<T>(endpoint, {
       method: "PUT",
+      body: body ? JSON.stringify(body) : undefined,
+    }),
+  
+  patch: <T>(endpoint: string, body?: unknown) =>
+    apiRequest<T>(endpoint, {
+      method: "PATCH",
       body: body ? JSON.stringify(body) : undefined,
     }),
   

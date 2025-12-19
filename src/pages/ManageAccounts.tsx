@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Plus } from "lucide-react";
 import { Card } from "../components";
@@ -6,67 +6,49 @@ import AccountsTable from "../components/accounts/AccountsTable";
 import AccountsFilters from "../components/accounts/AccountsFilters";
 import AccountModal from "../components/accounts/AccountModal";
 import type { UserAccount, UserRole } from "../types/user";
-
-// Mock data
-const mockAccounts: UserAccount[] = [
-  {
-    id: '1',
-    first_name: 'Ahmad',
-    last_name: 'Ali',
-    email: 'ahmad@example.com',
-    phone: '+970 5x xxx xxxx',
-    address: 'Ramallah, Palestine',
-    role: 'STORE_MANAGER',
-    is_active: true,
-    created_at: '2025-01-15',
-    updated_at: '2025-01-20',
-  },
-  {
-    id: '2',
-    first_name: 'Sara',
-    last_name: 'Mohammed',
-    email: 'sara@example.com',
-    phone: '+970 5x xxx xxxx',
-    address: 'Nablus, Palestine',
-    role: 'CASHIER',
-    is_active: true,
-    created_at: '2025-01-16',
-    updated_at: '2025-01-21',
-  },
-  {
-    id: '3',
-    first_name: 'Mohammed',
-    last_name: 'Ahmed',
-    email: 'mohammed@example.com',
-    phone: '+970 5x xxx xxxx',
-    address: 'Jerusalem, Palestine',
-    role: 'INVENTORY_MANAGER',
-    is_active: false,
-    created_at: '2025-01-10',
-    updated_at: '2025-01-15',
-  },
-  {
-    id: '4',
-    first_name: 'Fatima',
-    last_name: 'Hassan',
-    email: 'fatima@example.com',
-    phone: '+970 5x xxx xxxx',
-    address: 'Hebron, Palestine',
-    role: 'CASHIER',
-    is_active: true,
-    created_at: '2025-01-18',
-    updated_at: '2025-01-22',
-  },
-];
+import { getAllAccounts, updateAccount } from "../services/auth.api";
+import type { EditAccountFormData } from "../types/user";
 
 export default function ManageAccounts() {
   const navigate = useNavigate();
-  const [accounts, setAccounts] = useState<UserAccount[]>(mockAccounts);
+  const [accounts, setAccounts] = useState<UserAccount[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [showEditModal, setShowEditModal] = useState(false);
   const [editingAccount, setEditingAccount] = useState<UserAccount | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [roleFilter, setRoleFilter] = useState<UserRole | 'ALL'>('ALL');
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'ACTIVE' | 'INACTIVE'>('ALL');
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadAccounts = async () => {
+      setLoading(true);
+      setError(null);
+
+      const result = await getAllAccounts();
+
+      if (!isMounted) {
+        return;
+      }
+
+      if (result.error) {
+        setError(result.error.message || "Failed to load accounts");
+        setAccounts([]);
+      } else if (result.data) {
+        setAccounts(result.data);
+      }
+
+      setLoading(false);
+    };
+
+    loadAccounts();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   // Filter accounts
   const filteredAccounts = useMemo(() => {
@@ -85,23 +67,143 @@ export default function ManageAccounts() {
     });
   }, [accounts, searchTerm, roleFilter, statusFilter]);
 
-  const handleEdit = async (data: any) => {
-    if (!editingAccount) return;
+  const handleEdit = async (data: EditAccountFormData) => {
+    if (!editingAccount) {
+      console.error("No editing account found");
+      return;
+    }
     
-    setAccounts(accounts.map(acc => 
-      acc.id === editingAccount.id 
-        ? { ...acc, ...data, updated_at: new Date().toISOString().split('T')[0] }
-        : acc
-    ));
-    setShowEditModal(false);
-    setEditingAccount(null);
-    alert('Account updated successfully');
+    console.log("handleEdit called with data:", data);
+    console.log("Editing account ID:", editingAccount.id);
+    
+    setError(null);
+    
+    try {
+      // Convert EditAccountFormData to UpdateAccountRequest format
+      const updateData = {
+        firstName: data.first_name,
+        lastName: data.last_name,
+        email: data.email,
+        phone: data.phone,
+        address: data.address,
+        role: data.role,
+        isActive: data.is_active,
+      };
+
+      console.log("Calling updateAccount with:", updateData);
+      const result = await updateAccount(editingAccount.id, updateData);
+      console.log("updateAccount result:", result);
+
+      if (result.error) {
+        console.error("Update account error:", result.error);
+        setError(result.error.message || "Failed to update account");
+        // Don't throw here, just show error and keep modal open
+        return;
+      }
+
+      if (!result.data) {
+        console.error("No data in response");
+        setError("No data received from server");
+        return;
+      }
+
+      console.log("Update successful, updating local state");
+      // Update local state with the updated account from API response
+      const updatedAccount = result.data;
+      setAccounts(accounts.map(acc => 
+        acc.id === editingAccount.id 
+          ? { 
+              ...acc, 
+              first_name: updatedAccount.firstName,
+              last_name: updatedAccount.lastName,
+              email: updatedAccount.email,
+              phone: updatedAccount.phone,
+              address: updatedAccount.address,
+              role: updatedAccount.role.toUpperCase() as UserRole,
+              is_active: updatedAccount.isActive,
+              updated_at: updatedAccount.updatedAt
+            }
+          : acc
+      ));
+      
+      console.log("Closing modal");
+      setShowEditModal(false);
+      setEditingAccount(null);
+    } catch (err) {
+      console.error("Exception in handleEdit:", err);
+      setError(err instanceof Error ? err.message : "An unexpected error occurred");
+    }
   };
 
-  const handleToggleStatus = (id: string) => {
+  const handleToggleStatus = async (id: string) => {
+    const account = accounts.find(acc => acc.id === id);
+    if (!account) {
+      console.error("Account not found for toggle:", id);
+      return;
+    }
+
+    const newStatus = !account.is_active;
+    console.log("Toggling status for account:", id, "to:", newStatus);
+
+    // Optimistically update UI
     setAccounts(accounts.map(acc => 
-      acc.id === id ? { ...acc, is_active: !acc.is_active } : acc
+      acc.id === id ? { ...acc, is_active: newStatus } : acc
     ));
+
+    try {
+      // Prepare update data with all current account data, only changing isActive
+      const updateData = {
+        firstName: account.first_name,
+        lastName: account.last_name,
+        email: account.email,
+        phone: account.phone,
+        address: account.address,
+        role: account.role,
+        isActive: newStatus,
+      };
+
+      console.log("Calling updateAccount for toggle:", updateData);
+      const result = await updateAccount(id, updateData);
+      console.log("Toggle status result:", result);
+
+      if (result.error) {
+        console.error("Toggle status error:", result.error);
+        // Revert the optimistic update on error
+        setAccounts(accounts.map(acc => 
+          acc.id === id ? { ...acc, is_active: account.is_active } : acc
+        ));
+        setError(result.error.message || "Failed to update account status");
+        return;
+      }
+
+      if (result.data) {
+        // Update with server response
+        const updatedAccount = result.data;
+        setAccounts(accounts.map(acc => 
+          acc.id === id 
+            ? { 
+                ...acc, 
+                first_name: updatedAccount.firstName,
+                last_name: updatedAccount.lastName,
+                email: updatedAccount.email,
+                phone: updatedAccount.phone,
+                address: updatedAccount.address,
+                role: updatedAccount.role.toUpperCase() as UserRole,
+                is_active: updatedAccount.isActive,
+                updated_at: updatedAccount.updatedAt
+              }
+            : acc
+        ));
+        console.log("Status toggled successfully");
+      }
+    } catch (err) {
+      console.error("Exception in handleToggleStatus:", err);
+      // Revert the optimistic update on error
+      setAccounts(accounts.map(acc => 
+        acc.id === id ? { ...acc, is_active: account.is_active } : acc
+      ));
+      setError(err instanceof Error ? err.message : "An unexpected error occurred");
+    }
   };
 
   const handleEditClick = (account: UserAccount) => {
@@ -140,13 +242,24 @@ export default function ManageAccounts() {
         </Card>
       </div>
 
-      {/* Accounts Table */}
+      {error && (
+        <div className="mb-4 text-red-600 text-sm">
+          {error}
+        </div>
+      )}
+
       <Card padded>
-        <AccountsTable
-          accounts={filteredAccounts}
-          onEdit={handleEditClick}
-          onToggleStatus={handleToggleStatus}
-        />
+        {loading ? (
+          <div className="py-8 text-center text-gray-500 text-sm">
+            Loading accounts...
+          </div>
+        ) : (
+          <AccountsTable
+            accounts={filteredAccounts}
+            onEdit={handleEditClick}
+            onToggleStatus={handleToggleStatus}
+          />
+        )}
       </Card>
 
       {/* Edit Modal */}
