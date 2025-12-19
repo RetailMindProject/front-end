@@ -29,7 +29,21 @@ async function apiRequest<T>(
       headers,
     });
 
-    const data = await response.json();
+    // Handle 204 No Content
+    if (response.status === 204) {
+      return {
+        status: 204,
+      };
+    }
+
+    // Handle empty response
+    const contentType = response.headers.get("content-type");
+    let data;
+    if (contentType && contentType.includes("application/json")) {
+      data = await response.json();
+    } else {
+      data = {};
+    }
 
     if (!response.ok) {
       // Handle 401 Unauthorized - redirect to login

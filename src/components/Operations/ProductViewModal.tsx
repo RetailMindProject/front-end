@@ -1,3 +1,6 @@
+import React from "react";
+import ProductForecastPanel from "./ProductForecastPanel";
+
 interface Product {
   id?: string | number;
   sku?: string;
@@ -21,6 +24,8 @@ interface ProductViewModalProps {
   isOpen: boolean;
   onClose: () => void;
 }
+
+type TabType = "details" | "forecast";
 
 const formatValue = (value: string | number | null | undefined, fallback: string = '—'): string => {
   if (value === null || value === undefined) return fallback;
@@ -47,6 +52,17 @@ const formatNumber = (value: number | string | null | undefined): number | null 
 };
 
 const ProductViewModal = ({ product, isOpen, onClose }: ProductViewModalProps) => {
+  const [activeTab, setActiveTab] = React.useState<TabType>("details");
+
+  // Reset to details tab when product changes
+  // IMPORTANT: All hooks must be called before any conditional returns
+  React.useEffect(() => {
+    if (product?.id) {
+      setActiveTab("details");
+    }
+  }, [product?.id]);
+
+  // Early return after all hooks
   if (!isOpen || !product) return null;
 
   return (
@@ -67,27 +83,60 @@ const ProductViewModal = ({ product, isOpen, onClose }: ProductViewModalProps) =
             ×
           </button>
         </div>
+
+        {/* Tabs */}
+        <div className="border-b border-slate-200 px-6">
+          <div className="flex gap-1">
+            <button
+              onClick={() => setActiveTab("details")}
+              className={`px-4 py-3 text-sm font-medium transition-colors relative ${
+                activeTab === "details"
+                  ? "text-blue-600"
+                  : "text-slate-600 hover:text-slate-800"
+              }`}
+            >
+              Details
+              {activeTab === "details" && (
+                <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-600" />
+              )}
+            </button>
+            <button
+              onClick={() => setActiveTab("forecast")}
+              className={`px-4 py-3 text-sm font-medium transition-colors relative ${
+                activeTab === "forecast"
+                  ? "text-blue-600"
+                  : "text-slate-600 hover:text-slate-800"
+              }`}
+            >
+              Forecast / التنبؤ
+              {activeTab === "forecast" && (
+                <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-600" />
+              )}
+            </button>
+          </div>
+        </div>
         
         <div className="overflow-y-auto flex-1 px-6 py-6">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {/* Product Image */}
-            <div className="md:col-span-1">
-              {product.image ? (
-                <img 
-                  src={product.image} 
-                  alt={product.name} 
-                  className="w-full h-64 object-cover rounded-xl border-2 border-slate-200"
-                />
-              ) : (
-                <div className="w-full h-64 bg-slate-100 border-2 border-slate-200 rounded-xl flex flex-col items-center justify-center">
-                  <span className="text-6xl mb-2">📦</span>
-                  <p className="text-slate-500 text-sm">No image available</p>
-                </div>
-              )}
-            </div>
-            
-            {/* Product Details */}
-            <div className="md:col-span-2 space-y-6">
+          {activeTab === "details" ? (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              {/* Product Image */}
+              <div className="md:col-span-1">
+                {product.image ? (
+                  <img 
+                    src={product.image} 
+                    alt={product.name} 
+                    className="w-full h-64 object-cover rounded-xl border-2 border-slate-200"
+                  />
+                ) : (
+                  <div className="w-full h-64 bg-slate-100 border-2 border-slate-200 rounded-xl flex flex-col items-center justify-center">
+                    <span className="text-6xl mb-2">📦</span>
+                    <p className="text-slate-500 text-sm">No image available</p>
+                  </div>
+                )}
+              </div>
+              
+              {/* Product Details */}
+              <div className="md:col-span-2 space-y-6">
               {/* Product Information */}
               <div>
                 <h3 className="text-lg font-semibold text-slate-800 mb-4">Product Information</h3>
@@ -177,6 +226,19 @@ const ProductViewModal = ({ product, isOpen, onClose }: ProductViewModalProps) =
               </div>
             </div>
           </div>
+          ) : (
+            /* Forecast Tab */
+            product.id ? (
+              <ProductForecastPanel productId={product.id} />
+            ) : (
+              <div className="flex flex-col items-center justify-center py-12 text-center">
+                <p className="text-slate-600 mb-2">Product ID is missing</p>
+                <p className="text-sm text-slate-500">
+                  Cannot load forecast data without a valid product ID
+                </p>
+              </div>
+            )
+          )}
         </div>
         
         <div className="flex items-center justify-end px-6 py-4 border-t bg-slate-50/50">
