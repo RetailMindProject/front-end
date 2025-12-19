@@ -12,6 +12,7 @@ import {
   RecentDailyTable,
 } from "../components";
 import Sessions from "./Sessions";
+import CashierDetail from "./CashierDetail";
 import { LineChart as LineChartIcon, LayoutDashboard, Package, Upload, Percent, Send } from "lucide-react";
 import UploadReport from "./UploadReport";
 import StoreOperations from "./StoreOperations";
@@ -252,6 +253,7 @@ export default function StoreManager() {
             }
           />
           <Route path="sessions" element={<div className="flex-1 p-4 md:p-6"><Sessions /></div>} />
+          <Route path="sessions/cashier/:id" element={<div className="flex-1 overflow-auto"><CashierDetail /></div>} />
           <Route path="create-account" element={<div className="flex-1 overflow-auto"><CreateAccountPage /></div>} />
           <Route path="offers" element={<div className="flex-1"><StoreManagerOffersPage /></div>} />
           <Route path="operations" element={<div className="flex-1 p-4 md:p-6"><StoreOperations /></div>} />

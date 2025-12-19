@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
-import { User, Mail, Phone, MapPin, Save, X } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { User, Mail, Phone, MapPin, Save, X, ArrowLeft } from "lucide-react";
 import ProfileAvatar from "../components/profile/ProfileAvatar";
 import ProfileInput from "../components/profile/ProfileInput";
 import ProfileSection from "../components/profile/ProfileSection";
@@ -79,10 +80,26 @@ function useRoleAndName() {
 }
 
 export default function Profile() {
+  const navigate = useNavigate();
   const { initialData: defaultInitialData, allowPhotoChange, avatarImage } = useRoleAndName();
   const [form, setForm] = useState<ProfileFormData>(defaultInitialData);
   const [isEdited, setIsEdited] = useState(false);
   const [loading, setLoading] = useState(true);
+
+  // Get dashboard route based on role
+  const getDashboardRoute = (): string => {
+    const role = getCurrentRole();
+    switch (role) {
+      case "CEO":
+        return "/ceo";
+      case "STORE_MANAGER":
+        return "/store-manager";
+      case "INVENTORY_MANAGER":
+        return "/inventory-manager";
+      default:
+        return "/ceo"; // Default fallback
+    }
+  };
 
   useEffect(() => {
     const loadUserProfile = async () => {
@@ -147,6 +164,13 @@ export default function Profile() {
       <div className="max-w-4xl mx-auto px-4 py-12">
         {/* Header */}
         <div className="mb-8">
+          <button
+            onClick={() => navigate(getDashboardRoute())}
+            className="flex items-center gap-2 text-slate-600 hover:text-slate-900 mb-4 transition-colors group"
+          >
+            <ArrowLeft className="h-5 w-5 group-hover:-translate-x-1 transition-transform" />
+            <span className="font-medium">Back to Dashboard</span>
+          </button>
           <h1 className="text-4xl font-bold text-slate-900 mb-2">Profile Settings</h1>
           <p className="text-slate-600">Manage your personal information and account details</p>
         </div>

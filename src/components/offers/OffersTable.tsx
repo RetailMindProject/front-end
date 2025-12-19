@@ -16,7 +16,7 @@ export interface Offer {
 interface OffersTableProps {
   offers: Offer[];
   onEdit: (offer: Offer) => void;
-  onDeactivate: (id: string) => void;
+  onToggleActive: (id: string) => void;
   onView: (offer: Offer) => void;
 }
 
@@ -65,7 +65,7 @@ function formatDateRange(startAt: string, endAt: string): string {
   return `${start} - ${end}`;
 }
 
-export default function OffersTable({ offers, onEdit, onDeactivate, onView }: OffersTableProps) {
+export default function OffersTable({ offers, onEdit, onToggleActive, onView }: OffersTableProps) {
   const [typeFilter, setTypeFilter] = useState<OfferTypeFilter>("ALL");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("ALL");
 
@@ -182,11 +182,16 @@ export default function OffersTable({ offers, onEdit, onDeactivate, onView }: Of
                         <Edit className="h-4 w-4" />
                       </button>
                       <button
-                        onClick={() => onDeactivate(offer.id)}
-                        className="p-1.5 text-slate-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                        aria-label="Deactivate"
+                        onClick={() => onToggleActive(offer.id)}
+                        className={`p-1.5 rounded-lg transition-colors ${
+                          offer.isActive
+                            ? "text-slate-600 hover:text-red-600 hover:bg-red-50"
+                            : "text-slate-400 hover:text-green-600 hover:bg-green-50"
+                        }`}
+                        aria-label={offer.isActive ? "Deactivate" : "Activate"}
+                        title={offer.isActive ? "Deactivate offer" : "Activate offer"}
                       >
-                        <Ban className="h-4 w-4" />
+                        <Ban className={`h-4 w-4 ${offer.isActive ? "" : "opacity-50"}`} />
                       </button>
                     </div>
                   </td>

@@ -1,63 +1,139 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Plus } from "lucide-react";
-import { SessionActiveCard, CashierInfoCard, SessionInfoCard, Modal } from "../components";
+import SessionsFilters from "../components/sessions/SessionsFilters";
+import CashiersList from "../components/sessions/CashiersList";
+import { sessionsApi } from "../services/sessions.api";
+import type { SessionListItem } from "../services/sessions.api";
 
-// --------------------
-// Mock Data
-// --------------------
-const mockActive = {
-  sessionId: "S-2025-10-28-A",
-  cashier: { id: "U123", name: "Moath Saleh", role: "CASHIER", phone: "059-123-4567", email: "moath@retailmind.com" },
-  openedAt: "2025-10-28T09:05:00",
-  openingFloat: 200,
-  totals: { sales: 1750, orders: 65, cashIn: 980, cardIn: 770, cashOut: 50 },
-};
-
-const mockTransactions = [
-  { id: "ORD-1290", amount: 59, method: "CASH" as const, time: "10:14" },
-  { id: "ORD-1291", amount: 120, method: "CARD" as const, time: "10:22" },
-  { id: "ORD-1292", amount: 39, method: "CASH" as const, time: "10:40" },
-  { id: "ORD-1293", amount: 220, method: "CARD" as const, time: "10:55" },
-  { id: "ORD-1294", amount: 75, method: "CASH" as const, time: "11:03" },
-];
-
-// --------------------
-// Helpers
-// --------------------
-const fmt = new Intl.NumberFormat(undefined, { style: "currency", currency: "USD", maximumFractionDigits: 0 });
+const fmt = new Intl.NumberFormat(undefined, {
+  style: "currency",
+  currency: "USD",
+  maximumFractionDigits: 0,
+});
 const fmtMoney = (n: number) => fmt.format(n);
 
-function timeSince(iso: string) {
-  const diff = Math.max(0, Date.now() - new Date(iso).getTime());
-  const h = Math.floor(diff / 3_600_000);
-  const m = Math.floor((diff % 3_600_000) / 60_000);
-  return `${h}h ${m}m`;
-}
+type Cashier = {
+  id: string;
+  name: string;
+  email: string;
+  phone: string;
+  isActive: boolean;
+  sessionId?: string;
+  openedAt?: string;
+  openingFloat?: number;
+  closedFloat?: number;
+  orders?: number;
+  sales?: number;
+};
 
-// --------------------
-// Page
-// --------------------
 export default function Sessions() {
   const navigate = useNavigate();
-  const [active, setActive] = useState<typeof mockActive | null>(mockActive);
-  const [showEndModal, setShowEndModal] = useState(false);
-  const [showStartModal, setShowStartModal] = useState(false);
+  const [dateFilter, setDateFilter] = useState("");
+  const [timeFilter, setTimeFilter] = useState("");
+  const [statusFilter, setStatusFilter] = useState<"ALL" | "ACTIVE" | "INACTIVE">("ACTIVE");
+  const [nameFilter, setNameFilter] = useState("");
+  const [cashiers, setCashiers] = useState<Cashier[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const duration = useMemo(() => (active ? timeSince(active.openedAt) : "-"), [active]);
-  const variance = useMemo(() => {
-    if (!active) return 0;
-    const expected = active.totals.cashIn + active.totals.cardIn; // simplified
-    const recorded = active.totals.sales;
-    return recorded - expected;
-  }, [active]);
+  useEffect(() => {
+    const fetchSessions = async () => {
+      setLoading(true);
+      setError(null);
+      
+      let data: SessionListItem[] | null = null;
+
+      // If status is ACTIVE and no other filters, use the active endpoint
+      if (statusFilter === "ACTIVE" && !nameFilter.trim() && !dateFilter && !timeFilter) {
+        data = await sessionsApi.fetchActiveSessions();
+      } else {
+        // Build filters from state for other cases
+        const filters: {
+          cashierName?: string;
+          date?: string;
+          time?: string;
+          status?: string;
+        } = {};
+
+        if (nameFilter.trim()) {
+          filters.cashierName = nameFilter.trim();
+        }
+        if (dateFilter) {
+          filters.date = dateFilter;
+        }
+        if (timeFilter) {
+          filters.time = timeFilter;
+        }
+        if (statusFilter === "ACTIVE") {
+          filters.status = "OPEN";
+        } else if (statusFilter === "INACTIVE") {
+          filters.status = "CLOSED";
+        } else if (statusFilter === "ALL") {
+          filters.status = "ALL";
+        }
+
+        data = await sessionsApi.fetchSessions(filters);
+      }
+      
+      if (data && Array.isArray(data)) {
+        console.log("Fetched sessions data:", data);
+        console.log("Number of sessions:", data.length);
+        
+        // Map API response to component format
+        const mappedCashiers: Cashier[] = data.map((item: SessionListItem) => {
+          const cashier: Cashier = {
+            id: item.cashierId?.toString() || "",
+            name: `${item.firstName || ""} ${item.lastName || ""}`.trim() || "Unknown",
+            email: item.email || "",
+            phone: "", // Not available in sessions list API
+            isActive: item.status === "OPEN",
+            sessionId: item.sessionId?.toString(),
+            openedAt: item.openedAt || undefined,
+            openingFloat: undefined, // Not available in sessions list
+            closedFloat: undefined,
+            orders: item.ordersCount || 0,
+            sales: item.totalSales || 0,
+          };
+          console.log("Mapped cashier:", cashier);
+          return cashier;
+        });
+        
+        console.log("Total mapped cashiers:", mappedCashiers.length);
+        setCashiers(mappedCashiers);
+      } else {
+        console.error("No data received from API or data is not an array");
+        setError("Failed to load sessions. No data received.");
+        setCashiers([]);
+      }
+      setLoading(false);
+    };
+
+    fetchSessions();
+  }, [nameFilter, dateFilter, timeFilter, statusFilter]);
+
+  // Filtering is now done on the backend, but we keep this for client-side filtering if needed
+  const filteredCashiers = useMemo(() => {
+    return [...cashiers];
+  }, [cashiers]);
+
+  const handleCashierClick = (_cashierId: string, sessionId?: string) => {
+    // Navigate using sessionId if available
+    // Note: The API requires sessionId to fetch cashier details
+    if (sessionId) {
+      navigate(`/store-manager/sessions/cashier/${sessionId}`);
+    } else {
+      // If no session, show error message
+      setError(`No active session found for this cashier. Cannot view details.`);
+    }
+  };
 
   return (
     <div className="p-6 text-gray-800">
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="mb-2 text-2xl font-semibold tracking-tight">Sessions</h1>
-          <p className="text-slate-600">Mock view — Active Session, Cashier Info, and Session Info.</p>
+          <p className="text-slate-600">Manage cashier sessions and view active status</p>
         </div>
         <button
           onClick={() => navigate("/store-manager/create-account")}
@@ -68,74 +144,31 @@ export default function Sessions() {
         </button>
       </div>
 
-      <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
-        <SessionActiveCard
-          active={active ? { sessionId: active.sessionId, openedAt: active.openedAt, openingFloat: active.openingFloat, totals: active.totals } : null}
-          duration={duration}
+      <SessionsFilters
+        dateFilter={dateFilter}
+        onDateChange={setDateFilter}
+        timeFilter={timeFilter}
+        onTimeChange={setTimeFilter}
+        statusFilter={statusFilter}
+        onStatusChange={setStatusFilter}
+        nameFilter={nameFilter}
+        onNameChange={setNameFilter}
+      />
+
+      {loading ? (
+        <div className="flex items-center justify-center py-12">
+          <p className="text-gray-600">Loading sessions...</p>
+        </div>
+      ) : error ? (
+        <div className="flex items-center justify-center py-12">
+          <p className="text-red-600">Error: {error}</p>
+        </div>
+      ) : (
+        <CashiersList
+          cashiers={filteredCashiers}
+          onCashierClick={handleCashierClick}
           fmtMoney={fmtMoney}
-          onEndClick={() => setShowEndModal(true)}
-          onDetailsClick={() => alert("View details (mock)")}
-          onStartClick={() => setShowStartModal(true)}
         />
-
-        <CashierInfoCard
-          cashier={active ? active.cashier : null}
-          totals={active ? { cashIn: active.totals.cashIn, cardIn: active.totals.cardIn } : null}
-          fmtMoney={fmtMoney}
-        />
-
-        <SessionInfoCard
-          active={active ? { totals: { cashIn: active.totals.cashIn, cardIn: active.totals.cardIn } } : null}
-          duration={duration}
-          variance={variance}
-          transactions={mockTransactions}
-          fmtMoney={fmtMoney}
-        />
-      </div>
-
-      {/* End Session Modal */}
-      {showEndModal && active && (
-        <Modal onClose={() => setShowEndModal(false)} title="End Session">
-          <p className="text-slate-300">
-            Are you sure you want to end the session <b>{active.sessionId}</b>? This will lock new orders for this cashier.
-          </p>
-          <div className="mt-4 flex justify-end gap-2">
-            <button className="rounded-lg bg-slate-700 px-4 py-2 text-sm" onClick={() => setShowEndModal(false)}>Cancel</button>
-            <button
-              className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700"
-              onClick={() => {
-                setShowEndModal(false);
-                setActive(null); // mock end
-              }}
-            >End now</button>
-          </div>
-        </Modal>
-      )}
-
-      {/* Start Session Modal */}
-      {showStartModal && (
-        <Modal onClose={() => setShowStartModal(false)} title="Start New Session">
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="mb-1 block text-xs text-slate-400">Cashier</label>
-              <input className="w-full rounded-lg border border-slate-700 bg-[#0b1220] px-3 py-2 text-sm text-white" defaultValue="Moath Saleh" />
-            </div>
-            <div>
-              <label className="mb-1 block text-xs text-slate-400">Opening Float</label>
-              <input type="number" min={0} className="w-full rounded-lg border border-slate-700 bg-[#0b1220] px-3 py-2 text-sm text-white" defaultValue={200} />
-            </div>
-          </div>
-          <div className="mt-4 flex justify-end gap-2">
-            <button className="rounded-lg bg-slate-700 px-4 py-2 text-sm" onClick={() => setShowStartModal(false)}>Cancel</button>
-            <button
-              className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
-              onClick={() => {
-                setShowStartModal(false);
-                setActive(mockActive); // mock start
-              }}
-            >Start</button>
-          </div>
-        </Modal>
       )}
     </div>
   );

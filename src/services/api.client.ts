@@ -29,17 +29,37 @@ async function apiRequest<T>(
       headers,
     });
 
-    // Some endpoints (204/empty body) will throw on response.json()
+    // Handle 204 No Content
+    if (response.status === 204) {
+      return {
+        status: 204,
+      };
+    }
+
+    // Check content type before parsing
+    const contentType = response.headers.get("content-type");
     let data: unknown = null;
-    const text = await response.text();
-    if (text) {
+
+    if (contentType && contentType.includes("application/json")) {
       try {
-        data = JSON.parse(text);
-      } catch (err) {
+        data = await response.json();
+      } catch (jsonError) {
+        const text = await response.text();
+        console.error("Failed to parse JSON response:", text);
         return {
-          error: err instanceof Error ? err.message : "Invalid JSON response",
+          error: `Invalid JSON response: ${text}`,
           status: response.status,
         };
+      }
+    } else {
+      // Some endpoints (204/empty body) will throw on response.json()
+      const text = await response.text();
+      if (text) {
+        try {
+          data = JSON.parse(text);
+        } catch (err) {
+          data = { message: text || "Response is not JSON" };
+        }
       }
     }
 
@@ -102,6 +122,7 @@ async function apiRequest<T>(
       status: response.status,
     };
   } catch (error) {
+    console.error("API request error:", error);
     return {
       error: error instanceof Error ? error.message : "Network error occurred",
       status: 0,
@@ -121,6 +142,12 @@ export const apiClient = {
   put: <T>(endpoint: string, body?: unknown) =>
     apiRequest<T>(endpoint, {
       method: "PUT",
+      body: body ? JSON.stringify(body) : undefined,
+    }),
+  
+  patch: <T>(endpoint: string, body?: unknown) =>
+    apiRequest<T>(endpoint, {
+      method: "PATCH",
       body: body ? JSON.stringify(body) : undefined,
     }),
   
