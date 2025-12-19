@@ -29,24 +29,33 @@ async function apiRequest<T>(
       headers,
     });
 
-    // Check content type before parsing
-    const contentType = response.headers.get("content-type");
-    let data: any;
-    
-    if (contentType && contentType.includes("application/json")) {
-      try {
-        data = await response.json();
-      } catch (jsonError) {
-        const text = await response.text();
-        console.error("Failed to parse JSON response:", text);
-        return {
-          error: `Invalid JSON response: ${text}`,
-          status: response.status,
-        };
-      }
-    } else {
-      const text = await response.text();
-      data = { message: text || "Response is not JSON" };
+// Handle 204 No Content
+if (response.status === 204) {
+  return {
+    status: 204,
+  };
+}
+
+// Check content type before parsing
+const contentType = response.headers.get("content-type");
+let data: any;
+
+if (contentType && contentType.includes("application/json")) {
+  try {
+    data = await response.json();
+  } catch (jsonError) {
+    const text = await response.text();
+    console.error("Failed to parse JSON response:", text);
+    return {
+      error: `Invalid JSON response: ${text}`,
+      status: response.status,
+    };
+  }
+} else {
+  const text = await response.text();
+  data = { message: text || "Response is not JSON" };
+}
+
     }
 
     if (!response.ok) {
