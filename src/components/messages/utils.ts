@@ -34,7 +34,7 @@ export function getMockMessages(): Message[] {
 }
 
 // Mock function to get sent messages - في الواقع ستأتي من API
-export function getMockSentMessages(role: "CEO" | "Store Manager" | "Inventory Manager"): SentMessage[] {
+export function getMockSentMessages(_role: "CEO" | "Store Manager" | "Inventory Manager"): SentMessage[] {
   const baseMessages: SentMessage[] = [
     {
       id: "s1",

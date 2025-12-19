@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { Plus } from "lucide-react";
 import { Card, CardTitle, CardValue, CardHint } from "../components";
 import OfferForm, { type OfferFormData } from "../components/offers/OfferForm";
@@ -98,7 +98,7 @@ export default function StoreManagerOffersPage() {
     }
   };
 
-  const handleSave = async (data: OfferFormData) => {
+  const handleSave = async (_data: OfferFormData) => {
     // Note: The actual API call is handled in OfferForm component
     // This function is called after successful creation
     // Reload offers from API to get the latest data
@@ -250,7 +250,7 @@ export default function StoreManagerOffersPage() {
       {/* Offer Form Modal */}
       {showForm && (
         <OfferForm
-          mode={editingOffer ? (editingOffer.viewMode ? "view" : "edit") : "create"}
+          mode={editingOffer ? ((editingOffer as any).viewMode ? "view" : "edit") : "create"}
           initialData={editingOffer || undefined}
           onSubmit={handleSave}
           onClose={() => {

@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { Edit, Eye, Ban, Filter as FilterIcon } from "lucide-react";
 import type { OfferType, DiscountType } from "./OfferForm";
 

@@ -1,4 +1,3 @@
-import React from "react";
 import Modal from "../sessions/Modal";
 import CreateAccountForm from "../CreateAccountForm";
 import EditAccountForm from "../EditAccountForm";
@@ -29,13 +28,13 @@ export default function AccountModal({
         <EditAccountForm
           allowedRoles={allowedRoles}
           onSubmit={onSave}
-          initialData={account}
+          initialData={account ?? undefined}
         />
       ) : (
         <CreateAccountForm
           allowedRoles={allowedRoles}
           onSubmit={onSave}
-          initialData={account}
+          initialData={account ?? undefined}
         />
       )}
     </Modal>

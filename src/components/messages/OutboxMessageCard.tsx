@@ -1,5 +1,5 @@
 import type { SentMessage } from "./types";
-import { Check, CheckCheck, Clock } from "lucide-react";
+import { CheckCheck, Clock } from "lucide-react";
 
 interface OutboxMessageCardProps {
   message: SentMessage;

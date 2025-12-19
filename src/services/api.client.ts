@@ -29,33 +29,38 @@ async function apiRequest<T>(
       headers,
     });
 
-// Handle 204 No Content
-if (response.status === 204) {
-  return {
-    status: 204,
-  };
-}
+    // Handle 204 No Content
+    if (response.status === 204) {
+      return {
+        status: 204,
+      };
+    }
 
-// Check content type before parsing
-const contentType = response.headers.get("content-type");
-let data: any;
+    // Check content type before parsing
+    const contentType = response.headers.get("content-type");
+    let data: unknown = null;
 
-if (contentType && contentType.includes("application/json")) {
-  try {
-    data = await response.json();
-  } catch (jsonError) {
-    const text = await response.text();
-    console.error("Failed to parse JSON response:", text);
-    return {
-      error: `Invalid JSON response: ${text}`,
-      status: response.status,
-    };
-  }
-} else {
-  const text = await response.text();
-  data = { message: text || "Response is not JSON" };
-}
-
+    if (contentType && contentType.includes("application/json")) {
+      try {
+        data = await response.json();
+      } catch (jsonError) {
+        const text = await response.text();
+        console.error("Failed to parse JSON response:", text);
+        return {
+          error: `Invalid JSON response: ${text}`,
+          status: response.status,
+        };
+      }
+    } else {
+      // Some endpoints (204/empty body) will throw on response.json()
+      const text = await response.text();
+      if (text) {
+        try {
+          data = JSON.parse(text);
+        } catch (err) {
+          data = { message: text || "Response is not JSON" };
+        }
+      }
     }
 
     if (!response.ok) {
@@ -68,8 +73,46 @@ if (contentType && contentType.includes("application/json")) {
         }
       }
       
+      // Try to extract error message from response
+      let errorMessage = `HTTP error! status: ${response.status}`;
+      if (data) {
+        const errorData = data as { message?: string; error?: string; errors?: Record<string, string[]> };
+        if (errorData.message) {
+          errorMessage = errorData.message;
+        } else if (errorData.error) {
+          errorMessage = errorData.error;
+        } else if (errorData.errors) {
+          // Format validation errors
+          const errorMessages = Object.entries(errorData.errors)
+            .map(([field, messages]) => `${field}: ${messages.join(', ')}`)
+            .join('; ');
+          errorMessage = errorMessages || errorMessage;
+        }
+      }
+      
+      // Provide user-friendly messages for common HTTP errors
+      if (response.status === 403) {
+        errorMessage = errorMessage.includes('HTTP error') 
+          ? 'Access denied. You do not have permission to access this resource. Please contact your administrator.'
+          : errorMessage;
+      } else if (response.status === 404) {
+        errorMessage = errorMessage.includes('HTTP error')
+          ? 'Resource not found.'
+          : errorMessage;
+      } else if (response.status >= 500) {
+        errorMessage = errorMessage.includes('HTTP error')
+          ? 'Server error. Please try again later.'
+          : errorMessage;
+      }
+      
+      console.error('API Error Response:', {
+        status: response.status,
+        data: data,
+        errorMessage: errorMessage
+      });
+      
       return {
-        error: data.message || data.error || `HTTP error! status: ${response.status}`,
+        error: errorMessage,
         status: response.status,
       };
     }
@@ -108,6 +151,10 @@ export const apiClient = {
       body: body ? JSON.stringify(body) : undefined,
     }),
   
-  delete: <T>(endpoint: string) => apiRequest<T>(endpoint, { method: "DELETE" }),
+  delete: <T>(endpoint: string, body?: unknown) =>
+    apiRequest<T>(endpoint, {
+      method: "DELETE",
+      body: body ? JSON.stringify(body) : undefined,
+    }),
 };
 

@@ -1,4 +1,3 @@
-import React from "react";
 
 export type Product = { name: string; sku: string; sold: number; revenue: number };
 const fmt = new Intl.NumberFormat(undefined, { style: "currency", currency: "USD", maximumFractionDigits: 0 });

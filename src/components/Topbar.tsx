@@ -8,7 +8,7 @@ import { logout } from "../services/auth.api";
 import { messagesApi } from "../services/messages.api";
 
 function useRoleHeader() {
-  const { pathname } = useLocation();
+  useLocation(); // Keep for potential future use
   const userInfo = getUserInfo();
   const currentRole = getCurrentRole();
   
@@ -39,7 +39,6 @@ function useRoleHeader() {
 
 export default function Topbar() {
   const { role, name } = useRoleHeader();
-  const [hasMessages, setHasMessages] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
   const [messagesOpen, setMessagesOpen] = useState(false);
 
@@ -48,7 +47,6 @@ export default function Topbar() {
       const result = await messagesApi.getUnreadCount();
       if (result.data !== undefined) {
         setUnreadCount(result.data);
-        setHasMessages(result.data > 0);
       }
     };
 
