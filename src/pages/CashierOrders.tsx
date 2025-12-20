@@ -64,8 +64,8 @@ export default function CashierOrders() {
           <ArrowLeft className="h-5 w-5" />
         </button>
         <h1 className="text-2xl font-semibold text-gray-800">Orders</h1>
-        {sessionId && (
-          <span className="text-sm text-gray-500">Session ID: {sessionId}</span>
+        {sessionIdParam && (
+          <span className="text-sm text-gray-500">Session ID: {sessionIdParam}</span>
         )}
       </header>
 

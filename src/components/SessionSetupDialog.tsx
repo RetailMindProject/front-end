@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { X, AlertCircle, CheckCircle, Loader2 } from "lucide-react";
+import { X, AlertCircle, Loader2 } from "lucide-react";
 import { terminalApi, type Terminal, type LastSessionInfoResponse } from "../services/terminal.api";
 
 interface SessionSetupDialogProps {

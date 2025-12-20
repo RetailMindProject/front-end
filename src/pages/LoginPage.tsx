@@ -201,7 +201,7 @@ export default function Login() {
           // If user closes without setting up session, logout and return to login
           logout();
         }}
-        onSessionOpened={async (sessionId) => {
+        onSessionOpened={async (_sessionId) => {
           // Session opened successfully, close dialog first
           setShowSessionSetup(false);
           

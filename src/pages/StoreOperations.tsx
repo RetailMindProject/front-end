@@ -98,8 +98,8 @@ export default function StoreOperations() {
                   warehouseQuantity: warehouseQty,
                   storeQuantity: storeQty,
                   orders: (fullProduct as any).orders || (p as any).orders || 0,
-                  createdAt: fullProduct.createdAt || p.createdAt,
-                  updatedAt: fullProduct.updatedAt || p.updatedAt,
+                  createdAt: fullProduct.createdAt,
+                  updatedAt: fullProduct.updatedAt,
                   sales: (fullProduct as any).sales || (p as any).sales || 0
                 };
                 return result;

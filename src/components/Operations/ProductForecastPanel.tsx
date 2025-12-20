@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { RefreshCw, Play, AlertCircle } from "lucide-react";
 import { forecastingApi } from "../../services/forecasting.api";
 import type {

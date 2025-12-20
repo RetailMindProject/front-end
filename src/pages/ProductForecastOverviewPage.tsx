@@ -1,13 +1,13 @@
-import React, { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { Search, Play, AlertCircle, ChevronLeft, ChevronRight } from "lucide-react";
-import { productsApi, type Product, type ProductFilterParams } from "../services/products.api";
+import { productsApi, type ProductDTO } from "../services/products.api";
 import { forecastingApi } from "../services/forecasting.api";
 import type { ProductStockForecastSummary } from "../types/forecasting.dto";
 import ProductForecastPanel from "../components/Operations/ProductForecastPanel";
 import { Card } from "../components/Card";
 
 export default function ProductForecastOverviewPage() {
-  const [products, setProducts] = useState<Product[]>([]);
+  const [products, setProducts] = useState<ProductDTO[]>([]);
   const [selectedProductId, setSelectedProductId] = useState<number | null>(null);
   const [stockSummary, setStockSummary] = useState<ProductStockForecastSummary | null>(null);
   
@@ -33,20 +33,26 @@ export default function ProductForecastOverviewPage() {
     setError(null);
 
     try {
-      const params: ProductFilterParams = {
+      const params: {
+        page?: number;
+        size?: number;
+        q?: string;
+        brand?: string;
+        isActive?: boolean;
+      } = {
         page,
         size: pageSize,
-        search: searchTerm || undefined,
+        q: searchTerm || undefined,
         brand: brandFilter || undefined,
-        active: activeFilter,
+        isActive: activeFilter,
       };
 
-      const response = await productsApi.getProducts(params);
+      const response = await productsApi.search(params);
 
-      if (response) {
-        setProducts(response.content);
-        setTotalPages(response.totalPages);
-        setTotalElements(response.totalElements);
+      if (response.data) {
+        setProducts(response.data.content);
+        setTotalPages(response.data.totalPages);
+        setTotalElements(response.data.totalElements);
       } else {
         setError("Failed to load products");
       }
@@ -252,7 +258,7 @@ export default function ProductForecastOverviewPage() {
                         products.map((product) => (
                           <tr
                             key={product.id}
-                            onClick={() => handleProductSelect(product.id)}
+                            onClick={() => handleProductSelect(typeof product.id === 'string' ? parseInt(product.id) : product.id)}
                             className={`cursor-pointer hover:bg-blue-50 transition-colors ${
                               selectedProductId === product.id
                                 ? "bg-blue-100 border-l-4 border-l-blue-600"
@@ -271,12 +277,12 @@ export default function ProductForecastOverviewPage() {
                             <td className="px-4 py-3 text-center">
                               <span
                                 className={`inline-block px-2 py-1 rounded text-xs font-medium ${
-                                  product.active !== false
+                                  product.isActive !== false
                                     ? "bg-green-100 text-green-700"
                                     : "bg-red-100 text-red-700"
                                 }`}
                               >
-                                {product.active !== false ? "Active" : "Inactive"}
+                                {product.isActive !== false ? "Active" : "Inactive"}
                               </span>
                             </td>
                           </tr>

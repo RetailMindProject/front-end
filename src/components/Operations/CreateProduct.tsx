@@ -59,7 +59,7 @@ const CreateProduct = ({ onAdd, onCancel, loading = false }: CreateProductProps)
     isActive: true // Default to active
   });
   const [errors, setErrors] = useState<FormErrors>({});
-  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [_imagePreview, setImagePreview] = useState<string | null>(null);
   const [categories, setCategories] = useState<CategoryDTO[]>([]);
   const [_loadingCategories, setLoadingCategories] = useState(false);
 const [showCategoryModal, setShowCategoryModal] = useState(false);

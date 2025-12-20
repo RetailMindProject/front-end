@@ -1,4 +1,3 @@
-import React from "react";
 import { Search, Calendar, Clock } from "lucide-react";
 
 interface SessionsFiltersProps {

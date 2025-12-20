@@ -1,4 +1,3 @@
-import React from "react";
 import {
   ResponsiveContainer,
   LineChart,
@@ -79,9 +78,10 @@ export default function ForecastChart({
           <YAxis stroke="#64748b" style={{ fontSize: "12px" }} />
           <Tooltip
             labelFormatter={(value) => formatDate(value as string)}
-            formatter={(value: number | null) => {
-              if (value === null) return "—";
-              return value.toFixed(2);
+            formatter={(value: any) => {
+              if (value === null || value === undefined) return "—";
+              const numValue = typeof value === 'number' ? value : Number(value);
+              return isNaN(numValue) ? "—" : numValue.toFixed(2);
             }}
             contentStyle={{
               backgroundColor: "white",
