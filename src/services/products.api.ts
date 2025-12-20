@@ -1,4 +1,4 @@
-import { apiClient, type ApiResponse } from "./api.client";
+simimport { apiClient, type ApiResponse } from "./api.client";
 import { getCurrentToken } from "./tokens";
 
 const API_BASE_URL = "http://localhost:8081";
