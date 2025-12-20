@@ -62,6 +62,10 @@ function useRoleAndName() {
     role = "Inventory Manager";
     allowPhotoChange = true;
     avatarImage = "/picture/inventorymanager.png";
+  } else if (currentRole === "CASHIER" || userInfo?.role === "CASHIER") {
+    role = "Cashier";
+    allowPhotoChange = false;
+    avatarImage = undefined;
   }
   
   return { 
@@ -96,6 +100,8 @@ export default function Profile() {
         return "/store-manager";
       case "INVENTORY_MANAGER":
         return "/inventory-manager";
+      case "CASHIER":
+        return "/cashier";
       default:
         return "/ceo"; // Default fallback
     }
