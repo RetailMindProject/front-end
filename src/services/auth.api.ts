@@ -91,7 +91,24 @@ export async function login(
     if (loginData.role && loginData.token) {
       setTokenForRole(loginData.role, loginData.token);
       
+      // Extract userId from response or token
+      let userId = data.userId || data.id || data.user?.id;
+      if (!userId && token) {
+        try {
+          const parts = token.split('.');
+          if (parts.length === 3) {
+            const payload = parts[1];
+            const decoded = JSON.parse(atob(payload.replace(/-/g, '+').replace(/_/g, '/')));
+            userId = decoded.userId || decoded.user_id || decoded.sub || decoded.id || decoded.user?.id;
+          }
+        } catch (e) {
+          console.error("Error decoding token for userId:", e);
+        }
+      }
+
       const userInfoToSave = {
+        id: userId ? (typeof userId === 'number' ? userId : parseInt(userId, 10)) : undefined,
+        userId: userId ? (typeof userId === 'number' ? userId : parseInt(userId, 10)) : undefined,
         firstName: loginData.firstName || data.firstName || "",
         lastName: loginData.lastName || data.lastName || "",
         email: loginData.email || data.email || "",

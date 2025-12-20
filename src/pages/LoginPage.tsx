@@ -3,7 +3,9 @@ import { useNavigate, Link } from "react-router-dom";
 import AuthCard from "../components/AuthCard";
 import Logo from "../components/Logo";
 import FeatureItem from "../components/FeatureItem";
-import { login } from "../services/auth.api";
+import SessionSetupDialog from "../components/SessionSetupDialog";
+import { login, logout } from "../services/auth.api";
+import { getCurrentToken } from "../services/tokens";
 import type { UserRole } from "../services/tokens";
 
 export default function Login() {
@@ -14,6 +16,7 @@ export default function Login() {
   const [rememberMe, setRememberMe] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showSessionSetup, setShowSessionSetup] = useState(false);
 
   const getRoleRoute = (role: UserRole): string => {
     switch (role) {
@@ -23,6 +26,8 @@ export default function Login() {
         return "/store-manager";
       case "INVENTORY_MANAGER":
         return "/inventory-manager";
+      case "CASHIER":
+        return "/cashier";
       default:
         return "/login";
     }
@@ -50,9 +55,14 @@ export default function Login() {
       }
 
       if (result.data) {
-        // Success - redirect based on role
-        const route = getRoleRoute(result.data.role);
-        navigate(route, { replace: true });
+        // If cashier, show session setup dialog instead of navigating directly
+        if (result.data.role === "CASHIER") {
+          setShowSessionSetup(true);
+        } else {
+          // For other roles, redirect normally
+          const route = getRoleRoute(result.data.role);
+          navigate(route, { replace: true });
+        }
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "An unexpected error occurred");
@@ -183,6 +193,34 @@ export default function Login() {
           </div>
         </form>
       </AuthCard>
+
+      {/* Session Setup Dialog for Cashiers */}
+      <SessionSetupDialog
+        isOpen={showSessionSetup}
+        onClose={() => {
+          // If user closes without setting up session, logout and return to login
+          logout();
+        }}
+        onSessionOpened={async (sessionId) => {
+          // Session opened successfully, close dialog first
+          setShowSessionSetup(false);
+          
+          // Verify token exists before navigation
+          const token = getCurrentToken();
+          if (!token) {
+            console.error("No token found after session setup");
+            setError("Authentication error. Please login again.");
+            return;
+          }
+          
+          // Small delay to ensure dialog closes and state updates
+          await new Promise(resolve => setTimeout(resolve, 200));
+          
+          // Navigate to POS screen using window.location to ensure full page load
+          // This prevents any potential React Router issues
+          window.location.href = "/cashier";
+        }}
+      />
     </div>
   );
 }

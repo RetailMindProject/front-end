@@ -5,6 +5,7 @@ export interface Product {
   sku: string;
   name: string;
   price: number;
+  category?: string | null;
 }
 
 export interface Category {
@@ -209,6 +210,76 @@ export const offersApi = {
   },
 
   /**
+   * Fetch products by subcategory ID
+   * GET /api/products?subCategoryId={subCategoryId}
+   */
+  async fetchProductsBySubCategory(
+    subCategoryId: number
+  ): Promise<Product[] | null> {
+    try {
+      const response = await apiClient.get<any>(
+        `/api/products?subCategoryId=${subCategoryId}`
+      );
+
+      if (response.error) {
+        console.error("Failed to fetch products by subcategory:", response.error);
+        return null;
+      }
+
+      if (!response.data) {
+        console.warn("No products data received from API");
+        return null;
+      }
+
+      // Handle paginated response structure
+      let products: Product[] = [];
+      const data = response.data;
+
+      // If response has 'content' property (pagination)
+      if (data.content && Array.isArray(data.content)) {
+        products = data.content.map((p: any) => {
+          // Get category name from categories array
+          const categoryName =
+            p.categories && p.categories.length > 0
+              ? p.categories[0].name
+              : null;
+
+          return {
+            id: p.id,
+            sku: p.sku || "",
+            name: p.name || "",
+            price: p.defaultPrice || p.price || 0,
+            category: categoryName,
+          };
+        });
+      }
+      // If response.data is an array, use it directly
+      else if (Array.isArray(data)) {
+        products = data.map((p: any) => {
+          const categoryName =
+            p.categories && p.categories.length > 0
+              ? p.categories[0].name
+              : null;
+
+          return {
+            id: p.id,
+            sku: p.sku || "",
+            name: p.name || "",
+            price: p.defaultPrice || p.price || 0,
+            category: categoryName,
+          };
+        });
+      }
+
+      console.log("Fetched products by subcategory:", products);
+      return products.length > 0 ? products : null;
+    } catch (error) {
+      console.error("Exception while fetching products by subcategory:", error);
+      return null;
+    }
+  },
+
+  /**
    * Fetch all products for offer selection
    */
   async fetchProducts(): Promise<Product[] | null> {
@@ -235,6 +306,7 @@ export const offersApi = {
           sku: p.sku || "",
           name: p.name || "",
           price: p.price || p.defaultPrice || 0,
+          category: p.category || p.categoryName || null,
         }));
       }
       // If response.data has a 'data' property (nested structure)
@@ -244,6 +316,7 @@ export const offersApi = {
           sku: p.sku || "",
           name: p.name || "",
           price: p.price || p.defaultPrice || 0,
+          category: p.category || p.categoryName || null,
         }));
       }
       // If response.data has a 'content' property (pagination)
@@ -253,6 +326,7 @@ export const offersApi = {
           sku: p.sku || "",
           name: p.name || "",
           price: p.price || p.defaultPrice || 0,
+          category: p.category || p.categoryName || null,
         }));
       }
       // If response.data has an 'items' property
@@ -262,6 +336,7 @@ export const offersApi = {
           sku: p.sku || "",
           name: p.name || "",
           price: p.price || p.defaultPrice || 0,
+          category: p.category || p.categoryName || null,
         }));
       }
       

@@ -159,5 +159,54 @@ export const sessionsApi = {
     
     return response.data;
   },
+
+  /**
+   * Close a session
+   * PUT /api/sessions/{sessionId}/close
+   * or POST /api/terminal/session/close
+   */
+  async closeSession(
+    sessionId: number,
+    closingAmount?: number
+  ): Promise<{ data?: { success: boolean }; error?: string }> {
+    // Try different possible endpoints
+    const endpoints = [
+      `/api/sessions/${sessionId}/close`,
+      `/api/terminal/session/${sessionId}/close`,
+      `/api/terminal/session/close`,
+    ];
+
+    for (const endpoint of endpoints) {
+      try {
+        console.log(`Trying to close session at: ${endpoint}`);
+        const body: any = { sessionId };
+        if (closingAmount !== undefined) {
+          body.closingAmount = closingAmount;
+        }
+
+        const response = await apiClient.put<{ success: boolean }>(endpoint, body);
+        
+        if (!response.error && response.data) {
+          console.log(`Successfully closed session using ${endpoint}`);
+          return { data: { success: true } };
+        }
+
+        // If PUT didn't work, try POST
+        if (response.error) {
+          const postResponse = await apiClient.post<{ success: boolean }>(endpoint, body);
+          if (!postResponse.error && postResponse.data) {
+            console.log(`Successfully closed session using POST ${endpoint}`);
+            return { data: { success: true } };
+          }
+        }
+      } catch (error) {
+        console.log(`Endpoint ${endpoint} failed:`, error);
+        continue; // Try next endpoint
+      }
+    }
+
+    // If all endpoints failed, return error
+    return { error: "Failed to close session. All endpoints failed." };
+  },
 };
 
