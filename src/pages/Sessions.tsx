@@ -5,6 +5,7 @@ import SessionsFilters from "../components/sessions/SessionsFilters";
 import CashiersList from "../components/sessions/CashiersList";
 import { sessionsApi } from "../services/sessions.api";
 import type { SessionListItem } from "../services/sessions.api";
+import { getCurrentRole, getRoleFromToken, getCurrentToken } from "../services/tokens";
 
 const fmt = new Intl.NumberFormat(undefined, {
   style: "currency",
@@ -36,8 +37,51 @@ export default function Sessions() {
   const [cashiers, setCashiers] = useState<Cashier[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [accessDenied, setAccessDenied] = useState(false);
+
+  // Check if user has access (CEO or STORE_MANAGER only)
+  useEffect(() => {
+    const checkAccess = () => {
+      const currentRole = getCurrentRole();
+      const token = getCurrentToken();
+      
+      if (token) {
+        const tokenRole = getRoleFromToken(token);
+        const allowedRole = tokenRole === 'CEO' || tokenRole === 'STORE_MANAGER';
+        
+        if (!allowedRole && (currentRole === 'CEO' || currentRole === 'STORE_MANAGER')) {
+          // Role from URL doesn't match token role
+          setAccessDenied(true);
+          setError("Access denied. JWT token role does not match your current role.");
+          return false;
+        }
+        
+        if (allowedRole) {
+          return true;
+        }
+      }
+      
+      // Check URL-based role as fallback
+      if (currentRole === 'CEO' || currentRole === 'STORE_MANAGER') {
+        return true;
+      }
+      
+      setAccessDenied(true);
+      setError("Access denied. This page is only available for CEO and Store Manager roles.");
+      return false;
+    };
+
+    if (!checkAccess()) {
+      setLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
+    // Don't fetch if access is denied
+    if (accessDenied) {
+      return;
+    }
+
     const fetchSessions = async () => {
       setLoading(true);
       setError(null);
@@ -110,7 +154,7 @@ export default function Sessions() {
     };
 
     fetchSessions();
-  }, [nameFilter, dateFilter, timeFilter, statusFilter]);
+  }, [nameFilter, dateFilter, timeFilter, statusFilter, accessDenied]);
 
   // Filtering is now done on the backend, but we keep this for client-side filtering if needed
   const filteredCashiers = useMemo(() => {
@@ -155,7 +199,13 @@ export default function Sessions() {
         onNameChange={setNameFilter}
       />
 
-      {loading ? (
+      {accessDenied ? (
+        <div className="flex flex-col items-center justify-center py-12">
+          <p className="text-red-600 text-lg font-semibold mb-2">Access Denied</p>
+          <p className="text-gray-600">{error || "This page is only available for CEO and Store Manager roles."}</p>
+          <p className="text-sm text-gray-500 mt-2">Please ensure you have a valid JWT token with the correct role.</p>
+        </div>
+      ) : loading ? (
         <div className="flex items-center justify-center py-12">
           <p className="text-gray-600">Loading sessions...</p>
         </div>

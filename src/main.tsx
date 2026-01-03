@@ -10,6 +10,7 @@ import Profile from './pages/Profile'
 import Register from './pages/RegisterPage'
 import CashierTerminal from './pages/CashierTerminal'
 import CashierOrders from './pages/CashierOrders'
+import SelectTerminal from './pages/SelectTerminal'
 
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
@@ -25,6 +26,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
         <Route path="/cashier" element={<CashierTerminal />} />
         <Route path="/cashier/orders" element={<CashierOrders />} />
         <Route path="/cashier/profile" element={<Profile />} />
+        <Route path="/select-terminal" element={<SelectTerminal />} />
         <Route path="/profile" element={<Profile />} />
         <Route path="*" element={<Navigate to="/login" replace />} />
       </Routes>

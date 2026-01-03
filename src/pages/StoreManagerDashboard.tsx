@@ -13,7 +13,7 @@ import {
 } from "../components";
 import Sessions from "./Sessions";
 import CashierDetail from "./CashierDetail";
-import { LineChart as LineChartIcon, LayoutDashboard, Package, Upload, Percent, Send } from "lucide-react";
+import { LineChart as LineChartIcon, LayoutDashboard, Package, Upload, Percent, Send, Monitor, UserCheck } from "lucide-react";
 import UploadReport from "./UploadReport";
 import StoreOperations from "./StoreOperations";
 import StoreManagerOffersPage from "./StoreManagerOffersPage";
@@ -21,6 +21,8 @@ import CreateAccountPage from "./CreateAccountPage";
 import MessageDetail from "./MessageDetail";
 import Outbox from "./Outbox";
 import Compose from "./Compose";
+import TerminalsManagement from "./TerminalsManagement";
+import PairingRequests from "./PairingRequests";
 import { Routes, Route } from "react-router-dom";
 import { dashboardApi, type DashboardSummary, type SalesTrendItem, type CategoryCount, type TopProduct, type RecentDaily } from "../services/dashboard.api";
 
@@ -163,6 +165,8 @@ export default function StoreManager() {
           { to: "/store-manager/sessions", label: "Sessions", icon: <LineChartIcon className="h-4 w-4" /> },
           { to: "/store-manager/offers", label: "Offers", icon: <Percent className="h-4 w-4" /> },
           { to: "/store-manager/operations", label: "Store Operations", icon: <Package className="h-4 w-4" /> },
+          { to: "/store-manager/terminals", label: "Terminals", icon: <Monitor className="h-4 w-4" /> },
+          { to: "/store-manager/pairing-requests", label: "Pairing Requests", icon: <UserCheck className="h-4 w-4" /> },
           { to: "/store-manager/upload-report", label: "Upload Report", icon: <Upload className="h-4 w-4" /> },
           { to: "/store-manager/outbox", label: "Outbox", icon: <Send className="h-4 w-4" /> },
         ]}
@@ -257,6 +261,8 @@ export default function StoreManager() {
           <Route path="create-account" element={<div className="flex-1 overflow-auto"><CreateAccountPage /></div>} />
           <Route path="offers" element={<div className="flex-1"><StoreManagerOffersPage /></div>} />
           <Route path="operations" element={<div className="flex-1 p-4 md:p-6"><StoreOperations /></div>} />
+          <Route path="terminals" element={<div className="flex-1 overflow-auto"><TerminalsManagement /></div>} />
+          <Route path="pairing-requests" element={<div className="flex-1 overflow-auto"><PairingRequests /></div>} />
           <Route path="upload-report" element={<UploadReport />} />
           <Route path="outbox" element={<div className="flex-1 overflow-auto"><Outbox /></div>} />
           <Route path="compose" element={<Compose />} />
