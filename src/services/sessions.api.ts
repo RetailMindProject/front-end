@@ -162,51 +162,34 @@ export const sessionsApi = {
 
   /**
    * Close a session
-   * PUT /api/sessions/{sessionId}/close
-   * or POST /api/terminal/session/close
+   * POST /api/sessions/cashier/session/close
    */
   async closeSession(
-    sessionId: number,
+    _sessionId: number,
     closingAmount?: number
   ): Promise<{ data?: { success: boolean }; error?: string }> {
-    // Try different possible endpoints
-    const endpoints = [
-      `/api/sessions/${sessionId}/close`,
-      `/api/terminal/session/${sessionId}/close`,
-      `/api/terminal/session/close`,
-    ];
+    const endpoint = `/api/sessions/cashier/session/close`;
+    
+    console.log(`Closing session at: ${endpoint}`);
+    
+    // Build request body - closingAmount is required by the cashier endpoint
+    const body: { closingAmount: number } = {
+      closingAmount: closingAmount !== undefined ? closingAmount : 0
+    };
 
-    for (const endpoint of endpoints) {
-      try {
-        console.log(`Trying to close session at: ${endpoint}`);
-        const body: any = { sessionId };
-        if (closingAmount !== undefined) {
-          body.closingAmount = closingAmount;
-        }
-
-        const response = await apiClient.put<{ success: boolean }>(endpoint, body);
-        
-        if (!response.error && response.data) {
-          console.log(`Successfully closed session using ${endpoint}`);
-          return { data: { success: true } };
-        }
-
-        // If PUT didn't work, try POST
-        if (response.error) {
-          const postResponse = await apiClient.post<{ success: boolean }>(endpoint, body);
-          if (!postResponse.error && postResponse.data) {
-            console.log(`Successfully closed session using POST ${endpoint}`);
-            return { data: { success: true } };
-          }
-        }
-      } catch (error) {
-        console.log(`Endpoint ${endpoint} failed:`, error);
-        continue; // Try next endpoint
-      }
+    const response = await apiClient.post<{ success: boolean }>(endpoint, body);
+    
+    if (response.error) {
+      console.error(`Failed to close session:`, response.error);
+      return { error: response.error };
+    }
+    
+    if (response.data) {
+      console.log(`Successfully closed session using ${endpoint}`);
+      return { data: { success: true } };
     }
 
-    // If all endpoints failed, return error
-    return { error: "Failed to close session. All endpoints failed." };
+    return { error: "Failed to close session. No data returned." };
   },
 };
 
