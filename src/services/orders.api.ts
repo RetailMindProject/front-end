@@ -8,6 +8,9 @@ export interface OrderItem {
   quantity: number;
   discountAmount: number;
   lineTotal: number;
+  offerId?: number | null; // ID of the offer applied to this item (if any)
+  offerTitle?: string | null; // Title of the offer applied to this item (if any)
+  originalLineTotal?: number; // Original line total before any discounts
 }
 
 // Payment
@@ -53,11 +56,6 @@ export interface OrderHistoryItem {
   paidAt: string | null;
 }
 
-// Create Order Request
-export interface CreateOrderRequest {
-  sessionId: number;
-}
-
 // Add Item Request
 export interface AddItemRequest {
   orderId: number;
@@ -99,11 +97,11 @@ export const ordersApi = {
   /**
    * Create a new order
    * POST /api/orders
+   * Note: لا نرسل sessionId - الـ backend يجلب sessionId تلقائياً من browser token
    */
-  async createOrder(
-    request: CreateOrderRequest
-  ): Promise<{ data?: Order; error?: string }> {
-    const response = await apiClient.post<Order>("/api/orders", request);
+  async createOrder(): Promise<{ data?: Order; error?: string }> {
+    // إرسال body فارغ {} - الـ backend يجلب sessionId من browser token
+    const response = await apiClient.post<Order>("/api/orders", {});
 
     if (response.error) {
       return { error: response.error };

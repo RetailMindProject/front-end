@@ -1,4 +1,4 @@
-import { getCurrentToken } from "./tokens";
+import { getCurrentToken, getTokenForRole, type UserRole } from "./tokens";
 
 const API_BASE_URL = "http://localhost:8081";
 
@@ -8,11 +8,22 @@ export interface ApiResponse<T> {
   status: number;
 }
 
+/**
+ * Create API request with explicit role token
+ * This ensures we use the correct token for each role
+ */
 async function apiRequest<T>(
   endpoint: string,
-  options: RequestInit = {}
+  options: RequestInit = {},
+  role?: UserRole
 ): Promise<ApiResponse<T>> {
-  const token = getCurrentToken();
+  // Get token for specific role if provided, otherwise use current token
+  let token: string | null = null;
+  if (role) {
+    token = getTokenForRole(role);
+  } else {
+    token = getCurrentToken();
+  }
   
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
@@ -20,13 +31,20 @@ async function apiRequest<T>(
   };
 
   if (token) {
-    headers["Authorization"] = `Bearer ${token}`;
+    // Validate that token is a JWT (should contain 2 dots)
+    // Skip browser tokens or other non-JWT tokens
+    if (token.split('.').length === 3) {
+      headers["Authorization"] = `Bearer ${token}`;
+    } else {
+      console.warn("Invalid JWT token format, skipping Authorization header");
+    }
   }
 
   try {
     const response = await fetch(`${API_BASE_URL}${endpoint}`, {
       ...options,
       headers,
+      credentials: 'include', // إرسال cookies (بما فيها browser_token) مع كل request
     });
 
     // Handle 204 No Content
@@ -64,10 +82,21 @@ async function apiRequest<T>(
     }
 
     if (!response.ok) {
-      // Handle 401 Unauthorized - redirect to login
+      // Handle 401 Unauthorized - clear only the current role's token
       if (response.status === 401) {
-        // Clear tokens and redirect to login
-        localStorage.clear();
+        // Get current role from URL or userInfo
+        const { getCurrentRole, getUserInfo, clearRoleData } = await import("./tokens");
+        const currentRole = getCurrentRole();
+        const userInfo = getUserInfo();
+        
+        // Clear only the role that made this request
+        if (currentRole) {
+          clearRoleData(currentRole);
+        } else if (userInfo?.role) {
+          clearRoleData(userInfo.role);
+        }
+        
+        // Redirect to login only if not already there
         if (typeof window !== 'undefined' && !window.location.pathname.includes('/login')) {
           window.location.href = '/login';
         }
@@ -130,31 +159,134 @@ async function apiRequest<T>(
   }
 }
 
+/**
+ * Base API client - uses current token (may be ambiguous)
+ * Use role-specific clients for better isolation
+ */
 export const apiClient = {
-  get: <T>(endpoint: string) => apiRequest<T>(endpoint, { method: "GET" }),
+  get: <T>(endpoint: string, role?: UserRole) => apiRequest<T>(endpoint, { method: "GET" }, role),
   
+  post: <T>(endpoint: string, body?: unknown, role?: UserRole) =>
+    apiRequest<T>(endpoint, {
+      method: "POST",
+      body: body ? JSON.stringify(body) : undefined,
+    }, role),
+  
+  put: <T>(endpoint: string, body?: unknown, role?: UserRole) =>
+    apiRequest<T>(endpoint, {
+      method: "PUT",
+      body: body ? JSON.stringify(body) : undefined,
+    }, role),
+  
+  patch: <T>(endpoint: string, body?: unknown, role?: UserRole) =>
+    apiRequest<T>(endpoint, {
+      method: "PATCH",
+      body: body ? JSON.stringify(body) : undefined,
+    }, role),
+  
+  delete: <T>(endpoint: string, body?: unknown, role?: UserRole) =>
+    apiRequest<T>(endpoint, {
+      method: "DELETE",
+      body: body ? JSON.stringify(body) : undefined,
+    }, role),
+};
+
+/**
+ * Role-specific API clients - use these to ensure correct token isolation
+ */
+export const storeManagerApiClient = {
+  get: <T>(endpoint: string) => apiRequest<T>(endpoint, { method: "GET" }, 'STORE_MANAGER'),
   post: <T>(endpoint: string, body?: unknown) =>
     apiRequest<T>(endpoint, {
       method: "POST",
       body: body ? JSON.stringify(body) : undefined,
-    }),
-  
+    }, 'STORE_MANAGER'),
   put: <T>(endpoint: string, body?: unknown) =>
     apiRequest<T>(endpoint, {
       method: "PUT",
       body: body ? JSON.stringify(body) : undefined,
-    }),
-  
+    }, 'STORE_MANAGER'),
   patch: <T>(endpoint: string, body?: unknown) =>
     apiRequest<T>(endpoint, {
       method: "PATCH",
       body: body ? JSON.stringify(body) : undefined,
-    }),
-  
+    }, 'STORE_MANAGER'),
   delete: <T>(endpoint: string, body?: unknown) =>
     apiRequest<T>(endpoint, {
       method: "DELETE",
       body: body ? JSON.stringify(body) : undefined,
-    }),
+    }, 'STORE_MANAGER'),
+};
+
+export const ceoApiClient = {
+  get: <T>(endpoint: string) => apiRequest<T>(endpoint, { method: "GET" }, 'CEO'),
+  post: <T>(endpoint: string, body?: unknown) =>
+    apiRequest<T>(endpoint, {
+      method: "POST",
+      body: body ? JSON.stringify(body) : undefined,
+    }, 'CEO'),
+  put: <T>(endpoint: string, body?: unknown) =>
+    apiRequest<T>(endpoint, {
+      method: "PUT",
+      body: body ? JSON.stringify(body) : undefined,
+    }, 'CEO'),
+  patch: <T>(endpoint: string, body?: unknown) =>
+    apiRequest<T>(endpoint, {
+      method: "PATCH",
+      body: body ? JSON.stringify(body) : undefined,
+    }, 'CEO'),
+  delete: <T>(endpoint: string, body?: unknown) =>
+    apiRequest<T>(endpoint, {
+      method: "DELETE",
+      body: body ? JSON.stringify(body) : undefined,
+    }, 'CEO'),
+};
+
+export const inventoryManagerApiClient = {
+  get: <T>(endpoint: string) => apiRequest<T>(endpoint, { method: "GET" }, 'INVENTORY_MANAGER'),
+  post: <T>(endpoint: string, body?: unknown) =>
+    apiRequest<T>(endpoint, {
+      method: "POST",
+      body: body ? JSON.stringify(body) : undefined,
+    }, 'INVENTORY_MANAGER'),
+  put: <T>(endpoint: string, body?: unknown) =>
+    apiRequest<T>(endpoint, {
+      method: "PUT",
+      body: body ? JSON.stringify(body) : undefined,
+    }, 'INVENTORY_MANAGER'),
+  patch: <T>(endpoint: string, body?: unknown) =>
+    apiRequest<T>(endpoint, {
+      method: "PATCH",
+      body: body ? JSON.stringify(body) : undefined,
+    }, 'INVENTORY_MANAGER'),
+  delete: <T>(endpoint: string, body?: unknown) =>
+    apiRequest<T>(endpoint, {
+      method: "DELETE",
+      body: body ? JSON.stringify(body) : undefined,
+    }, 'INVENTORY_MANAGER'),
+};
+
+export const cashierApiClient = {
+  get: <T>(endpoint: string) => apiRequest<T>(endpoint, { method: "GET" }, 'CASHIER'),
+  post: <T>(endpoint: string, body?: unknown) =>
+    apiRequest<T>(endpoint, {
+      method: "POST",
+      body: body ? JSON.stringify(body) : undefined,
+    }, 'CASHIER'),
+  put: <T>(endpoint: string, body?: unknown) =>
+    apiRequest<T>(endpoint, {
+      method: "PUT",
+      body: body ? JSON.stringify(body) : undefined,
+    }, 'CASHIER'),
+  patch: <T>(endpoint: string, body?: unknown) =>
+    apiRequest<T>(endpoint, {
+      method: "PATCH",
+      body: body ? JSON.stringify(body) : undefined,
+    }, 'CASHIER'),
+  delete: <T>(endpoint: string, body?: unknown) =>
+    apiRequest<T>(endpoint, {
+      method: "DELETE",
+      body: body ? JSON.stringify(body) : undefined,
+    }, 'CASHIER'),
 };
 

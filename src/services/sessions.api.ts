@@ -1,4 +1,4 @@
-import { apiClient } from "./api.client";
+import { apiClient, storeManagerApiClient, ceoApiClient, cashierApiClient } from "./api.client";
 
 // Sessions List Response (for Sessions page)
 export interface SessionListItem {
@@ -71,9 +71,54 @@ export interface SessionFilters {
   status?: string; // "OPEN" | "CLOSED" | "ALL"
 }
 
+// Current Session Response (GET /api/sessions/cashier/session/current)
+export interface CurrentSessionResponse {
+  sessionId: number;
+  status: "OPEN" | "CLOSED";
+  openedAt: string;
+  openingFloat: number;
+  userId: number;
+  userName: string;
+  terminalId: number;
+  terminalCode: string;
+  terminalDescription: string;
+  pairedAt: string | null;
+  message: string | null;
+  paired: boolean;
+}
+
+// Session Status Response (GET /api/sessions/cashier/session/status)
+export interface SessionStatusResponse {
+  sessionId: number;
+  status: "OPEN" | "CLOSED";
+  openedAt: string;
+  closedAt: string | null;
+  openingFloat: number;
+  closingAmount: number | null;
+  terminalId: number;
+  terminalCode: string;
+  terminalDescription: string;
+  hoursOpen: number;
+  needsRotation: boolean;
+}
+
+// Close Session Request (PUT /api/sessions/{sessionId}/close)
+export interface CloseSessionRequest {
+  closingAmount: number;
+}
+
+// Close Cashier Session Response (POST /api/sessions/cashier/session/close)
+export interface CloseCashierSessionResponse {
+  message: string;
+  closedSessionId: number;
+}
+
 export const sessionsApi = {
   /**
    * Fetch all sessions with cashier information
+   * GET /api/sessions
+   * Access: CEO, STORE_MANAGER
+   * Auth: JWT فقط
    * @param filters - Optional filters for cashierName, date, time, status
    * Returns list of cashiers with their session data
    */
@@ -97,116 +142,186 @@ export const sessionsApi = {
     const endpoint = queryString ? `/api/sessions?${queryString}` : "/api/sessions";
     
     console.log("Fetching sessions from:", endpoint);
-    const response = await apiClient.get<SessionListItem[]>(endpoint);
     
-    console.log("Sessions API response:", response);
-    
+    // Use storeManagerApiClient (works for both STORE_MANAGER and CEO)
+    const response = await storeManagerApiClient.get<SessionListItem[]>(endpoint);
+
     if (response.error) {
+      if (response.status === 403) {
+        console.error("403 Forbidden:", response.error);
+        return null;
+      }
       console.error("Failed to fetch sessions:", response.error);
       return null;
     }
-    
-    if (!response.data) {
-      console.error("No data in response");
-      return null;
-    }
-    
-    return response.data;
+
+    console.log("Sessions API response:", response.data);
+    return Array.isArray(response.data) ? response.data : null;
   },
 
   /**
    * Fetch detailed information for a specific cashier session
-   * @param sessionId - The ID of the session
+   * GET /api/sessions/{id}
+   * Access: Public (browser token handled backend-side)
+   * Auth: لا يحتاج JWT
    */
   async fetchCashierDetail(sessionId: number): Promise<CashierDetailResponse | null> {
     const endpoint = `/api/sessions/${sessionId}`;
     console.log("Fetching cashier detail from:", endpoint);
-    const response = await apiClient.get<CashierDetailResponse>(endpoint);
     
-    console.log("Cashier detail API response:", response);
-    
-    if (response.error) {
-      console.error("Failed to fetch cashier detail:", response.error);
+    // Public endpoint - no JWT needed, browser token handled by backend
+    try {
+      const response = await fetch(`http://localhost:8081${endpoint}`, {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        credentials: 'include', // Send browser token via cookies
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error("Failed to fetch cashier detail:", errorText);
+        return null;
+      }
+
+      const data = await response.json();
+      console.log("Cashier detail API response:", data);
+      return data;
+    } catch (error) {
+      console.error("Error fetching cashier detail:", error);
       return null;
     }
-    
-    if (!response.data) {
-      console.error("No data in cashier detail response");
-      return null;
-    }
-    
-    return response.data;
   },
 
   /**
    * Fetch only active sessions
+   * GET /api/sessions/active
+   * Access: CEO, STORE_MANAGER
+   * Auth: JWT فقط (لا Browser Token)
    */
   async fetchActiveSessions(): Promise<SessionListItem[] | null> {
     console.log("Fetching active sessions from: /api/sessions/active");
-    const response = await apiClient.get<SessionListItem[]>("/api/sessions/active");
     
-    console.log("Active sessions API response:", response);
-    
+    // Use storeManagerApiClient (works for both STORE_MANAGER and CEO)
+    const response = await storeManagerApiClient.get<SessionListItem[]>("/api/sessions/active");
+
     if (response.error) {
+      if (response.status === 403) {
+        console.error("403 Forbidden:", response.error);
+        return null;
+      }
       console.error("Failed to fetch active sessions:", response.error);
       return null;
     }
-    
-    if (!response.data) {
-      console.error("No data in active sessions response");
-      return null;
-    }
-    
-    return response.data;
+
+    console.log("Active sessions API response:", response.data);
+    return Array.isArray(response.data) ? response.data : null;
   },
 
   /**
-   * Close a session
-   * PUT /api/sessions/{sessionId}/close
-   * or POST /api/terminal/session/close
+   * Get current cashier session
+   * GET /api/sessions/cashier/session/current
+   * يُستخدم عند تحميل التطبيق أو بعد الـ login لجلب الجلسة النشطة الحالية للكاشير
+   */
+  async getCurrentSession(): Promise<{ data?: CurrentSessionResponse; error?: string; status: number }> {
+    const endpoint = "/api/sessions/cashier/session/current";
+    console.log("Fetching current session from:", endpoint);
+    const response = await cashierApiClient.get<CurrentSessionResponse>(endpoint);
+    
+    if (response.status === 404) {
+      console.warn("No active cashier session (404)." );
+      return { status: 404 };
+    }
+    
+    if (response.error) {
+      console.error("Failed to fetch current session:", response.error);
+      return { error: response.error, status: response.status };
+    }
+    
+    if (!response.data) {
+      console.error("No data in current session response");
+      return { error: "No session data received", status: response.status };
+    }
+    
+    return { data: response.data, status: response.status };
+  },
+
+  /**
+   * Get session status
+   * GET /api/sessions/cashier/session/status
+   * يُستخدم للمراقبة الدورية أثناء العمل لمعرفة حالة الجلسة
+   */
+  async getSessionStatus(): Promise<{ data?: SessionStatusResponse; error?: string }> {
+    const endpoint = "/api/sessions/cashier/session/status";
+    console.log("Fetching session status from:", endpoint);
+    const response = await cashierApiClient.get<SessionStatusResponse>(endpoint);
+    
+    if (response.error) {
+      console.error("Failed to fetch session status:", response.error);
+      return { error: response.error };
+    }
+    
+    if (!response.data) {
+      console.error("No data in session status response");
+      return { error: "No session status data received" };
+    }
+    
+    return { data: response.data };
+  },
+
+  /**
+   * Close a session (CEO-only)
+   * POST /api/sessions/{id}/close
+   * Access: CEO فقط
+   * Auth: JWT (ROLE_CEO)
    */
   async closeSession(
     sessionId: number,
-    closingAmount?: number
-  ): Promise<{ data?: { success: boolean }; error?: string }> {
-    // Try different possible endpoints
-    const endpoints = [
-      `/api/sessions/${sessionId}/close`,
-      `/api/terminal/session/${sessionId}/close`,
-      `/api/terminal/session/close`,
-    ];
+    closingAmount: number
+  ): Promise<{ data?: { success: boolean; message?: string }; error?: string; status?: number }> {
+    const endpoint = `/api/sessions/${sessionId}/close`;
+    const body: CloseSessionRequest = { closingAmount };
+    
+    console.log(`Closing session ${sessionId} with closing amount ${closingAmount}`);
+    
+    // Use ceoApiClient for CEO-only operations
+    const response = await ceoApiClient.post<{ success: boolean; message?: string }>(endpoint, body);
 
-    for (const endpoint of endpoints) {
-      try {
-        console.log(`Trying to close session at: ${endpoint}`);
-        const body: any = { sessionId };
-        if (closingAmount !== undefined) {
-          body.closingAmount = closingAmount;
-        }
-
-        const response = await apiClient.put<{ success: boolean }>(endpoint, body);
-        
-        if (!response.error && response.data) {
-          console.log(`Successfully closed session using ${endpoint}`);
-          return { data: { success: true } };
-        }
-
-        // If PUT didn't work, try POST
-        if (response.error) {
-          const postResponse = await apiClient.post<{ success: boolean }>(endpoint, body);
-          if (!postResponse.error && postResponse.data) {
-            console.log(`Successfully closed session using POST ${endpoint}`);
-            return { data: { success: true } };
-          }
-        }
-      } catch (error) {
-        console.log(`Endpoint ${endpoint} failed:`, error);
-        continue; // Try next endpoint
+    if (response.error) {
+      if (response.status === 403) {
+        return { error: "Access denied. CEO role required.", status: 403 };
       }
+      return { error: response.error, status: response.status };
     }
 
-    // If all endpoints failed, return error
-    return { error: "Failed to close session. All endpoints failed." };
+    return { data: { success: true, ...response.data }, status: response.status };
+  },
+
+  /**
+   * Close current cashier session
+   * POST /api/sessions/cashier/session/close
+   * يُستخدم من واجهة الكاشير لإغلاق الجلسة الحالية بإرسال closingAmount فقط
+   */
+  async closeCashierSession(
+    closingAmount: number
+  ): Promise<{ data?: CloseCashierSessionResponse; error?: string }> {
+    const endpoint = "/api/sessions/cashier/session/close";
+    const body: CloseSessionRequest = { closingAmount };
+
+    console.log(`Closing cashier session with closing amount ${closingAmount}`);
+    const response = await cashierApiClient.post<CloseCashierSessionResponse>(endpoint, body);
+
+    if (response.error) {
+      console.error("Failed to close cashier session:", response.error);
+      return { error: response.error };
+    }
+
+    if (!response.data) {
+      return { error: "No response data received while closing session" };
+    }
+
+    return { data: response.data };
   },
 };
 

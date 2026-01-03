@@ -1,5 +1,5 @@
 import { apiClient } from "./api.client";
-import { setTokenForRole, setUserInfo, clearAllTokens, type UserRole } from "./tokens";
+import { setTokenForRole, setUserInfo, clearAllTokens, clearRoleData, type UserRole } from "./tokens";
 import type { UserAccount } from "../types/user";
 
 export interface LoginRequest {
@@ -17,9 +17,24 @@ export interface LoginResponse {
   address?: string;
 }
 
+export interface CashierLoginResponse {
+  token: string;
+  userId: number;
+  username: string;
+  role: UserRole;
+  terminalId?: number;
+  terminalCode?: string;
+  sessionId?: number;
+  sessionStatus?: "OPEN" | "CLOSED";
+  openingFloat?: number;
+  message?: string;
+  paired?: boolean;
+}
+
 export interface AuthError {
   message: string;
   status: number;
+  details?: Record<string, unknown> | null;
 }
 
 /**
@@ -36,6 +51,7 @@ export async function login(
       headers: {
         "Content-Type": "application/json",
       },
+      credentials: "include",
       body: JSON.stringify({ email, password }),
     });
 
@@ -54,6 +70,7 @@ export async function login(
         error: {
           message: data.message || `HTTP error! status: ${response.status}`,
           status: response.status,
+          details: typeof data === "object" && data !== null ? data : null,
         },
       };
     }
@@ -132,7 +149,113 @@ export async function login(
 }
 
 /**
- * Logout current user
+ * Cashier Login with Pairing Support
+ * POST /api/sessions/cashier/login
+ * This endpoint handles login and returns pairing status
+ */
+export async function cashierLogin(
+  username: string,
+  password: string
+): Promise<{ data?: CashierLoginResponse; error?: AuthError }> {
+  try {
+    console.log("Cashier login attempt for:", username);
+    const response = await fetch("http://localhost:8081/api/sessions/cashier/login", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      credentials: "include", // CRITICAL: This sends and receives cookies (browser token)
+      body: JSON.stringify({ username, password }),
+    });
+    
+    console.log("Cashier login response status:", response.status);
+    console.log("Response cookies:", document.cookie);
+
+    // Handle non-JSON responses
+    let data;
+    const contentType = response.headers.get("content-type");
+    if (contentType && contentType.includes("application/json")) {
+      data = await response.json();
+    } else {
+      const text = await response.text();
+      data = { message: text || "An error occurred" };
+    }
+
+    if (!response.ok) {
+      return {
+        error: {
+          message: data.message || `HTTP error! status: ${response.status}`,
+          status: response.status,
+          details: typeof data === "object" && data !== null ? data : null,
+        },
+      };
+    }
+
+    const token = data.token;
+    const role = (data.role?.toUpperCase() || "CASHIER") as UserRole;
+
+    const loginData: CashierLoginResponse = {
+      token,
+      userId: data.userId,
+      username: data.username,
+      role,
+      terminalId: data.terminalId,
+      terminalCode: data.terminalCode,
+      sessionId: data.sessionId,
+      sessionStatus: data.sessionStatus,
+      openingFloat: data.openingFloat,
+      message: data.message,
+      paired: data.paired || false,
+    };
+
+    // Save token and user info regardless of pairing result
+    if (token) {
+      setTokenForRole(role, token);
+    }
+
+    const userInfoToSave = {
+      id: loginData.userId,
+      userId: loginData.userId,
+      firstName: data.firstName || "",
+      lastName: data.lastName || "",
+      email: loginData.username,
+      phone: data.phone || "",
+      address: data.address || "",
+      role: role,
+      sessionId: loginData.sessionId,
+      terminalId: loginData.terminalId,
+      terminalCode: loginData.terminalCode,
+    };
+    
+    setUserInfo(userInfoToSave);
+
+    return { data: loginData };
+  } catch (error) {
+    return {
+      error: {
+        message: error instanceof Error ? error.message : "Network error occurred",
+        status: 0,
+        details: null,
+      },
+    };
+  }
+}
+
+/**
+ * Logout for a specific role (clears only that role's data)
+ */
+export function logoutForRole(role: UserRole): void {
+  clearRoleData(role);
+  
+  // Redirect to login page using window.location to ensure full page reload
+  if (typeof window !== 'undefined') {
+    window.location.href = "/login";
+  }
+}
+
+/**
+ * Logout current user (clears all tokens - use with caution)
+ * This should only be used when you want to completely log out all users
  */
 export function logout(): void {
   // Clear all tokens and user info
@@ -172,6 +295,7 @@ export async function getCurrentUserProfile(): Promise<{ data?: UserProfileRespo
       error: {
         message: error instanceof Error ? error.message : "Network error occurred",
         status: 0,
+        details: null,
       },
     };
   }
