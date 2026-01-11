@@ -11,6 +11,9 @@ import Register from './pages/RegisterPage'
 import CashierTerminal from './pages/CashierTerminal'
 import CashierOrders from './pages/CashierOrders'
 import CustomerMyPage from './pages/CustomerMyPage'
+import SelectTerminal from './pages/SelectTerminal'
+import ReturnOrder from './pages/ReturnOrder'
+import ReturnOrdersHistory from './pages/ReturnOrdersHistory'
 
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
@@ -25,8 +28,11 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
         <Route path="/inventory-manager/*" element={<InventoryManagerDashboard />} />
         <Route path="/cashier" element={<CashierTerminal />} />
         <Route path="/cashier/orders" element={<CashierOrders />} />
+        <Route path="/cashier/return" element={<ReturnOrder />} />
+        <Route path="/cashier/returns" element={<ReturnOrdersHistory />} />
         <Route path="/cashier/profile" element={<Profile />} />
         <Route path="/customer" element={<CustomerMyPage />} />
+        <Route path="/select-terminal" element={<SelectTerminal />} />
         <Route path="/profile" element={<Profile />} />
         <Route path="*" element={<Navigate to="/login" replace />} />
       </Routes>

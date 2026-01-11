@@ -14,13 +14,16 @@ import {
   User,
   X,
   Loader2,
+  RotateCcw,
 } from "lucide-react";
-import { getUserDisplayName, getUserInfo } from "../services/tokens";
-import { logout } from "../services/auth.api";
+import { getUserDisplayName, setSessionId, clearSessionId } from "../services/tokens";
+import { logoutForRole } from "../services/auth.api";
 import { sessionsApi } from "../services/sessions.api";
 import { offersApi } from "../services/offers.api";
 import { ordersApi, type Order, type OrderHistoryItem } from "../services/orders.api";
 import { categoriesApi, type CategoryHierarchy } from "../services/categories.api";
+import { terminalApi } from "../services/terminal.api";
+import { customersApi, type Customer } from "../services/customers.api";
 
 interface Product {
   id: string | number;
@@ -43,6 +46,7 @@ const fmt = new Intl.NumberFormat(undefined, {
 });
 
 const fmtMoney = (n: number) => fmt.format(n);
+const DEFAULT_OPENING_FLOAT = 2000;
 
 export default function CashierTerminal() {
   const navigate = useNavigate();
@@ -69,32 +73,82 @@ export default function CashierTerminal() {
     totalCash: number;
     totalCard: number;
     totalOrders: number;
+    openingFloat: number;
+    totalSales: number;
+    expectedDrawer: number;
+    closingAmount: number;
   } | null>(null);
   const [loadingStats, setLoadingStats] = useState(false);
   const [loadingProducts, setLoadingProducts] = useState(false);
   const [heldOrders, setHeldOrders] = useState<Order[]>([]);
   const [heldOrdersExpanded, setHeldOrdersExpanded] = useState(false);
+  const [unpairing, setUnpairing] = useState(false);
+  
+  // Customer registration state
+  const [showCustomerModal, setShowCustomerModal] = useState(false);
+  const [customerPhone, setCustomerPhone] = useState("");
+  const [customerName, setCustomerName] = useState("");
+  const [customerEmail, setCustomerEmail] = useState("");
+  const [customerAddress, setCustomerAddress] = useState("");
+  const [searchingCustomer, setSearchingCustomer] = useState(false);
+  const [creatingCustomer, setCreatingCustomer] = useState(false);
+  const [customerError, setCustomerError] = useState<string | null>(null);
+  const [currentCustomer, setCurrentCustomer] = useState<Customer | null>(null);
 
   const cashierName = getUserDisplayName();
+  const redirectToSelectTerminal = (customMessage?: string) => {
+    setCurrentSessionId(null);
+    clearSessionId();
+    setLoading(false);
+    navigate("/select-terminal", {
+      replace: true,
+      state: {
+        message:
+          customMessage ||
+          "No open session was found for this terminal. Pair and open a session to continue.",
+      },
+    });
+  };
+
+  const handleUnauthorized = (customMessage?: string) => {
+    if (customMessage) {
+      alert(customMessage);
+    }
+    logoutForRole('CASHIER');
+  };
 
   useEffect(() => {
     const loadData = async () => {
       setLoading(true);
-      
-      // Get current cashier's active session
-      const activeSessions = await sessionsApi.fetchActiveSessions();
-      if (activeSessions) {
-        const userInfo = getUserInfo();
-        const currentSession = activeSessions.find(
-          (s) =>
-            s.email === userInfo?.email ||
-          `${s.firstName} ${s.lastName}` === cashierName
-        );
-        if (currentSession?.sessionId) {
-          setCurrentSessionId(currentSession.sessionId);
-        }
-        // Load held orders from all cashier's sessions
-        loadHeldOrders(currentSession?.sessionId || undefined);
+
+      const currentSessionResult = await sessionsApi.getCurrentSession();
+
+      if (currentSessionResult.status === 401 || currentSessionResult.status === 403) {
+        handleUnauthorized("Your cashier login expired. Please sign in again to continue.");
+        return;
+      }
+
+      if (currentSessionResult.status === 404) {
+        console.warn("No active session for this terminal (404). Redirecting to select-terminal.");
+        redirectToSelectTerminal("You haven't opened a session on this terminal yet. Let's pair or open one.");
+        return;
+      }
+
+      if (currentSessionResult.error || !currentSessionResult.data) {
+        console.error("Failed to get current session:", currentSessionResult.error);
+        redirectToSelectTerminal("We couldn't determine the current session for this terminal. Please pair again.");
+        return;
+      }
+
+      const session = currentSessionResult.data;
+      if (session.status === "OPEN" && session.paired) {
+        setCurrentSessionId(session.sessionId);
+        setSessionId(session.sessionId);
+        await loadHeldOrders(session.sessionId);
+      } else {
+        console.warn("Session exists but is not open/paired for this terminal", session);
+        redirectToSelectTerminal("This terminal isn't paired with an open session. Please pair and open one.");
+        return;
       }
 
       // Load categories hierarchy from database
@@ -209,6 +263,12 @@ export default function CashierTerminal() {
       (product.sku &&
         product.sku.toLowerCase().includes(searchTerm.toLowerCase()));
     
+    // If subcategory is selected, products are already filtered by API
+    // So we only need to apply search filter
+    if (selectedSubCategory) {
+      return matchesSearch;
+    }
+    
     // Match category: if no category selected, show all products
     if (!selectedCategory && !selectedSubCategory) {
       return matchesSearch;
@@ -220,17 +280,6 @@ export default function CashierTerminal() {
       ? product.category 
       : (product.category as any)?.name;
     
-    // If subcategory is selected, match by subcategory name
-    if (selectedSubCategory) {
-      const subCategory = categories
-        .flatMap((c) => c.subCategories)
-        .find((sc) => sc.id === selectedSubCategory);
-      if (subCategory) {
-        const matchesSubCategory = productCategoryName === subCategory.name;
-        return matchesSearch && matchesSubCategory;
-      }
-    }
-    
     // If only parent category is selected, match by parent category name
     if (selectedCategory) {
       const selectedCategoryName = categories.find(
@@ -238,7 +287,7 @@ export default function CashierTerminal() {
       )?.name;
       if (selectedCategoryName) {
         const matchesCategory = productCategoryName === selectedCategoryName;
-    return matchesSearch && matchesCategory;
+        return matchesSearch && matchesCategory;
       }
     }
     
@@ -254,11 +303,10 @@ export default function CashierTerminal() {
     setProcessing(true);
     try {
       // Create order if it doesn't exist
+      // Note: لا نرسل sessionId - الـ backend يجلب sessionId تلقائياً من browser token
       let orderId = currentOrder?.id;
       if (!orderId) {
-        const createResult = await ordersApi.createOrder({
-          sessionId: currentSessionId,
-        });
+        const createResult = await ordersApi.createOrder();
         if (createResult.error) {
           alert(`Failed to create order: ${createResult.error}`);
           setProcessing(false);
@@ -283,6 +331,7 @@ export default function CashierTerminal() {
 
       if (existingItem) {
         // Update quantity: نرسل delta = 1 فقط
+        // الـ backend يقوم بالتحقق من bundle offers تلقائياً بعد تحديث الكمية
         const newQuantity = existingItem.quantity + 1;
         const updateResult = await ordersApi.updateItem({
           orderId,
@@ -293,6 +342,8 @@ export default function CashierTerminal() {
         if (updateResult.error) {
           alert(`Failed to update item: ${updateResult.error}`);
         } else if (updateResult.data) {
+          // تحديث الطلب مع البيانات المحدثة من الـ backend
+          // الـ backend يقوم بالتحقق من bundle offers وتطبيق الخصم تلقائياً
           setCurrentOrder(updateResult.data);
           // Update local cart
           setCart((prev) => {
@@ -311,16 +362,20 @@ export default function CashierTerminal() {
         }
       } else {
         // Add new item
+        // الـ backend يقوم بالتحقق من bundle offers تلقائياً بعد إضافة المنتج
+        // ويطبق الخصم إذا كانت شروط bundle offer متوفرة
         const addResult = await ordersApi.addItem({
           orderId,
           productId: Number(product.id),
           quantity: 1,
-          discountAmount: 0,
+          discountAmount: 0, // الـ backend سيحسب الخصم تلقائياً
         });
 
         if (addResult.error) {
           alert(`Failed to add item: ${addResult.error}`);
         } else if (addResult.data) {
+          // تحديث الطلب مع البيانات المحدثة من الـ backend
+          // الـ backend يقوم بالتحقق من bundle offers وتطبيق الخصم تلقائياً
           setCurrentOrder(addResult.data);
           // Update local cart
           setCart((prev) => {
@@ -371,6 +426,8 @@ export default function CashierTerminal() {
       if (updateResult.error) {
         alert(`Failed to update quantity: ${updateResult.error}`);
       } else if (updateResult.data) {
+        // تحديث الطلب مع البيانات المحدثة من الـ backend
+        // الـ backend يقوم بالتحقق من bundle offers تلقائياً بعد تحديث الكمية
         setCurrentOrder(updateResult.data);
         // Update local cart
         setCart((prev) => {
@@ -418,52 +475,8 @@ export default function CashierTerminal() {
   };
 
 
-  const applyItemDiscount = async (
-    productId: string | number,
-    discountAmount: number
-  ) => {
-    if (!currentOrder) return;
-
-    const orderItem = currentOrder.items.find(
-      (item) => item.productId === Number(productId)
-    );
-    if (!orderItem) return;
-
-    setProcessing(true);
-    try {
-      // Note: updateItem doesn't support discountAmount
-      // We need to use addItem to update discount, or use a separate endpoint
-      // For now, we'll use addItem with quantity 0 to update discount
-      // This is a workaround - ideally we need a separate endpoint for updating discount
-      const updateResult = await ordersApi.addItem({
-        orderId: currentOrder.id,
-        productId: Number(productId),
-        quantity: orderItem.quantity,
-        discountAmount: discountAmount,
-      });
-
-      if (updateResult.error) {
-        alert(`Failed to apply discount: ${updateResult.error}`);
-      } else if (updateResult.data) {
-        setCurrentOrder(updateResult.data);
-        // Update local cart
-        setCart((prev) => {
-          return prev.map((item) =>
-            item.product.id === productId
-              ? { ...item, discountAmount }
-              : item
-          );
-        });
-      }
-    } catch (error) {
-      console.error("Error applying discount:", error);
-      alert("An error occurred while applying discount");
-    } finally {
-      setProcessing(false);
-    }
-  };
-
   // Use order data from backend if available, otherwise calculate from cart
+  // الـ backend يقوم بحساب كل شيء بشكل صحيح (بما في ذلك خصم الـ offer order)
   const subtotal =
     currentOrder?.subtotal ||
     cart.reduce((sum, item) => {
@@ -471,9 +484,139 @@ export default function CashierTerminal() {
         item.product.price * item.quantity - (item.discountAmount || 0);
     return sum + itemTotal;
   }, 0);
-  const discount = currentOrder?.discountAmount || 0;
-  const tax = currentOrder?.taxAmount || subtotal * 0.1;
-  const total = currentOrder?.grandTotal || subtotal + tax;
+  const discount = currentOrder?.discountAmount || 0; // خصم من الـ offer order
+  // الـ tax يُحسب على الـ subtotal بعد الخصم
+  const tax = currentOrder?.taxAmount || (subtotal - discount) * 0.1;
+  // الـ total يجب أن يأتي من الـ backend مباشرة لأنه يحتوي على كل الحسابات الصحيحة
+  const total = currentOrder?.grandTotal || (subtotal - discount + tax);
+
+  // Customer registration functions
+  const handleSearchCustomer = async () => {
+    if (!customerPhone.trim()) {
+      setCustomerError("Please enter a phone number");
+      return;
+    }
+
+    setSearchingCustomer(true);
+    setCustomerError(null);
+
+    try {
+      const result = await customersApi.getCustomerByPhone(customerPhone.trim());
+      
+      if (result.error && result.status === 404) {
+        // Customer not found - show create form
+        setCustomerError(null);
+        setCustomerName("");
+        setCustomerEmail("");
+        setCustomerAddress("");
+      } else if (result.error) {
+        setCustomerError(result.error);
+      } else if (result.data) {
+        // Customer found
+        setCurrentCustomer(result.data);
+        setCustomerName(result.data.name);
+        setCustomerEmail(result.data.email || "");
+        setCustomerAddress(result.data.address || "");
+        setCustomerError(null);
+      }
+    } catch (err) {
+      setCustomerError("An error occurred while searching for customer");
+      console.error(err);
+    } finally {
+      setSearchingCustomer(false);
+    }
+  };
+
+  const handleCreateCustomer = async () => {
+    if (!customerName.trim() || !customerPhone.trim()) {
+      setCustomerError("Name and phone are required");
+      return;
+    }
+
+    setCreatingCustomer(true);
+    setCustomerError(null);
+
+    try {
+      const result = await customersApi.createCustomer({
+        name: customerName.trim(),
+        phone: customerPhone.trim(),
+        email: customerEmail.trim() || undefined,
+        address: customerAddress.trim() || undefined,
+      });
+
+      if (result.error) {
+        setCustomerError(result.error);
+      } else if (result.data) {
+        setCurrentCustomer({
+          id: result.data.customerId,
+          name: result.data.name,
+          phone: result.data.phone,
+          email: result.data.email || null,
+          address: result.data.address || null,
+        });
+        setCustomerError(null);
+      }
+    } catch (err) {
+      setCustomerError("An error occurred while creating customer");
+      console.error(err);
+    } finally {
+      setCreatingCustomer(false);
+    }
+  };
+
+  const handleAttachCustomer = async () => {
+    if (!currentOrder || !currentCustomer) {
+      setCustomerError("No customer selected");
+      return;
+    }
+
+    setProcessing(true);
+    try {
+      const result = await ordersApi.attachCustomerToOrder(
+        currentOrder.id,
+        currentCustomer.id
+      );
+
+      if (result.error) {
+        setCustomerError(result.error);
+      } else if (result.data) {
+        setCurrentOrder(result.data);
+        setShowCustomerModal(false);
+        setCustomerError(null);
+        // Reset customer form
+        setCustomerPhone("");
+        setCustomerName("");
+        setCustomerEmail("");
+        setCustomerAddress("");
+      }
+    } catch (err) {
+      setCustomerError("An error occurred while attaching customer");
+      console.error(err);
+    } finally {
+      setProcessing(false);
+    }
+  };
+
+  const handleRemoveCustomer = async () => {
+    if (!currentOrder) return;
+
+    setProcessing(true);
+    try {
+      const result = await ordersApi.attachCustomerToOrder(currentOrder.id, null);
+
+      if (result.error) {
+        alert(`Failed to remove customer: ${result.error}`);
+      } else if (result.data) {
+        setCurrentOrder(result.data);
+        setCurrentCustomer(null);
+      }
+    } catch (err) {
+      alert("An error occurred while removing customer");
+      console.error(err);
+    } finally {
+      setProcessing(false);
+    }
+  };
 
   const handlePayment = async (method: "cash" | "card" | "both") => {
     if (!currentOrder || currentOrder.items.length === 0) {
@@ -486,21 +629,26 @@ export default function CashierTerminal() {
       return;
     }
 
+    if (method === "both") {
+      // Show split payment modal
+      setSplitCashAmount("");
+      setSplitCardAmount("");
+      setShowSplitModal(true);
+      return;
+    }
+
+    // تأكيد قبل الدفع للـ Cash أو Card
+    const methodName = method === "cash" ? "Cash" : "Card";
+    const confirmMessage = `Confirm ${methodName} payment of ${fmtMoney(total)}?`;
+    
+    if (!window.confirm(confirmMessage)) {
+      return; // المستخدم ألغى العملية
+    }
+
     setProcessing(true);
     try {
-      let result;
-
-      if (method === "both") {
-        // Show split payment modal
-        setSplitCashAmount("");
-        setSplitCardAmount("");
-        setShowSplitModal(true);
-        setProcessing(false);
-        return;
-      }
-
       // Process single payment method
-      result = await ordersApi.processPayment({
+      const result = await ordersApi.processPayment({
         orderId: currentOrder.id,
         paymentMethod: method.toUpperCase() as "CASH" | "CARD",
         amount: total,
@@ -548,6 +696,13 @@ export default function CashierTerminal() {
       return;
     }
 
+    // تأكيد قبل الدفع
+    const confirmMessage = `Confirm split payment?\nCash: ${fmtMoney(cashAmount)}\nCard: ${fmtMoney(cardAmount)}\nTotal: ${fmtMoney(total)}`;
+    
+    if (!window.confirm(confirmMessage)) {
+      return; // المستخدم ألغى العملية
+    }
+
     setProcessing(true);
     try {
       const result = await ordersApi.processPayment({
@@ -572,6 +727,29 @@ export default function CashierTerminal() {
       alert("An error occurred while processing payment");
     } finally {
       setProcessing(false);
+    }
+  };
+
+  // حساب الباقي تلقائياً في Split Payment
+  const handleCashAmountChange = (value: string) => {
+    setSplitCashAmount(value);
+    const cashValue = parseFloat(value);
+    if (!isNaN(cashValue) && cashValue >= 0 && cashValue <= total) {
+      const remaining = total - cashValue;
+      setSplitCardAmount(remaining.toFixed(2));
+    } else if (value === "" || value === "0") {
+      setSplitCardAmount("");
+    }
+  };
+
+  const handleCardAmountChange = (value: string) => {
+    setSplitCardAmount(value);
+    const cardValue = parseFloat(value);
+    if (!isNaN(cardValue) && cardValue >= 0 && cardValue <= total) {
+      const remaining = total - cardValue;
+      setSplitCashAmount(remaining.toFixed(2));
+    } else if (value === "" || value === "0") {
+      setSplitCashAmount("");
     }
   };
 
@@ -621,8 +799,8 @@ export default function CashierTerminal() {
 
   const handleLogoutClick = async () => {
     if (!currentSessionId) {
-      // No active session, just logout
-      logout();
+      // No active session, just logout (cashier only)
+      logoutForRole('CASHIER');
       return;
     }
 
@@ -635,10 +813,19 @@ export default function CashierTerminal() {
       // Fetch session details to get statistics
       const sessionDetail = await sessionsApi.fetchCashierDetail(currentSessionId);
       if (sessionDetail?.performance) {
+        const totalCash = sessionDetail.performance.cashIn || 0;
+        const totalCard = sessionDetail.performance.cardIn || 0;
+        const totalOrders = sessionDetail.performance.totalOrders || 0;
+        const openingFloat = sessionDetail.sessionInfo?.openingFloat ?? DEFAULT_OPENING_FLOAT;
+        const totalSales = totalCash + totalCard;
         setSessionStats({
-          totalCash: sessionDetail.performance.cashIn || 0,
-          totalCard: sessionDetail.performance.cardIn || 0,
-          totalOrders: sessionDetail.performance.totalOrders || 0,
+          totalCash,
+          totalCard,
+          totalOrders,
+          openingFloat,
+          totalSales,
+          expectedDrawer: openingFloat + totalCash,
+          closingAmount: openingFloat + totalSales,
         });
       } else {
         // Fallback: try to get from orders history
@@ -658,10 +845,16 @@ export default function CashierTerminal() {
               cardTotal += order.grandTotal / 2;
             }
           });
+          const openingFloat = sessionDetail?.sessionInfo?.openingFloat ?? DEFAULT_OPENING_FLOAT;
+          const totalSales = cashTotal + cardTotal;
           setSessionStats({
             totalCash: cashTotal,
             totalCard: cardTotal,
             totalOrders: ordersResult.data.length,
+            openingFloat,
+            totalSales,
+            expectedDrawer: openingFloat + cashTotal,
+            closingAmount: openingFloat + totalSales,
           });
         }
       }
@@ -672,6 +865,10 @@ export default function CashierTerminal() {
         totalCash: 0,
         totalCard: 0,
         totalOrders: 0,
+        openingFloat: DEFAULT_OPENING_FLOAT,
+        totalSales: 0,
+        expectedDrawer: DEFAULT_OPENING_FLOAT,
+        closingAmount: DEFAULT_OPENING_FLOAT,
       });
     } finally {
       setLoadingStats(false);
@@ -683,54 +880,12 @@ export default function CashierTerminal() {
     setLoadingStats(true);
 
     try {
-      // If there's an unpaid order, hold it first
-      if (currentOrder && currentOrder.status !== "PAID" && currentOrder.items.length > 0) {
-        console.log("Holding order before logout:", currentOrder.id, currentOrder.status);
-        try {
-          const holdResult = await ordersApi.holdOrder(currentOrder.id);
-          if (holdResult.error) {
-            console.error("Failed to hold order before logout:", holdResult.error);
-            alert("Warning: Failed to hold current order. Please hold it manually before logging out.");
-          } else {
-            console.log("Order held successfully before logout");
-            setCurrentOrder(null);
-            setCart([]);
-            // Reload held orders to show the newly held order
-            if (currentSessionId) {
-              await loadHeldOrders(currentSessionId);
-            }
-          }
-        } catch (error) {
-          console.error("Error holding order before logout:", error);
-          alert("Warning: Failed to hold current order. Please hold it manually before logging out.");
-        }
-      } else {
-        console.log("No unpaid order to hold:", {
-          hasOrder: !!currentOrder,
-          status: currentOrder?.status,
-          itemsLength: currentOrder?.items.length
-        });
-      }
-
-      if (currentSessionId) {
-        try {
-          // Close the session before logging out
-          const closeResult = await sessionsApi.closeSession(currentSessionId);
-          if (closeResult.error) {
-            console.error("Failed to close session:", closeResult.error);
-            // Still proceed with logout even if closing fails
-            alert("Warning: Failed to close session, but proceeding with logout.");
-          }
-        } catch (error) {
-          console.error("Error closing session:", error);
-          // Still proceed with logout even if closing fails
-        }
-      }
+      await finalizeSessionBeforeExit();
     } finally {
       setLoadingStats(false);
     }
-    
-    logout();
+
+    logoutForRole('CASHIER');
   };
 
   const handleCancelLogout = () => {
@@ -738,65 +893,136 @@ export default function CashierTerminal() {
     setSessionStats(null);
   };
 
-  const loadHeldOrders = async (sessionId?: number) => {
-    try {
-      const userInfo = getUserInfo();
-      const allHeldOrders: Order[] = [];
-
-      // Get all sessions for this cashier
-      const allSessions = await sessionsApi.fetchSessions();
-      if (allSessions) {
-        // Filter sessions for current cashier
-        const cashierSessions = allSessions.filter(
-          (s) =>
-            s.email === userInfo?.email ||
-            `${s.firstName} ${s.lastName}` === cashierName
-        );
-
-        // Get held orders from all cashier's sessions
-        for (const session of cashierSessions) {
-          if (session.sessionId) {
-            try {
-              const historyResult = await ordersApi.getSessionHistory(session.sessionId);
-              if (historyResult.data) {
-                const held = historyResult.data.filter((o) => o.status === "HELD");
-                // Convert OrderHistoryItem to Order by fetching full order details
-                for (const heldOrder of held) {
-                  const fullOrder = await ordersApi.getOrder(heldOrder.id);
-                  if (fullOrder.data) {
-                    // Check if order is not already in the list (avoid duplicates)
-                    if (!allHeldOrders.find((o) => o.id === fullOrder.data!.id)) {
-                      allHeldOrders.push(fullOrder.data);
-                    }
-                  }
-                }
-              }
-            } catch (error) {
-              console.error(`Error loading held orders for session ${session.sessionId}:`, error);
-            }
+  const finalizeSessionBeforeExit = async () => {
+    if (currentOrder && currentOrder.status !== "PAID" && currentOrder.items.length > 0) {
+      console.log("Holding order before exit:", currentOrder.id, currentOrder.status);
+      try {
+        const holdResult = await ordersApi.holdOrder(currentOrder.id);
+        if (holdResult.error) {
+          console.error("Failed to hold order before exit:", holdResult.error);
+          alert("Warning: Failed to hold the current order. Please hold it manually before leaving.");
+        } else {
+          setCurrentOrder(null);
+          setCart([]);
+          if (currentSessionId) {
+            await loadHeldOrders(currentSessionId);
           }
         }
+      } catch (error) {
+        console.error("Error holding order before exit:", error);
+        alert("Warning: Failed to hold the current order. Please hold it manually before leaving.");
+      }
+    }
+
+    if (currentSessionId) {
+      try {
+        const statusResult = await sessionsApi.getSessionStatus();
+        const baseFloat = sessionStats?.openingFloat ?? statusResult.data?.openingFloat ?? DEFAULT_OPENING_FLOAT;
+        const totalSales = sessionStats?.totalSales ?? (sessionStats ? sessionStats.totalCash + sessionStats.totalCard : 0);
+        const closingAmount = baseFloat + totalSales;
+
+        const closeResult = await sessionsApi.closeCashierSession(closingAmount);
+        if (closeResult.error) {
+          console.error("Failed to close session:", closeResult.error);
+          alert("Warning: Failed to close the session. Please contact a supervisor.");
+        } else if (closeResult.data) {
+          console.log("Session closed successfully", closeResult.data);
+          alert(closeResult.data.message || "Session closed successfully");
+          setCurrentSessionId(null);
+          clearSessionId();
+          setSessionStats(null);
+          setHeldOrders([]);
+        }
+      } catch (error) {
+        console.error("Error closing session:", error);
+      }
+    }
+  };
+
+  const handleUnpairTerminal = async () => {
+    if (unpairing) {
+      return;
+    }
+
+    const confirmed = window.confirm(
+      "Unpair this browser from the terminal? You will need a new pairing code to continue working."
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    setUnpairing(true);
+
+    try {
+      await finalizeSessionBeforeExit();
+
+      const result = await terminalApi.unpairTerminal();
+      if (result.error) {
+        alert(result.error);
+        return;
       }
 
-      // Also check current session if provided
-      if (sessionId) {
-        try {
-          const historyResult = await ordersApi.getSessionHistory(sessionId);
-          if (historyResult.data) {
-            const held = historyResult.data.filter((o) => o.status === "HELD");
-            for (const heldOrder of held) {
-              const fullOrder = await ordersApi.getOrder(heldOrder.id);
-              if (fullOrder.data) {
-                // Check if order is not already in the list (avoid duplicates)
-                if (!allHeldOrders.find((o) => o.id === fullOrder.data!.id)) {
-                  allHeldOrders.push(fullOrder.data);
-                }
+      sessionStorage.clear();
+      clearSessionId();
+      setCurrentSessionId(null);
+      setCurrentOrder(null);
+      setHeldOrders([]);
+
+      alert(result.data?.message || "This browser has been disconnected. You will be redirected to sign in again.");
+      logoutForRole('CASHIER');
+    } catch (error) {
+      alert(error instanceof Error ? error.message : "Failed to unpair terminal");
+    } finally {
+      setUnpairing(false);
+    }
+  };
+
+  const loadHeldOrders = async (sessionId?: number) => {
+    try {
+      const allHeldOrders: Order[] = [];
+      let currentSessionId = sessionId;
+
+      if (!currentSessionId) {
+        const currentSessionResult = await sessionsApi.getCurrentSession();
+
+        if (currentSessionResult.status === 401 || currentSessionResult.status === 403) {
+          handleUnauthorized("Your cashier login expired. Please sign in again.");
+          return;
+        }
+
+        if (currentSessionResult.status === 404) {
+          redirectToSelectTerminal("No session is active on this terminal yet.");
+          return;
+        }
+
+        if (!currentSessionResult.data || currentSessionResult.data.status !== "OPEN") {
+          redirectToSelectTerminal("This terminal doesn't have an open session. Please pair again.");
+          return;
+        }
+
+        currentSessionId = currentSessionResult.data.sessionId;
+      }
+
+      if (!currentSessionId) {
+        return;
+      }
+
+      try {
+        const historyResult = await ordersApi.getSessionHistory(currentSessionId);
+        if (historyResult.data) {
+          const held = historyResult.data.filter((o) => o.status === "HELD");
+          for (const heldOrder of held) {
+            const fullOrder = await ordersApi.getOrder(heldOrder.id);
+            if (fullOrder.data) {
+              if (!allHeldOrders.find((o) => o.id === fullOrder.data!.id)) {
+                allHeldOrders.push(fullOrder.data);
               }
             }
           }
-        } catch (error) {
-          console.error(`Error loading held orders for current session ${sessionId}:`, error);
         }
+      } catch (error) {
+        console.error(`Error loading held orders for session ${currentSessionId}:`, error);
       }
 
       setHeldOrders(allHeldOrders);
@@ -881,6 +1107,20 @@ export default function CashierTerminal() {
         <h1 className="text-2xl font-semibold text-gray-800">{cashierName}</h1>
         <div className="flex items-center gap-3">
           <button
+            onClick={() => navigate("/cashier/return")}
+            className="p-2 rounded-lg text-gray-600 hover:text-orange-600 hover:bg-orange-50 transition-colors"
+            title="Return Order"
+          >
+            <RotateCcw className="h-5 w-5" />
+          </button>
+          <button
+            onClick={() => navigate("/cashier/returns")}
+            className="p-2 rounded-lg text-gray-600 hover:text-purple-600 hover:bg-purple-50 transition-colors"
+            title="Return Orders History"
+          >
+            <RotateCcw className="h-5 w-5" />
+          </button>
+          <button
             onClick={handleViewOrders}
             className="p-2 rounded-lg text-gray-600 hover:text-blue-600 hover:bg-blue-50 transition-colors"
             title="View Orders"
@@ -893,6 +1133,16 @@ export default function CashierTerminal() {
             title="Profile"
           >
             <User className="h-5 w-5" />
+          </button>
+          <button
+            onClick={handleUnpairTerminal}
+            disabled={unpairing}
+            className="flex items-center gap-2 px-3 py-2 rounded-lg border border-orange-200 text-orange-700 hover:bg-orange-50 transition-colors disabled:cursor-not-allowed disabled:opacity-70"
+          >
+            <span role="img" aria-label="unpair terminal">
+              🔌
+            </span>
+            <span>{unpairing ? "Unpairing..." : "Unpair"}</span>
           </button>
           <button
             onClick={handleLogoutClick}
@@ -976,7 +1226,9 @@ export default function CashierTerminal() {
                     category.subCategories &&
                     category.subCategories.length > 0 && (
                       <div className="ml-4 mt-1 space-y-1">
-                        {category.subCategories.map((subCategory) => (
+                        {category.subCategories
+                          .filter((sc) => sc != null)
+                          .map((subCategory) => (
                           <button
                             key={subCategory.id}
                             onClick={() => {
@@ -1091,13 +1343,42 @@ export default function CashierTerminal() {
                             {product.name}
                           </div>
                         <div className="text-sm text-gray-500">
-                          {fmtMoney(product.price)} × {quantity}
+                          {fmtMoney(orderItem?.unitPrice || product.price)} × {quantity}
+                          {/* عرض السعر الأصلي إذا كان هناك خصم */}
+                          {orderItem?.originalLineTotal && orderItem.originalLineTotal > lineTotal && (
+                            <span className="text-gray-400 line-through ml-1">
+                              {fmtMoney(orderItem.originalLineTotal)}
+                            </span>
+                          )}
                           {discount > 0 && (
-                              <span className="text-red-600 ml-2">
+                              <span className="text-red-600 ml-2 font-medium">
                                 -{fmtMoney(discount)} discount
                               </span>
                           )}
                         </div>
+                        {/* عرض معلومات الـ offer إذا كان موجوداً */}
+                        {orderItem?.offerId && orderItem.offerTitle && (
+                          <div className="text-xs text-blue-600 mt-1 flex items-center gap-1">
+                            <span>🎁</span>
+                            <span>{orderItem.offerTitle}</span>
+                            {orderItem.originalLineTotal && orderItem.originalLineTotal > lineTotal && (
+                              <span className="text-green-600">
+                                ({Math.round(((orderItem.originalLineTotal - lineTotal) / orderItem.originalLineTotal) * 100)}% off)
+                              </span>
+                            )}
+                          </div>
+                        )}
+                        {/* عرض نسبة الخصم فقط إذا لم يكن هناك offerTitle */}
+                        {/* Bundle Offer يتم تطبيقه تلقائياً من الـ backend عند إضافة المنتجات */}
+                        {orderItem?.offerId && !orderItem.offerTitle && orderItem.originalLineTotal && orderItem.originalLineTotal > lineTotal && (
+                          <div className="text-xs text-blue-600 mt-1 flex items-center gap-1">
+                            <span>🎁</span>
+                            <span className="text-blue-600">Bundle Offer</span>
+                            <span className="text-green-600">
+                              ({Math.round(((orderItem.originalLineTotal - lineTotal) / orderItem.originalLineTotal) * 100)}% off)
+                            </span>
+                          </div>
+                        )}
                       </div>
                       <div className="flex items-center gap-3">
                         <div className="font-semibold text-gray-900">
@@ -1122,24 +1403,6 @@ export default function CashierTerminal() {
                             +
                           </button>
                         </div>
-                        <button
-                          onClick={() => {
-                              const discountAmount = prompt(
-                                "Enter discount amount:",
-                                "0"
-                              );
-                            if (discountAmount !== null) {
-                                applyItemDiscount(
-                                  product.id,
-                                  parseFloat(discountAmount) || 0
-                                );
-                            }
-                          }}
-                          className="text-blue-600 hover:text-blue-700 px-2 text-sm"
-                          title="Apply Discount"
-                        >
-                          Discount
-                        </button>
                         <button
                           onClick={() => removeFromCart(product.id)}
                           disabled={processing}
@@ -1170,15 +1433,71 @@ export default function CashierTerminal() {
               </div>
             )}
 
+            {/* Customer Section */}
+            {currentOrder && (
+              <div className="border-b border-gray-200 pb-4 mb-4">
+                {currentOrder.customerName ? (
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <User className="h-4 w-4 text-gray-600" />
+                      <div>
+                        <p className="text-sm font-medium text-gray-800">{currentOrder.customerName}</p>
+                        {currentOrder.customerPhone && (
+                          <p className="text-xs text-gray-500">{currentOrder.customerPhone}</p>
+                        )}
+                      </div>
+                    </div>
+                    <button
+                      onClick={handleRemoveCustomer}
+                      disabled={processing}
+                      className="text-xs text-red-600 hover:text-red-700 disabled:opacity-50"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => {
+                      setShowCustomerModal(true);
+                      setCustomerPhone("");
+                      setCustomerName("");
+                      setCustomerEmail("");
+                      setCustomerAddress("");
+                      setCurrentCustomer(null);
+                      setCustomerError(null);
+                    }}
+                    className="w-full flex items-center justify-center gap-2 py-2 px-3 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors text-sm"
+                  >
+                    <User className="h-4 w-4" />
+                    Add Customer (Optional)
+                  </button>
+                )}
+              </div>
+            )}
+
             {/* Order Summary */}
             <div className="space-y-2 border-t border-gray-200 pt-4">
               <div className="flex justify-between text-sm">
                 <span className="text-gray-600">Subtotal:</span>
                 <span className="text-gray-900">{fmtMoney(subtotal)}</span>
               </div>
+              {/* عرض خصم الـ offers على مستوى الـ items (Category/Product Offers) إذا كان موجوداً */}
+              {currentOrder && currentOrder.items.some(item => item.discountAmount > 0 || (item.originalLineTotal && item.originalLineTotal > item.lineTotal)) && (
+                <div className="text-xs text-gray-500 italic mb-1">
+                  Item discounts (Category/Product Offers): {fmtMoney(
+                    currentOrder.items.reduce((sum, item) => {
+                      const itemDiscount = item.discountAmount || 
+                        (item.originalLineTotal && item.originalLineTotal > item.lineTotal 
+                          ? item.originalLineTotal - item.lineTotal 
+                          : 0);
+                      return sum + itemDiscount;
+                    }, 0)
+                  )}
+                </div>
+              )}
               {discount > 0 && (
                 <div className="flex justify-between text-sm">
-                  <span className="text-gray-600">Discount:</span>
+                  <span className="text-gray-600">Order Discount (Offer):</span>
                   <span className="text-red-600">
                     -{fmtMoney(discount)}
                   </span>
@@ -1331,6 +1650,150 @@ export default function CashierTerminal() {
         )}
       </div>
 
+      {/* Customer Registration Modal */}
+      {showCustomerModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4 max-h-[90vh] overflow-y-auto">
+            <div className="p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-xl font-semibold text-gray-800">Add Customer</h2>
+                <button
+                  onClick={() => {
+                    setShowCustomerModal(false);
+                    setCustomerError(null);
+                  }}
+                  className="text-gray-400 hover:text-gray-600"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+
+              {customerError && (
+                <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
+                  {customerError}
+                </div>
+              )}
+
+              <div className="space-y-4">
+                {/* Phone Search */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Phone Number *
+                  </label>
+                  <div className="flex gap-2">
+                    <input
+                      type="tel"
+                      value={customerPhone}
+                      onChange={(e) => setCustomerPhone(e.target.value)}
+                      placeholder="Enter phone number"
+                      className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                    />
+                    <button
+                      onClick={handleSearchCustomer}
+                      disabled={searchingCustomer || !customerPhone.trim()}
+                      className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition flex items-center gap-2"
+                    >
+                      {searchingCustomer ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <Search className="w-4 h-4" />
+                      )}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Customer Form */}
+                {(!currentCustomer || customerError) && (
+                  <>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Name *
+                      </label>
+                      <input
+                        type="text"
+                        value={customerName}
+                        onChange={(e) => setCustomerName(e.target.value)}
+                        placeholder="Enter customer name"
+                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                        required
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Email (Optional)
+                      </label>
+                      <input
+                        type="email"
+                        value={customerEmail}
+                        onChange={(e) => setCustomerEmail(e.target.value)}
+                        placeholder="Enter email address"
+                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Address (Optional)
+                      </label>
+                      <textarea
+                        value={customerAddress}
+                        onChange={(e) => setCustomerAddress(e.target.value)}
+                        placeholder="Enter address"
+                        rows={3}
+                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+
+                    {!currentCustomer && (
+                      <button
+                        onClick={handleCreateCustomer}
+                        disabled={creatingCustomer || !customerName.trim() || !customerPhone.trim()}
+                        className="w-full px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition flex items-center justify-center gap-2"
+                      >
+                        {creatingCustomer ? (
+                          <>
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                            Creating...
+                          </>
+                        ) : (
+                          "Create Customer"
+                        )}
+                      </button>
+                    )}
+                  </>
+                )}
+
+                {/* Attach Customer Button */}
+                {currentCustomer && (
+                  <div className="space-y-3">
+                    <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
+                      <p className="text-sm font-medium text-green-800">Customer Found/Created</p>
+                      <p className="text-sm text-green-700">{currentCustomer.name}</p>
+                      <p className="text-xs text-green-600">{currentCustomer.phone}</p>
+                    </div>
+                    <button
+                      onClick={handleAttachCustomer}
+                      disabled={processing}
+                      className="w-full px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition flex items-center justify-center gap-2"
+                    >
+                      {processing ? (
+                        <>
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                          Attaching...
+                        </>
+                      ) : (
+                        "Attach to Order"
+                      )}
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Split Payment Modal */}
       {showSplitModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
@@ -1361,8 +1824,9 @@ export default function CashierTerminal() {
                   type="number"
                   step="0.01"
                   min="0"
+                  max={total}
                   value={splitCashAmount}
-                  onChange={(e) => setSplitCashAmount(e.target.value)}
+                  onChange={(e) => handleCashAmountChange(e.target.value)}
                   placeholder="0.00"
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
@@ -1375,8 +1839,9 @@ export default function CashierTerminal() {
                   type="number"
                   step="0.01"
                   min="0"
+                  max={total}
                   value={splitCardAmount}
-                  onChange={(e) => setSplitCardAmount(e.target.value)}
+                  onChange={(e) => handleCardAmountChange(e.target.value)}
                   placeholder="0.00"
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
@@ -1714,15 +2179,33 @@ export default function CashierTerminal() {
               ) : sessionStats ? (
                 <div className="space-y-3 mb-6">
                   <div className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
-                    <span className="text-gray-700 font-medium">Total cash collected:</span>
+                    <span className="text-gray-700 font-medium">Opening float:</span>
+                    <span className="text-gray-900 font-semibold">
+                      {fmtMoney(sessionStats.openingFloat)}
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
+                    <span className="text-gray-700 font-medium">Cash sales collected:</span>
                     <span className="text-gray-900 font-semibold">
                       {fmtMoney(sessionStats.totalCash)}
                     </span>
                   </div>
                   <div className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
-                    <span className="text-gray-700 font-medium">Total card collected:</span>
+                    <span className="text-gray-700 font-medium">Expected cash in drawer:</span>
+                    <span className="text-gray-900 font-semibold">
+                      {fmtMoney(sessionStats.expectedDrawer)}
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
+                    <span className="text-gray-700 font-medium">Card sales collected:</span>
                     <span className="text-gray-900 font-semibold">
                       {fmtMoney(sessionStats.totalCard)}
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
+                    <span className="text-gray-700 font-medium">Total sales (cash + card):</span>
+                    <span className="text-gray-900 font-semibold">
+                      {fmtMoney(sessionStats.totalSales)}
                     </span>
                   </div>
                   <div className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">

@@ -1,11 +1,12 @@
 import { useState, useEffect } from "react";
-import { LogOut, MessageSquare } from "lucide-react";
+import { LogOut, MessageSquare, UserCheck } from "lucide-react";
 import NotificationBell from "./NotificationBell";
 import MessagesPanel from "./MessagesPanel";
 import { Link, useLocation } from "react-router-dom";
 import { getUserDisplayName, getUserInfo, getCurrentRole } from "../services/tokens";
 import { logout } from "../services/auth.api";
 import { messagesApi } from "../services/messages.api";
+import { terminalApi } from "../services/terminal.api";
 
 function useRoleHeader() {
   useLocation(); // Keep for potential future use
@@ -39,8 +40,12 @@ function useRoleHeader() {
 
 export default function Topbar() {
   const { role, name } = useRoleHeader();
+  const location = useLocation();
   const [unreadCount, setUnreadCount] = useState(0);
   const [messagesOpen, setMessagesOpen] = useState(false);
+  const [pendingPairingRequests, setPendingPairingRequests] = useState(0);
+  const currentRole = getCurrentRole();
+  const isStoreManager = currentRole === 'STORE_MANAGER' || currentRole === 'CEO';
 
   useEffect(() => {
     const loadUnreadCount = async () => {
@@ -55,6 +60,22 @@ export default function Topbar() {
     
     return () => clearInterval(interval);
   }, []);
+
+  useEffect(() => {
+    if (!isStoreManager) return;
+
+    const loadPendingRequests = async () => {
+      const result = await terminalApi.getPendingPairingRequests();
+      if (result.data) {
+        setPendingPairingRequests(result.data.length);
+      }
+    };
+
+    loadPendingRequests();
+    const interval = setInterval(loadPendingRequests, 5000);
+    
+    return () => clearInterval(interval);
+  }, [isStoreManager]);
   
   return (
     <header className="sticky top-0 z-10 border-b border-[#0066FF]/20 shadow-sm bg-white/80 backdrop-blur-md transition-all duration-200 ease-in-out">
@@ -76,7 +97,7 @@ export default function Topbar() {
         {/* Soft divider */}
         <div className="hidden sm:block h-6 w-px bg-gradient-to-b from-transparent via-indigo-200/60 to-transparent" />
 
-        {/* Left section: Messages, Notifications, Logout */}
+        {/* Left section: Messages, Pairing Requests, Notifications, Logout */}
         <div className="flex items-center gap-1 sm:gap-2">
           <button 
             onClick={() => setMessagesOpen(true)}
@@ -90,6 +111,22 @@ export default function Topbar() {
               </span>
             )}
           </button>
+          {isStoreManager && (
+            <Link
+              to="/store-manager/pairing-requests"
+              aria-label="Pairing Requests"
+              className={`relative rounded-lg p-2 text-slate-600 hover:text-[#0066FF] hover:bg-blue-50/80 transition-all duration-200 ease-in-out hover:scale-105 active:scale-95 ${
+                location.pathname === "/store-manager/pairing-requests" ? "text-[#0066FF] bg-blue-50/80" : ""
+              }`}
+            >
+              <UserCheck className="h-5 w-5 transition-transform duration-200" />
+              {pendingPairingRequests > 0 && (
+                <span className="absolute -right-0.5 -top-0.5 grid h-4 w-4 place-items-center rounded-full bg-orange-500 text-[10px] text-white font-semibold ring-2 ring-white shadow-sm">
+                  {pendingPairingRequests > 9 ? "9+" : pendingPairingRequests}
+                </span>
+              )}
+            </Link>
+          )}
           <NotificationBell />
           <button 
             onClick={logout}

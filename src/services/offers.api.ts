@@ -1,4 +1,5 @@
 import { apiClient } from "./api.client";
+import { productsApi } from "./products.api";
 
 export interface Product {
   id: number;
@@ -211,68 +212,73 @@ export const offersApi = {
 
   /**
    * Fetch products by subcategory ID
-   * GET /api/products?subCategoryId={subCategoryId}
+   * Uses productsApi.search() or filter() with category filter
    */
   async fetchProductsBySubCategory(
     subCategoryId: number
   ): Promise<Product[] | null> {
     try {
-      const response = await apiClient.get<any>(
-        `/api/products?subCategoryId=${subCategoryId}`
-      );
+      // Use search API with category filter
+      // Note: This assumes the backend search/filter supports category filtering
+      // If not, we may need to fetch all products and filter client-side
+      let allProducts: Product[] = [];
+      let page = 0;
+      const pageSize = 1000;
+      let hasMore = true;
 
-      if (response.error) {
-        console.error("Failed to fetch products by subcategory:", response.error);
-        return null;
-      }
-
-      if (!response.data) {
-        console.warn("No products data received from API");
-        return null;
-      }
-
-      // Handle paginated response structure
-      let products: Product[] = [];
-      const data = response.data;
-
-      // If response has 'content' property (pagination)
-      if (data.content && Array.isArray(data.content)) {
-        products = data.content.map((p: any) => {
-          // Get category name from categories array
-          const categoryName =
-            p.categories && p.categories.length > 0
-              ? p.categories[0].name
-              : null;
-
-          return {
-            id: p.id,
-            sku: p.sku || "",
-            name: p.name || "",
-            price: p.defaultPrice || p.price || 0,
-            category: categoryName,
-          };
+      while (hasMore) {
+        // Try using filter API - adjust based on actual backend support
+        const response = await productsApi.filter({
+          page,
+          size: pageSize,
+          isActive: true,
         });
-      }
-      // If response.data is an array, use it directly
-      else if (Array.isArray(data)) {
-        products = data.map((p: any) => {
-          const categoryName =
-            p.categories && p.categories.length > 0
-              ? p.categories[0].name
-              : null;
 
-          return {
-            id: p.id,
-            sku: p.sku || "",
-            name: p.name || "",
-            price: p.defaultPrice || p.price || 0,
-            category: categoryName,
-          };
-        });
+        if (response.error) {
+          console.error("Failed to fetch products by subcategory:", response.error);
+          return null;
+        }
+
+        if (!response.data) {
+          console.warn("No products data received from API");
+          break;
+        }
+
+        // Filter products by subcategory on client side
+        // Check if product has this subcategory in its categories array
+        const pageProducts = response.data.content || [];
+        const filteredProducts = pageProducts
+          .filter((p: any) => {
+            if (p.categories && Array.isArray(p.categories)) {
+              return p.categories.some((cat: any) => cat.id === subCategoryId);
+            }
+            return false;
+          })
+          .map((p: any) => {
+            const categoryName =
+              p.categories && p.categories.length > 0
+                ? p.categories[0].name
+                : null;
+
+            return {
+              id: p.id,
+              sku: p.sku || "",
+              name: p.name || "",
+              price: p.defaultPrice || p.price || 0,
+              category: categoryName,
+            };
+          });
+
+        allProducts = allProducts.concat(filteredProducts);
+
+        // Check if there are more pages
+        const totalPages = response.data.totalPages || 0;
+        hasMore = page < totalPages - 1;
+        page++;
       }
 
-      console.log("Fetched products by subcategory:", products);
-      return products.length > 0 ? products : null;
+      console.log("Fetched products by subcategory:", allProducts);
+      return allProducts.length > 0 ? allProducts : null;
     } catch (error) {
       console.error("Exception while fetching products by subcategory:", error);
       return null;
@@ -284,64 +290,60 @@ export const offersApi = {
    */
   async fetchProducts(): Promise<Product[] | null> {
     try {
-      const response = await apiClient.get<any>("/api/products");
-      
-      if (response.error) {
-        console.error("Failed to fetch products:", response.error);
-        return null;
+      // Fetch all products using filter API with large page size
+      // We'll fetch multiple pages if needed to get all products
+      let allProducts: Product[] = [];
+      let page = 0;
+      const pageSize = 1000;
+      let hasMore = true;
+
+      while (hasMore) {
+        const response = await productsApi.filter({
+          page,
+          size: pageSize,
+          isActive: true, // Only fetch active products
+        });
+
+        if (response.error) {
+          console.error("Failed to fetch products:", response.error);
+          return null;
+        }
+
+        if (!response.data) {
+          console.warn("No products data received from API");
+          break;
+        }
+
+        // Handle paginated response
+        const pageProducts = response.data.content || [];
+        const mappedProducts = pageProducts.map((p: any) => {
+          // Get category name from categories array or category field
+          const categoryName = 
+            (p.categories && p.categories.length > 0)
+              ? p.categories[0].name
+              : (typeof p.category === 'string' 
+                  ? p.category 
+                  : (p.category?.name || p.categoryName || null));
+
+          return {
+            id: p.id,
+            sku: p.sku || "",
+            name: p.name || "",
+            price: p.price || p.defaultPrice || 0,
+            category: categoryName,
+          };
+        });
+
+        allProducts = allProducts.concat(mappedProducts);
+
+        // Check if there are more pages
+        const totalPages = response.data.totalPages || 0;
+        hasMore = page < totalPages - 1;
+        page++;
       }
-      
-      if (!response.data) {
-        console.warn("No products data received from API");
-        return null;
-      }
-      
-      // Handle different response structures
-      let products: Product[] = [];
-      
-      // If response.data is an array, use it directly
-      if (Array.isArray(response.data)) {
-        products = response.data.map((p: any) => ({
-          id: p.id,
-          sku: p.sku || "",
-          name: p.name || "",
-          price: p.price || p.defaultPrice || 0,
-          category: p.category || p.categoryName || null,
-        }));
-      }
-      // If response.data has a 'data' property (nested structure)
-      else if (response.data.data && Array.isArray(response.data.data)) {
-        products = response.data.data.map((p: any) => ({
-          id: p.id,
-          sku: p.sku || "",
-          name: p.name || "",
-          price: p.price || p.defaultPrice || 0,
-          category: p.category || p.categoryName || null,
-        }));
-      }
-      // If response.data has a 'content' property (pagination)
-      else if (response.data.content && Array.isArray(response.data.content)) {
-        products = response.data.content.map((p: any) => ({
-          id: p.id,
-          sku: p.sku || "",
-          name: p.name || "",
-          price: p.price || p.defaultPrice || 0,
-          category: p.category || p.categoryName || null,
-        }));
-      }
-      // If response.data has an 'items' property
-      else if (response.data.items && Array.isArray(response.data.items)) {
-        products = response.data.items.map((p: any) => ({
-          id: p.id,
-          sku: p.sku || "",
-          name: p.name || "",
-          price: p.price || p.defaultPrice || 0,
-          category: p.category || p.categoryName || null,
-        }));
-      }
-      
-      console.log("Fetched products:", products);
-      return products.length > 0 ? products : null;
+
+      console.log("Fetched products:", allProducts);
+      return allProducts.length > 0 ? allProducts : null;
     } catch (error) {
       console.error("Exception while fetching products:", error);
       return null;

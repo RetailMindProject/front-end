@@ -8,6 +8,9 @@ export interface OrderItem {
   quantity: number;
   discountAmount: number;
   lineTotal: number;
+  offerId?: number | null; // ID of the offer applied to this item (if any)
+  offerTitle?: string | null; // Title of the offer applied to this item (if any)
+  originalLineTotal?: number; // Original line total before any discounts
 }
 
 // Payment
@@ -53,11 +56,6 @@ export interface OrderHistoryItem {
   paidAt: string | null;
 }
 
-// Create Order Request
-export interface CreateOrderRequest {
-  sessionId: number;
-}
-
 // Add Item Request
 export interface AddItemRequest {
   orderId: number;
@@ -99,11 +97,11 @@ export const ordersApi = {
   /**
    * Create a new order
    * POST /api/orders
+   * Note: لا نرسل sessionId - الـ backend يجلب sessionId تلقائياً من browser token
    */
-  async createOrder(
-    request: CreateOrderRequest
-  ): Promise<{ data?: Order; error?: string }> {
-    const response = await apiClient.post<Order>("/api/orders", request);
+  async createOrder(): Promise<{ data?: Order; error?: string }> {
+    // إرسال body فارغ {} - الـ backend يجلب sessionId من browser token
+    const response = await apiClient.post<Order>("/api/orders", {});
 
     if (response.error) {
       return { error: response.error };
@@ -309,4 +307,85 @@ export const ordersApi = {
 
     return { data: response.data || [] };
   },
+
+  /**
+   * Attach customer to order
+   * PATCH /api/orders/{orderId}/customer
+   * Headers: X-Browser-Token (sent via cookies)
+   * Body: { customerId: number } or { customerId: null }
+   * Response: Updated order
+   */
+  async attachCustomerToOrder(
+    orderId: number,
+    customerId: number | null
+  ): Promise<{ data?: Order; error?: string }> {
+    const response = await apiClient.patch<Order>(
+      `/api/orders/${orderId}/customer`,
+      { customerId }
+    );
+
+    if (response.error) {
+      return { error: response.error };
+    }
+
+    return { data: response.data };
+  },
+
+  /**
+   * Search order by orderNumber (for returns)
+   * GET /api/orders/search?orderNumber=...
+   * Headers: X-Browser-Token (sent via cookies)
+   * Response: Order with return-specific fields (alreadyReturnedQty, remainingQty, etc.)
+   */
+  async searchOrderByNumber(
+    orderNumber: string
+  ): Promise<{ data?: OrderForReturn; error?: string }> {
+    const response = await apiClient.get<OrderForReturn>(
+      `/api/orders/search?orderNumber=${encodeURIComponent(orderNumber)}`
+    );
+
+    if (response.error) {
+      return { error: response.error };
+    }
+
+    return { data: response.data };
+  },
 };
+
+// Order for Return - includes return-specific fields
+// Note: API returns id (not orderItemId) and quantity (not soldQty)
+export interface OrderItemForReturn {
+  id: number; // This is the orderItemId - will be sent as originalOrderItemId
+  productId: number;
+  name: string;
+  quantity: number; // This is the soldQty
+  unitPrice: number;
+  lineDiscount: number;
+  taxAmount: number;
+  lineTotal: number;
+  // These fields may not exist in API response, will be calculated
+  alreadyReturnedQty?: number;
+  remainingQty?: number;
+}
+
+export interface OrderForReturn {
+  id?: number; // Some APIs return id instead of orderId
+  orderId: number; // Primary field - order ID
+  orderNumber: string;
+  status: "PAID" | "PARTIALLY_RETURNED" | "RETURNED";
+  paidAt: string;
+  totals: {
+    subtotal: number;
+    discountTotal: number;
+    taxTotal: number;
+    grandTotal: number;
+  };
+  customer: {
+    id: number;
+    name: string;
+    phone: string;
+  } | null;
+  items: OrderItemForReturn[];
+  payments: Payment[];
+}
+

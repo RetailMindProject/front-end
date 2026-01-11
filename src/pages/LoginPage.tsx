@@ -16,9 +16,9 @@ import {
 import AuthCard from "../components/AuthCard";
 import Logo from "../components/Logo";
 import FeatureItem from "../components/FeatureItem";
-import SessionSetupDialog from "../components/SessionSetupDialog";
-import { login, logout } from "../services/auth.api";
-import { getCurrentToken } from "../services/tokens";
+import { login, cashierLogin } from "../services/auth.api";
+import { terminalApi } from "../services/terminal.api";
+import { setTokenForRole, setUserInfo } from "../services/tokens";
 import type { UserRole } from "../services/tokens";
 
 export default function Login() {
@@ -29,7 +29,6 @@ export default function Login() {
   const [rememberMe, setRememberMe] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [showSessionSetup, setShowSessionSetup] = useState(false);
 
   const getRoleRoute = (role: UserRole): string => {
     switch (role) {
@@ -61,59 +60,91 @@ export default function Login() {
     }
 
     try {
+      // First try regular login for all roles (STORE_MANAGER, CEO, INVENTORY_MANAGER, etc.)
       const result = await login(email, password);
-
-      // Log full response for debugging
-      console.log("Login response:", {
-        hasError: !!result.error,
-        hasData: !!result.data,
-        role: result.data?.role,
-        hasToken: !!result.data?.token,
-        error: result.error,
-      });
-
-      if (result.error) {
-        setError(result.error.message || "Login failed. Please check your credentials.");
-        setLoading(false);
-        return;
-      }
-
+      
       if (result.data) {
-        // Validate that we have both token and role
-        if (!result.data.token) {
-          setError("Login response missing token. Please try again.");
-          setLoading(false);
-          return;
-        }
+        // Login successful - check role to determine next step
+        const role = result.data.role;
+        
+        if (role === "CASHIER") {
+          // For cashier, try cashier login endpoint to get browser token
+          const cashierResult = await cashierLogin(email, password);
+          
+          if (cashierResult.data) {
+            const cashierData = cashierResult.data;
+            
+            // Save token and user info
+            if (cashierData.token) {
+              setTokenForRole("CASHIER", cashierData.token);
+              setUserInfo({
+                id: cashierData.userId,
+                userId: cashierData.userId,
+                firstName: "",
+                lastName: "",
+                email: cashierData.username,
+                phone: "",
+                address: "",
+                role: "CASHIER",
+                sessionId: cashierData.sessionId,
+                terminalId: cashierData.terminalId,
+                terminalCode: cashierData.terminalCode,
+              });
+            }
 
-        if (!result.data.role) {
-          setError("Login response missing role. Please try again.");
-          setLoading(false);
-          return;
-        }
+            // Check pairing status to determine next step
+            const pairingStatus = await terminalApi.checkPairingStatus();
+            
+            if (pairingStatus.data?.isPaired) {
+              navigate("/cashier", { replace: true });
+            } else {
+              navigate("/select-terminal", {
+                replace: true,
+                state: {
+                  message: "This browser is not paired with a terminal yet. Please pair to continue.",
+                  fromLogin: true,
+                },
+              });
+            }
+            setLoading(false);
+            return;
+          }
 
-        // If cashier, show session setup dialog instead of navigating directly
-        if (result.data.role === "CASHIER") {
-          setShowSessionSetup(true);
-          setLoading(false); // Reset loading when showing dialog
+          if (cashierResult.error?.status === 409) {
+            const blocker = cashierResult.error.details as { currentUserName?: string } | null | undefined;
+            const blockingUserName = blocker?.currentUserName?.trim() || "Another cashier";
+
+            alert(
+              `Heads up: ${blockingUserName} is already signed in on this device.\n\n` +
+              "Please ask them to end their session before continuing."
+            );
+
+            setError(
+              blockingUserName === "Another cashier"
+                ? "Another cashier is already active on this browser. Please ask them to close the session first."
+                : `${blockingUserName} is already active on this browser. Please ask them to close the session first.`
+            );
+            setLoading(false);
+            return;
+          }
         } else {
-          // For other roles, redirect normally
-          const route = getRoleRoute(result.data.role);
-          console.log("Navigating to route:", route, "for role:", result.data.role);
-          
-          // Reset loading before navigation
+          // For other roles (STORE_MANAGER, CEO, INVENTORY_MANAGER), redirect normally
+          const route = getRoleRoute(role);
+          navigate(route, { replace: true });
           setLoading(false);
-          
-          // Use setTimeout to ensure state update completes before navigation
-          setTimeout(() => {
-            navigate(route, { replace: true });
-          }, 0);
+          return;
         }
       } else {
         // Unexpected response shape - no data and no error
         console.error("Unexpected login response: no data and no error");
         setError("Unexpected response from server. Please try again.");
         setLoading(false);
+      }
+
+      if (result.error) {
+        setError(result.error.message || "Login failed. Please check your credentials.");
+        setLoading(false);
+        return;
       }
     } catch (err) {
       console.error("Login error:", err);
@@ -357,33 +388,6 @@ export default function Login() {
         </AuthCard>
       </div>
 
-      {/* Session Setup Dialog for Cashiers */}
-      <SessionSetupDialog
-        isOpen={showSessionSetup}
-        onClose={() => {
-          // If user closes without setting up session, logout and return to login
-          logout();
-        }}
-        onSessionOpened={async (_sessionId) => {
-          // Session opened successfully, close dialog first
-          setShowSessionSetup(false);
-          
-          // Verify token exists before navigation
-          const token = getCurrentToken();
-          if (!token) {
-            console.error("No token found after session setup");
-            setError("Authentication error. Please login again.");
-            return;
-          }
-          
-          // Small delay to ensure dialog closes and state updates
-          await new Promise(resolve => setTimeout(resolve, 200));
-          
-          // Navigate to POS screen using window.location to ensure full page load
-          // This prevents any potential React Router issues
-          window.location.href = "/cashier";
-        }}
-      />
     </div>
   );
 }

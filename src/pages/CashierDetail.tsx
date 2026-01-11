@@ -1,12 +1,13 @@
 import { useNavigate, useParams } from "react-router-dom";
 import { useEffect, useState } from "react";
-import { ArrowLeft, User2, Clock, DollarSign, ShoppingCart } from "lucide-react";
+import { ArrowLeft, User2, Clock, DollarSign, ShoppingCart, X } from "lucide-react";
 import Card from "../components/sessions/primitives/Card";
 import Header from "../components/sessions/primitives/Header";
 import Row from "../components/sessions/primitives/Row";
 import KPI from "../components/sessions/primitives/KPI";
 import { sessionsApi } from "../services/sessions.api";
 import type { CashierDetailTransformed } from "../services/sessions.api";
+import { getCurrentRole, getRoleFromToken, getCurrentToken } from "../services/tokens";
 
 const fmt = new Intl.NumberFormat(undefined, {
   style: "currency",
@@ -21,6 +22,35 @@ export default function CashierDetail() {
   const [cashier, setCashier] = useState<CashierDetailTransformed | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [showCloseModal, setShowCloseModal] = useState(false);
+  const [closingAmount, setClosingAmount] = useState("");
+  const [closingLoading, setClosingLoading] = useState(false);
+  const [isCEO, setIsCEO] = useState(false);
+
+  // Check if user is CEO
+  useEffect(() => {
+    const checkCEO = () => {
+      const currentRole = getCurrentRole();
+      const token = getCurrentToken();
+      
+      if (token) {
+        const tokenRole = getRoleFromToken(token);
+        if (tokenRole === 'CEO') {
+          setIsCEO(true);
+          return;
+        }
+      }
+      
+      if (currentRole === 'CEO') {
+        setIsCEO(true);
+        return;
+      }
+      
+      setIsCEO(false);
+    };
+
+    checkCEO();
+  }, []);
 
   useEffect(() => {
     const fetchCashierDetail = async () => {
@@ -213,6 +243,139 @@ export default function CashierDetail() {
             </ul>
           </div>
         </Card>
+      )}
+
+      {/* Close Session Modal (CEO only) */}
+      {isCEO && cashier.sessionId && cashier.active && (
+        <div className="mt-6">
+          <button
+            onClick={() => {
+              // Calculate suggested closing amount
+              const suggested = (cashier.openingFloat || 0) + (cashier.totalSales || 0);
+              setClosingAmount(suggested.toString());
+              setShowCloseModal(true);
+            }}
+            className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+          >
+            Close Session (CEO Only)
+          </button>
+        </div>
+      )}
+
+      {/* Close Session Modal */}
+      {showCloseModal && (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4">
+          <div className="w-full max-w-md rounded-2xl border border-slate-700 bg-[#0f172a] p-5 shadow-xl">
+            <div className="mb-3 flex items-center justify-between">
+              <div className="text-lg font-medium text-white">Close Session</div>
+              <button
+                className="rounded-lg p-1 text-slate-300 hover:bg-slate-800"
+                onClick={() => setShowCloseModal(false)}
+                aria-label="Close modal"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="space-y-4">
+              <div>
+                <label htmlFor="closingAmount" className="block text-sm font-medium text-slate-300 mb-1">
+                  Closing Amount <span className="text-red-400">*</span>
+                </label>
+                <input
+                  type="number"
+                  id="closingAmount"
+                  value={closingAmount}
+                  onChange={(e) => setClosingAmount(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg bg-slate-800 border border-slate-600 text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  placeholder="Enter closing amount"
+                  disabled={closingLoading}
+                />
+                <p className="mt-1 text-xs text-slate-400">
+                  Opening Float: {fmtMoney(cashier.openingFloat || 0)} + Total Sales: {fmtMoney(cashier.totalSales || 0)} = Suggested: {fmtMoney((cashier.openingFloat || 0) + (cashier.totalSales || 0))}
+                </p>
+              </div>
+              {error && (
+                <div className="p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg text-sm">
+                  {error}
+                </div>
+              )}
+              <div className="flex gap-3 pt-4">
+                <button
+                  onClick={async () => {
+                    if (!cashier.sessionId || !closingAmount) {
+                      setError("Please enter closing amount");
+                      return;
+                    }
+
+                    const amount = parseFloat(closingAmount);
+                    if (isNaN(amount) || amount < 0) {
+                      setError("Please enter a valid closing amount");
+                      return;
+                    }
+
+                    setClosingLoading(true);
+                    setError(null);
+
+                    const result = await sessionsApi.closeSession(cashier.sessionId, amount);
+
+                    if (result.error) {
+                      setError(result.error);
+                      setClosingLoading(false);
+                      return;
+                    }
+
+                    // Reload cashier detail
+                    setShowCloseModal(false);
+                    setClosingAmount("");
+                    setClosingLoading(false);
+                    
+                    // Refresh the page data
+                    const data = await sessionsApi.fetchCashierDetail(cashier.sessionId);
+                    if (data) {
+                      const transformedData = {
+                        cashierId: data.cashierInfo.cashierId,
+                        name: data.cashierInfo.name,
+                        email: data.cashierInfo.email,
+                        phone: data.cashierInfo.phone,
+                        role: data.cashierInfo.role,
+                        active: data.cashierInfo.active,
+                        sessionId: data.sessionInfo.sessionId,
+                        openedAt: data.sessionInfo.openedAt,
+                        openingFloat: data.sessionInfo.openingFloat,
+                        closingAmount: data.sessionInfo.closingAmount,
+                        totalOrders: data.performance.totalOrders,
+                        totalSales: data.performance.totalSales,
+                        cashIn: data.performance.cashIn,
+                        cardIn: data.performance.cardIn,
+                        transactions: data.recentTransactions.map(t => ({
+                          orderNumber: t.orderNumber,
+                          time: t.time,
+                          amount: t.amount
+                        }))
+                      };
+                      setCashier(transformedData);
+                    }
+                  }}
+                  disabled={closingLoading}
+                  className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  {closingLoading ? 'Closing...' : 'Close Session'}
+                </button>
+                <button
+                  onClick={() => {
+                    setShowCloseModal(false);
+                    setClosingAmount("");
+                    setError(null);
+                  }}
+                  disabled={closingLoading}
+                  className="px-4 py-2 bg-slate-700 text-white rounded-lg hover:bg-slate-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
