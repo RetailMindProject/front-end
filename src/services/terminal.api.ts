@@ -91,8 +91,8 @@ export interface PairingCodeResponse {
 
 // Pair Terminal Request
 export interface PairTerminalRequest {
-  terminalId: number;
   pairingCode: string;
+  terminalId?: number; // Optional, backend may infer from pairing code
   forceOverride?: boolean;
 }
 
@@ -100,11 +100,12 @@ export interface PairTerminalRequest {
 export interface PairTerminalResponse {
   terminalId: number;
   terminalCode: string;
-  terminalDescription: string;
-  sessionId: number;
-  sessionStatus: "OPEN" | "CLOSED";
-  openingFloat: number;
-  message: string;
+  isPaired: boolean;
+  terminalDescription?: string;
+  sessionId?: number;
+  sessionStatus?: "OPEN" | "CLOSED";
+  openingFloat?: number;
+  message?: string;
 }
 
 export interface UnpairResponse {
@@ -379,18 +380,20 @@ export const terminalApi = {
   /**
    * Pair Terminal with Pairing Code
    * POST /api/terminal/pair
-   * Request body: { terminalId: number, pairingCode: string }
-   * Response: PairTerminalResponse with sessionId, sessionStatus, openingFloat, etc.
+   * Headers: X-Browser-Token (sent via cookies with credentials: 'include')
+   * Request body: { pairingCode: string }
+   * Response: { terminalId, terminalCode, isPaired: true }
    */
   async pairTerminal(
     request: PairTerminalRequest
   ): Promise<{ data?: PairTerminalResponse; error?: string; status?: number }> {
+    // Use pairingCode from request (terminalId is optional, backend may infer from pairing code)
     const response = await apiClient.post<PairTerminalResponse>(
       "/api/terminal/pair",
       {
-        terminalId: request.terminalId,
         pairingCode: request.pairingCode,
-        forceOverride: request.forceOverride ?? false,
+        ...(request.terminalId && { terminalId: request.terminalId }),
+        ...(request.forceOverride && { forceOverride: request.forceOverride }),
       }
     );
 
@@ -810,6 +813,81 @@ export const terminalApi = {
 
     if (response.error) {
       return { error: response.error };
+    }
+
+    return { data: response.data };
+  },
+
+  /**
+   * Get current open session for paired terminal
+   * GET /api/cashier/session/current
+   * Headers: X-Browser-Token (sent via cookies)
+   * Response: { sessionId, status=OPEN, terminalId, userId }
+   */
+  async getCurrentOpenSession(): Promise<{
+    data?: {
+      sessionId: number;
+      status: "OPEN";
+      terminalId: number;
+      userId: number;
+    };
+    error?: string;
+  }> {
+    const response = await apiClient.get<{
+      sessionId: number;
+      status: "OPEN" | "CLOSED";
+      terminalId: number;
+      userId: number;
+    }>("/api/cashier/session/current");
+
+    if (response.error) {
+      return { error: response.error };
+    }
+
+    if (!response.data) {
+      return { error: "No session data received" };
+    }
+
+    // Filter to only return OPEN sessions
+    if (response.data.status !== "OPEN") {
+      return { error: "No open session found" };
+    }
+
+    // Type assertion since we've verified status is "OPEN"
+    return { 
+      data: {
+        sessionId: response.data.sessionId,
+        status: "OPEN" as const,
+        terminalId: response.data.terminalId,
+        userId: response.data.userId,
+      }
+    };
+  },
+
+  /**
+   * Open session (if none exists)
+   * POST /api/cashier/session/open
+   * Headers: X-Browser-Token (sent via cookies)
+   * Body: { openingFloat?: number } (optional, may have default)
+   * Response: { sessionId, status=OPEN }
+   */
+  async openCashierSession(openingFloat?: number): Promise<{
+    data?: { sessionId: number; status: "OPEN" };
+    error?: string;
+  }> {
+    const response = await apiClient.post<{
+      sessionId: number;
+      status: "OPEN";
+    }>("/api/cashier/session/open", {
+      ...(openingFloat !== undefined && { openingFloat }),
+    });
+
+    if (response.error) {
+      return { error: response.error };
+    }
+
+    if (!response.data) {
+      return { error: "No session data received" };
     }
 
     return { data: response.data };

@@ -307,4 +307,85 @@ export const ordersApi = {
 
     return { data: response.data || [] };
   },
+
+  /**
+   * Attach customer to order
+   * PATCH /api/orders/{orderId}/customer
+   * Headers: X-Browser-Token (sent via cookies)
+   * Body: { customerId: number } or { customerId: null }
+   * Response: Updated order
+   */
+  async attachCustomerToOrder(
+    orderId: number,
+    customerId: number | null
+  ): Promise<{ data?: Order; error?: string }> {
+    const response = await apiClient.patch<Order>(
+      `/api/orders/${orderId}/customer`,
+      { customerId }
+    );
+
+    if (response.error) {
+      return { error: response.error };
+    }
+
+    return { data: response.data };
+  },
+
+  /**
+   * Search order by orderNumber (for returns)
+   * GET /api/orders/search?orderNumber=...
+   * Headers: X-Browser-Token (sent via cookies)
+   * Response: Order with return-specific fields (alreadyReturnedQty, remainingQty, etc.)
+   */
+  async searchOrderByNumber(
+    orderNumber: string
+  ): Promise<{ data?: OrderForReturn; error?: string }> {
+    const response = await apiClient.get<OrderForReturn>(
+      `/api/orders/search?orderNumber=${encodeURIComponent(orderNumber)}`
+    );
+
+    if (response.error) {
+      return { error: response.error };
+    }
+
+    return { data: response.data };
+  },
 };
+
+// Order for Return - includes return-specific fields
+// Note: API returns id (not orderItemId) and quantity (not soldQty)
+export interface OrderItemForReturn {
+  id: number; // This is the orderItemId - will be sent as originalOrderItemId
+  productId: number;
+  name: string;
+  quantity: number; // This is the soldQty
+  unitPrice: number;
+  lineDiscount: number;
+  taxAmount: number;
+  lineTotal: number;
+  // These fields may not exist in API response, will be calculated
+  alreadyReturnedQty?: number;
+  remainingQty?: number;
+}
+
+export interface OrderForReturn {
+  id?: number; // Some APIs return id instead of orderId
+  orderId: number; // Primary field - order ID
+  orderNumber: string;
+  status: "PAID" | "PARTIALLY_RETURNED" | "RETURNED";
+  paidAt: string;
+  totals: {
+    subtotal: number;
+    discountTotal: number;
+    taxTotal: number;
+    grandTotal: number;
+  };
+  customer: {
+    id: number;
+    name: string;
+    phone: string;
+  } | null;
+  items: OrderItemForReturn[];
+  payments: Payment[];
+}
+
