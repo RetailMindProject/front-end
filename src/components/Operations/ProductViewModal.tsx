@@ -222,7 +222,7 @@ const ProductViewModal = ({ product, isOpen, onClose }: ProductViewModalProps) =
                   : "text-slate-600 hover:text-slate-800"
               }`}
             >
-              Forecast / التنبؤ
+              Forecast
               {activeTab === "forecast" && (
                 <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-600" />
               )}

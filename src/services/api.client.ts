@@ -1,6 +1,6 @@
 import { getCurrentToken, getTokenForRole, type UserRole } from "./tokens";
 
-const API_BASE_URL = "http://localhost:8081";
+const API_BASE_URL = import.meta.env.VITE_POS_BASE_URL || "http://localhost:8081";
 
 export interface ApiResponse<T> {
   data?: T;
@@ -133,9 +133,14 @@ async function apiRequest<T>(
           ? 'Access denied. You do not have permission to access this resource. Please contact your administrator.'
           : errorMessage;
       } else if (response.status === 404) {
-        errorMessage = errorMessage.includes('HTTP error')
-          ? 'Resource not found.'
-          : errorMessage;
+        // Check if it's a static resource error (common Spring Boot issue)
+        if (errorMessage.includes('No static resource') || errorMessage.includes('NoResourceFoundException')) {
+          errorMessage = 'API endpoint not found. The requested endpoint may not be configured on the backend.';
+        } else {
+          errorMessage = errorMessage.includes('HTTP error')
+            ? 'Resource not found.'
+            : errorMessage;
+        }
       } else if (response.status >= 500) {
         errorMessage = errorMessage.includes('HTTP error')
           ? 'Server error. Please try again later.'
