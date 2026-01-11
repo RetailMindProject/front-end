@@ -14,6 +14,7 @@ import {
   User,
   X,
   Loader2,
+  RotateCcw,
 } from "lucide-react";
 import { getUserDisplayName, setSessionId, clearSessionId } from "../services/tokens";
 import { logoutForRole } from "../services/auth.api";
@@ -22,6 +23,7 @@ import { offersApi } from "../services/offers.api";
 import { ordersApi, type Order, type OrderHistoryItem } from "../services/orders.api";
 import { categoriesApi, type CategoryHierarchy } from "../services/categories.api";
 import { terminalApi } from "../services/terminal.api";
+import { customersApi, type Customer } from "../services/customers.api";
 
 interface Product {
   id: string | number;
@@ -81,6 +83,17 @@ export default function CashierTerminal() {
   const [heldOrders, setHeldOrders] = useState<Order[]>([]);
   const [heldOrdersExpanded, setHeldOrdersExpanded] = useState(false);
   const [unpairing, setUnpairing] = useState(false);
+  
+  // Customer registration state
+  const [showCustomerModal, setShowCustomerModal] = useState(false);
+  const [customerPhone, setCustomerPhone] = useState("");
+  const [customerName, setCustomerName] = useState("");
+  const [customerEmail, setCustomerEmail] = useState("");
+  const [customerAddress, setCustomerAddress] = useState("");
+  const [searchingCustomer, setSearchingCustomer] = useState(false);
+  const [creatingCustomer, setCreatingCustomer] = useState(false);
+  const [customerError, setCustomerError] = useState<string | null>(null);
+  const [currentCustomer, setCurrentCustomer] = useState<Customer | null>(null);
 
   const cashierName = getUserDisplayName();
   const redirectToSelectTerminal = (customMessage?: string) => {
@@ -476,6 +489,134 @@ export default function CashierTerminal() {
   const tax = currentOrder?.taxAmount || (subtotal - discount) * 0.1;
   // الـ total يجب أن يأتي من الـ backend مباشرة لأنه يحتوي على كل الحسابات الصحيحة
   const total = currentOrder?.grandTotal || (subtotal - discount + tax);
+
+  // Customer registration functions
+  const handleSearchCustomer = async () => {
+    if (!customerPhone.trim()) {
+      setCustomerError("Please enter a phone number");
+      return;
+    }
+
+    setSearchingCustomer(true);
+    setCustomerError(null);
+
+    try {
+      const result = await customersApi.getCustomerByPhone(customerPhone.trim());
+      
+      if (result.error && result.status === 404) {
+        // Customer not found - show create form
+        setCustomerError(null);
+        setCustomerName("");
+        setCustomerEmail("");
+        setCustomerAddress("");
+      } else if (result.error) {
+        setCustomerError(result.error);
+      } else if (result.data) {
+        // Customer found
+        setCurrentCustomer(result.data);
+        setCustomerName(result.data.name);
+        setCustomerEmail(result.data.email || "");
+        setCustomerAddress(result.data.address || "");
+        setCustomerError(null);
+      }
+    } catch (err) {
+      setCustomerError("An error occurred while searching for customer");
+      console.error(err);
+    } finally {
+      setSearchingCustomer(false);
+    }
+  };
+
+  const handleCreateCustomer = async () => {
+    if (!customerName.trim() || !customerPhone.trim()) {
+      setCustomerError("Name and phone are required");
+      return;
+    }
+
+    setCreatingCustomer(true);
+    setCustomerError(null);
+
+    try {
+      const result = await customersApi.createCustomer({
+        name: customerName.trim(),
+        phone: customerPhone.trim(),
+        email: customerEmail.trim() || undefined,
+        address: customerAddress.trim() || undefined,
+      });
+
+      if (result.error) {
+        setCustomerError(result.error);
+      } else if (result.data) {
+        setCurrentCustomer({
+          id: result.data.customerId,
+          name: result.data.name,
+          phone: result.data.phone,
+          email: result.data.email || null,
+          address: result.data.address || null,
+        });
+        setCustomerError(null);
+      }
+    } catch (err) {
+      setCustomerError("An error occurred while creating customer");
+      console.error(err);
+    } finally {
+      setCreatingCustomer(false);
+    }
+  };
+
+  const handleAttachCustomer = async () => {
+    if (!currentOrder || !currentCustomer) {
+      setCustomerError("No customer selected");
+      return;
+    }
+
+    setProcessing(true);
+    try {
+      const result = await ordersApi.attachCustomerToOrder(
+        currentOrder.id,
+        currentCustomer.id
+      );
+
+      if (result.error) {
+        setCustomerError(result.error);
+      } else if (result.data) {
+        setCurrentOrder(result.data);
+        setShowCustomerModal(false);
+        setCustomerError(null);
+        // Reset customer form
+        setCustomerPhone("");
+        setCustomerName("");
+        setCustomerEmail("");
+        setCustomerAddress("");
+      }
+    } catch (err) {
+      setCustomerError("An error occurred while attaching customer");
+      console.error(err);
+    } finally {
+      setProcessing(false);
+    }
+  };
+
+  const handleRemoveCustomer = async () => {
+    if (!currentOrder) return;
+
+    setProcessing(true);
+    try {
+      const result = await ordersApi.attachCustomerToOrder(currentOrder.id, null);
+
+      if (result.error) {
+        alert(`Failed to remove customer: ${result.error}`);
+      } else if (result.data) {
+        setCurrentOrder(result.data);
+        setCurrentCustomer(null);
+      }
+    } catch (err) {
+      alert("An error occurred while removing customer");
+      console.error(err);
+    } finally {
+      setProcessing(false);
+    }
+  };
 
   const handlePayment = async (method: "cash" | "card" | "both") => {
     if (!currentOrder || currentOrder.items.length === 0) {
@@ -966,6 +1107,20 @@ export default function CashierTerminal() {
         <h1 className="text-2xl font-semibold text-gray-800">{cashierName}</h1>
         <div className="flex items-center gap-3">
           <button
+            onClick={() => navigate("/cashier/return")}
+            className="p-2 rounded-lg text-gray-600 hover:text-orange-600 hover:bg-orange-50 transition-colors"
+            title="Return Order"
+          >
+            <RotateCcw className="h-5 w-5" />
+          </button>
+          <button
+            onClick={() => navigate("/cashier/returns")}
+            className="p-2 rounded-lg text-gray-600 hover:text-purple-600 hover:bg-purple-50 transition-colors"
+            title="Return Orders History"
+          >
+            <RotateCcw className="h-5 w-5" />
+          </button>
+          <button
             onClick={handleViewOrders}
             className="p-2 rounded-lg text-gray-600 hover:text-blue-600 hover:bg-blue-50 transition-colors"
             title="View Orders"
@@ -1278,6 +1433,48 @@ export default function CashierTerminal() {
               </div>
             )}
 
+            {/* Customer Section */}
+            {currentOrder && (
+              <div className="border-b border-gray-200 pb-4 mb-4">
+                {currentOrder.customerName ? (
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <User className="h-4 w-4 text-gray-600" />
+                      <div>
+                        <p className="text-sm font-medium text-gray-800">{currentOrder.customerName}</p>
+                        {currentOrder.customerPhone && (
+                          <p className="text-xs text-gray-500">{currentOrder.customerPhone}</p>
+                        )}
+                      </div>
+                    </div>
+                    <button
+                      onClick={handleRemoveCustomer}
+                      disabled={processing}
+                      className="text-xs text-red-600 hover:text-red-700 disabled:opacity-50"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => {
+                      setShowCustomerModal(true);
+                      setCustomerPhone("");
+                      setCustomerName("");
+                      setCustomerEmail("");
+                      setCustomerAddress("");
+                      setCurrentCustomer(null);
+                      setCustomerError(null);
+                    }}
+                    className="w-full flex items-center justify-center gap-2 py-2 px-3 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors text-sm"
+                  >
+                    <User className="h-4 w-4" />
+                    Add Customer (Optional)
+                  </button>
+                )}
+              </div>
+            )}
+
             {/* Order Summary */}
             <div className="space-y-2 border-t border-gray-200 pt-4">
               <div className="flex justify-between text-sm">
@@ -1452,6 +1649,150 @@ export default function CashierTerminal() {
           </div>
         )}
       </div>
+
+      {/* Customer Registration Modal */}
+      {showCustomerModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4 max-h-[90vh] overflow-y-auto">
+            <div className="p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-xl font-semibold text-gray-800">Add Customer</h2>
+                <button
+                  onClick={() => {
+                    setShowCustomerModal(false);
+                    setCustomerError(null);
+                  }}
+                  className="text-gray-400 hover:text-gray-600"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+
+              {customerError && (
+                <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
+                  {customerError}
+                </div>
+              )}
+
+              <div className="space-y-4">
+                {/* Phone Search */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Phone Number *
+                  </label>
+                  <div className="flex gap-2">
+                    <input
+                      type="tel"
+                      value={customerPhone}
+                      onChange={(e) => setCustomerPhone(e.target.value)}
+                      placeholder="Enter phone number"
+                      className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                    />
+                    <button
+                      onClick={handleSearchCustomer}
+                      disabled={searchingCustomer || !customerPhone.trim()}
+                      className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition flex items-center gap-2"
+                    >
+                      {searchingCustomer ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <Search className="w-4 h-4" />
+                      )}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Customer Form */}
+                {(!currentCustomer || customerError) && (
+                  <>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Name *
+                      </label>
+                      <input
+                        type="text"
+                        value={customerName}
+                        onChange={(e) => setCustomerName(e.target.value)}
+                        placeholder="Enter customer name"
+                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                        required
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Email (Optional)
+                      </label>
+                      <input
+                        type="email"
+                        value={customerEmail}
+                        onChange={(e) => setCustomerEmail(e.target.value)}
+                        placeholder="Enter email address"
+                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Address (Optional)
+                      </label>
+                      <textarea
+                        value={customerAddress}
+                        onChange={(e) => setCustomerAddress(e.target.value)}
+                        placeholder="Enter address"
+                        rows={3}
+                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+
+                    {!currentCustomer && (
+                      <button
+                        onClick={handleCreateCustomer}
+                        disabled={creatingCustomer || !customerName.trim() || !customerPhone.trim()}
+                        className="w-full px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition flex items-center justify-center gap-2"
+                      >
+                        {creatingCustomer ? (
+                          <>
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                            Creating...
+                          </>
+                        ) : (
+                          "Create Customer"
+                        )}
+                      </button>
+                    )}
+                  </>
+                )}
+
+                {/* Attach Customer Button */}
+                {currentCustomer && (
+                  <div className="space-y-3">
+                    <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
+                      <p className="text-sm font-medium text-green-800">Customer Found/Created</p>
+                      <p className="text-sm text-green-700">{currentCustomer.name}</p>
+                      <p className="text-xs text-green-600">{currentCustomer.phone}</p>
+                    </div>
+                    <button
+                      onClick={handleAttachCustomer}
+                      disabled={processing}
+                      className="w-full px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition flex items-center justify-center gap-2"
+                    >
+                      {processing ? (
+                        <>
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                          Attaching...
+                        </>
+                      ) : (
+                        "Attach to Order"
+                      )}
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Split Payment Modal */}
       {showSplitModal && (

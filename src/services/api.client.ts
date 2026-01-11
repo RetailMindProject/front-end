@@ -111,9 +111,17 @@ async function apiRequest<T>(
         } else if (errorData.error) {
           errorMessage = errorData.error;
         } else if (errorData.errors) {
-          // Format validation errors
+          // Format validation errors - handle both array and string formats
           const errorMessages = Object.entries(errorData.errors)
-            .map(([field, messages]) => `${field}: ${messages.join(', ')}`)
+            .map(([field, messages]) => {
+              if (Array.isArray(messages)) {
+                return `${field}: ${messages.join(', ')}`;
+              } else if (typeof messages === 'string') {
+                return `${field}: ${messages}`;
+              } else {
+                return `${field}: ${JSON.stringify(messages)}`;
+              }
+            })
             .join('; ');
           errorMessage = errorMessages || errorMessage;
         }
