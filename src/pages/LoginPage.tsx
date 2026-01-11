@@ -1,5 +1,18 @@
 import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
+import { 
+  Mail, 
+  Lock, 
+  Eye, 
+  EyeOff, 
+  Check, 
+  Brain,
+  CreditCard,
+  Package,
+  FileText,
+  Loader2,
+  AlertCircle
+} from "lucide-react";
 import AuthCard from "../components/AuthCard";
 import Logo from "../components/Logo";
 import FeatureItem from "../components/FeatureItem";
@@ -28,6 +41,8 @@ export default function Login() {
         return "/inventory-manager";
       case "CASHIER":
         return "/cashier";
+      case "CUSTOMER":
+        return "/customer";
       default:
         return "/login";
     }
@@ -48,6 +63,15 @@ export default function Login() {
     try {
       const result = await login(email, password);
 
+      // Log full response for debugging
+      console.log("Login response:", {
+        hasError: !!result.error,
+        hasData: !!result.data,
+        role: result.data?.role,
+        hasToken: !!result.data?.token,
+        error: result.error,
+      });
+
       if (result.error) {
         setError(result.error.message || "Login failed. Please check your credentials.");
         setLoading(false);
@@ -55,144 +79,283 @@ export default function Login() {
       }
 
       if (result.data) {
+        // Validate that we have both token and role
+        if (!result.data.token) {
+          setError("Login response missing token. Please try again.");
+          setLoading(false);
+          return;
+        }
+
+        if (!result.data.role) {
+          setError("Login response missing role. Please try again.");
+          setLoading(false);
+          return;
+        }
+
         // If cashier, show session setup dialog instead of navigating directly
         if (result.data.role === "CASHIER") {
           setShowSessionSetup(true);
+          setLoading(false); // Reset loading when showing dialog
         } else {
           // For other roles, redirect normally
           const route = getRoleRoute(result.data.role);
-          navigate(route, { replace: true });
+          console.log("Navigating to route:", route, "for role:", result.data.role);
+          
+          // Reset loading before navigation
+          setLoading(false);
+          
+          // Use setTimeout to ensure state update completes before navigation
+          setTimeout(() => {
+            navigate(route, { replace: true });
+          }, 0);
         }
+      } else {
+        // Unexpected response shape - no data and no error
+        console.error("Unexpected login response: no data and no error");
+        setError("Unexpected response from server. Please try again.");
+        setLoading(false);
       }
     } catch (err) {
+      console.error("Login error:", err);
       setError(err instanceof Error ? err.message : "An unexpected error occurred");
       setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-blue-100 flex items-stretch">
-      {/* Left */}
-      <div className="flex-1 p-8 flex flex-col">
-        <div><Logo /></div>
+    <div className="min-h-screen flex flex-col lg:flex-row items-stretch relative overflow-hidden animate-in fade-in">
+      {/* Version Badge */}
+      <div className="fixed top-4 right-4 z-50 bg-white/80 backdrop-blur-sm px-3 py-1.5 rounded-full text-xs font-medium text-slate-600 border border-slate-200/50 shadow-sm">
+        v1.0
+      </div>
 
-        <div className="mt-10 flex justify-center md:justify-start">
-          <img
-            src="/picture/retalmind%20(3).jpeg"
-            alt="RetailMind"
-            className="w-56 max-w-full rounded-lg shadow-sm filter brightness-95"
-          />
+      {/* Background Pattern */}
+      <div className="absolute inset-0 opacity-[0.03] pointer-events-none">
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_2px_2px,_rgb(0_102_255)_1px,_transparent_0)] bg-[length:40px_40px]" />
+      </div>
+
+      {/* Abstract Shapes */}
+      <div className="absolute top-0 right-0 w-96 h-96 bg-gradient-to-br from-blue-400/10 to-indigo-400/10 rounded-full blur-3xl pointer-events-none hidden lg:block" />
+      <div className="absolute bottom-0 left-0 w-96 h-96 bg-gradient-to-tr from-blue-300/10 to-cyan-300/10 rounded-full blur-3xl pointer-events-none hidden lg:block" />
+
+      {/* Left Panel - Welcome Section */}
+      <div className="flex-1 relative bg-gradient-to-br from-blue-50 via-indigo-50/50 to-white p-6 sm:p-8 md:p-12 lg:p-16 flex flex-col overflow-hidden min-h-[50vh] lg:min-h-screen">
+        {/* Logo */}
+        <div className="relative z-10">
+          <Logo />
         </div>
 
-        <div className="mt-16 max-w-md">
-          <h1 className="text-5xl font-extrabold mb-6 text-gray-800">Welcome to POS</h1>
-          <p className="text-gray-600 text-lg mb-8">
+        {/* RetailMind Logo Card with Glow */}
+        <div className="mt-8 md:mt-12 flex justify-center md:justify-start relative z-10">
+          <div className="relative group">
+            <div className="absolute inset-0 bg-gradient-to-br from-[#0066FF] to-[#0044CC] rounded-2xl blur-xl opacity-30 group-hover:opacity-50 transition-opacity duration-500" />
+            <div className="relative bg-gradient-to-br from-slate-800 via-slate-900 to-slate-800 rounded-2xl p-6 shadow-2xl border border-slate-700/50 group-hover:shadow-[0_20px_50px_rgba(0,102,255,0.3)] transition-all duration-500 hover:scale-[1.02]">
+              <div className="flex items-center gap-4">
+                <div className="relative">
+                  <div className="absolute inset-0 bg-gradient-to-br from-[#0066FF] to-[#0044CC] rounded-xl blur-md opacity-50" />
+                  <div className="relative p-3 bg-gradient-to-br from-[#0066FF] to-[#0044CC] rounded-xl">
+                    <Brain className="h-8 w-8 text-white" />
+                  </div>
+                </div>
+                <img
+                  src="/picture/retalmind%20(3).jpeg"
+                  alt="RetailMind"
+                  className="h-16 w-auto rounded-lg shadow-lg"
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Welcome Content */}
+        <div className="mt-12 md:mt-16 max-w-lg relative z-10">
+          <h1 className="text-4xl md:text-5xl lg:text-6xl font-extrabold mb-6 bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 bg-clip-text text-transparent leading-tight">
+            Welcome to POS
+          </h1>
+          <p className="text-slate-600 text-lg md:text-xl mb-10 leading-relaxed">
             Sign in to manage sales, inventory, and sessions. Fast, secure, and built for multi-terminal stores.
           </p>
 
-          <div className="space-y-6">
-            <FeatureItem icon="🔵" text="Integrated cash & card sessions" />
-            <FeatureItem icon="📦" text="Real-time inventory tracking" />
-            <FeatureItem icon="📄" text="Receipt printing ready" />
+          {/* Feature List */}
+          <div className="space-y-5">
+            <FeatureItem 
+              icon={<CreditCard className="h-5 w-5" />} 
+              text="Integrated cash & card sessions" 
+            />
+            <FeatureItem 
+              icon={<Package className="h-5 w-5" />} 
+              text="Real-time inventory tracking" 
+            />
+            <FeatureItem 
+              icon={<FileText className="h-5 w-5" />} 
+              text="Receipt printing ready" 
+            />
           </div>
         </div>
 
-        <div className="mt-auto">
-          <p className="text-sm text-gray-500">© 2025 POS - All rights reserved</p>
+        {/* Footer */}
+        <div className="mt-auto relative z-10">
+          <p className="text-sm text-slate-500">© 2025 RetailMind POS - All rights reserved</p>
         </div>
       </div>
 
-      {/* Right */}
-      <AuthCard>
-        <div className="flex items-center gap-4 mb-8">
-          <div className="w-12 h-12 bg-[#0066FF] rounded-full flex items-center justify-center">
-            <span className="text-white font-bold text-xl">P</span>
-          </div>
-          <div>
-            <h2 className="text-2xl font-bold">Sign in</h2>
-            <p className="text-gray-500 text-sm">Use your organization account</p>
-          </div>
-        </div>
-
-        <form onSubmit={handleSubmit} className="space-y-8">
-          {error && (
-            <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">
-              {error}
+      {/* Right Panel - Sign In Form */}
+      <div className="w-full lg:w-[600px] xl:w-[650px] flex items-center justify-center p-6 sm:p-8 md:p-12 lg:p-16 relative z-10 bg-white/30 lg:bg-transparent">
+        <AuthCard>
+          {/* Header */}
+          <div className="flex items-center gap-4 mb-8">
+            <div className="relative group">
+              <div className="absolute inset-0 bg-gradient-to-br from-[#0066FF] to-[#0044CC] rounded-full blur-md opacity-50 group-hover:opacity-75 transition-opacity duration-300" />
+              <div className="relative w-14 h-14 bg-gradient-to-br from-[#0066FF] to-[#0044CC] rounded-full flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform duration-300">
+                <span className="text-white font-bold text-xl">P</span>
+              </div>
             </div>
-          )}
-
-          <div>
-            <label className="block text-sm mb-2">Email</label>
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => {
-                setEmail(e.target.value);
-                setError(null);
-              }}
-              placeholder="you@company.com"
-              disabled={loading}
-              className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 disabled:cursor-not-allowed"
-            />
+            <div>
+              <h2 className="text-2xl md:text-3xl font-bold text-slate-900">Sign in</h2>
+              <p className="text-slate-500 text-sm mt-1">Use your organization account</p>
+            </div>
           </div>
 
-          <div>
-            <div className="flex justify-between mb-2">
-              <label className="block text-sm">Password</label>
-              <button
-                type="button"
-                onClick={() => setShowPassword((v) => !v)}
-                className="text-sm text-gray-500"
+          <form onSubmit={handleSubmit} className="space-y-6">
+            {/* Error Message */}
+            {error && (
+              <div className="bg-gradient-to-r from-red-50 to-rose-50 border border-red-200/50 text-red-700 px-4 py-3 rounded-xl text-sm flex items-start gap-3 shadow-sm animate-in slide-in-from-top-2">
+                <AlertCircle className="h-5 w-5 flex-shrink-0 mt-0.5" />
+                <span>{error}</span>
+              </div>
+            )}
+
+            {/* Email Input */}
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-2">Email</label>
+              <div className="relative group">
+                <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-[#0066FF] transition-colors duration-200">
+                  <Mail className="h-5 w-5" />
+                </div>
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => {
+                    setEmail(e.target.value);
+                    setError(null);
+                  }}
+                  placeholder="you@company.com"
+                  disabled={loading}
+                  className="w-full pl-12 pr-4 py-3.5 border border-slate-200 rounded-xl text-slate-900 placeholder-slate-400 bg-white/80 backdrop-blur-sm focus:outline-none focus:ring-2 focus:ring-[#0066FF]/50 focus:border-[#0066FF] disabled:bg-slate-100 disabled:cursor-not-allowed transition-all duration-200 shadow-sm hover:shadow-md"
+                />
+              </div>
+            </div>
+
+            {/* Password Input */}
+            <div>
+              <div className="flex justify-between mb-2">
+                <label className="block text-sm font-medium text-slate-700">Password</label>
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((v) => !v)}
+                  className="text-sm text-[#0066FF] hover:text-[#0044CC] font-medium transition-colors duration-200 hover:underline"
+                >
+                  {showPassword ? "Hide" : "Show"}
+                </button>
+              </div>
+              <div className="relative group">
+                <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-[#0066FF] transition-colors duration-200">
+                  <Lock className="h-5 w-5" />
+                </div>
+                <input
+                  type={showPassword ? "text" : "password"}
+                  value={password}
+                  onChange={(e) => {
+                    setPassword(e.target.value);
+                    setError(null);
+                  }}
+                  placeholder="••••••••"
+                  disabled={loading}
+                  className="w-full pl-12 pr-12 py-3.5 border border-slate-200 rounded-xl text-slate-900 placeholder-slate-400 bg-white/80 backdrop-blur-sm focus:outline-none focus:ring-2 focus:ring-[#0066FF]/50 focus:border-[#0066FF] disabled:bg-slate-100 disabled:cursor-not-allowed transition-all duration-200 shadow-sm hover:shadow-md"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((v) => !v)}
+                  className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-[#0066FF] transition-colors duration-200"
+                >
+                  {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                </button>
+              </div>
+            </div>
+
+            {/* Remember Me & Forgot Password */}
+            <div className="flex items-center justify-between">
+              <label className="flex items-center gap-3 cursor-pointer group">
+                <div className="relative">
+                  <input
+                    type="checkbox"
+                    checked={rememberMe}
+                    onChange={(e) => setRememberMe(e.target.checked)}
+                    className="sr-only"
+                  />
+                  <div className={`w-5 h-5 rounded-md border-2 transition-all duration-200 flex items-center justify-center ${
+                    rememberMe 
+                      ? 'bg-gradient-to-br from-[#0066FF] to-[#0044CC] border-[#0066FF] shadow-sm' 
+                      : 'border-slate-300 group-hover:border-[#0066FF] bg-white'
+                  }`}>
+                    {rememberMe && <Check className="h-3.5 w-3.5 text-white" />}
+                  </div>
+                </div>
+                <span className="text-sm text-slate-700 group-hover:text-slate-900 transition-colors">Remember me</span>
+              </label>
+              <a 
+                href="#" 
+                className="text-sm text-[#0066FF] hover:text-[#0044CC] font-medium transition-colors duration-200 hover:underline"
               >
-                {showPassword ? "Hide" : "Show"}
-              </button>
+                Forgot password?
+              </a>
             </div>
-            <input
-              type={showPassword ? "text" : "password"}
-              value={password}
-              onChange={(e) => {
-                setPassword(e.target.value);
-                setError(null);
-              }}
-              placeholder="••••••••"
+
+            {/* Sign In Button */}
+            <button
+              type="submit"
               disabled={loading}
-              className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 disabled:cursor-not-allowed"
-            />
-          </div>
+              className="w-full bg-gradient-to-r from-[#0066FF] to-[#0044CC] text-white py-3.5 rounded-xl font-semibold hover:shadow-lg hover:shadow-[#0066FF]/30 hover:scale-[1.02] active:scale-[0.98] transition-all duration-200 focus:outline-none focus:ring-4 focus:ring-[#0066FF]/20 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 relative overflow-hidden group"
+            >
+              <span className="relative z-10 flex items-center justify-center gap-2">
+                {loading ? (
+                  <>
+                    <Loader2 className="h-5 w-5 animate-spin" />
+                    <span>Signing in...</span>
+                  </>
+                ) : (
+                  "Sign in"
+                )}
+              </span>
+              <div className="absolute inset-0 bg-gradient-to-r from-[#0044CC] to-[#0066FF] opacity-0 group-hover:opacity-100 transition-opacity duration-200" />
+            </button>
 
-          <div className="flex items-center justify-between">
-            <label className="flex items-center gap-3">
-              <input
-                type="checkbox"
-                checked={rememberMe}
-                onChange={(e) => setRememberMe(e.target.checked)}
-                className="w-4 h-4 border-gray-300 rounded text-[#0066FF] focus:ring-2 focus:ring-blue-200"
-              />
-              <span className="text-sm">Remember me</span>
-            </label>
-            <a href="#" className="text-[#0066FF] text-sm hover:underline">Forgot password?</a>
-          </div>
+            {/* Terms */}
+            <p className="text-center text-xs text-slate-500 leading-relaxed">
+              By continuing, you agree to our{" "}
+              <a href="#" className="text-[#0066FF] hover:text-[#0044CC] hover:underline transition-colors">
+                Terms
+              </a>
+              {" "}&{" "}
+              <a href="#" className="text-[#0066FF] hover:text-[#0044CC] hover:underline transition-colors">
+                Privacy
+              </a>
+              .
+            </p>
 
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full bg-[#0066FF] text-white py-3 rounded-lg font-semibold hover:bg-blue-700 transition-colors focus:outline-none focus:ring-4 focus:ring-blue-200 disabled:bg-blue-400 disabled:cursor-not-allowed"
-          >
-            {loading ? "Signing in..." : "Sign in"}
-          </button>
-
-          <p className="text-center text-sm text-gray-500">
-            By continuing, you agree to our Terms&Privacy.
-          </p>
-
-          <div className="text-center text-sm">
-            <span className="text-gray-500">First time here?</span>{" "}
-            <Link to="/register" className="text-[#0066FF] hover:underline">
-              Create an account
-            </Link>
-          </div>
-        </form>
-      </AuthCard>
+            {/* Create Account Link */}
+            <div className="text-center text-sm pt-2">
+              <span className="text-slate-500">First time here?{" "}</span>
+              <Link 
+                to="/register" 
+                className="text-[#0066FF] hover:text-[#0044CC] font-semibold hover:underline transition-colors duration-200"
+              >
+                Create an account
+              </Link>
+            </div>
+          </form>
+        </AuthCard>
+      </div>
 
       {/* Session Setup Dialog for Cashiers */}
       <SessionSetupDialog

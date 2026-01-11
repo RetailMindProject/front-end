@@ -58,8 +58,48 @@ export async function login(
       };
     }
 
+    // Log full response for debugging
+    console.log("Login API response:", {
+      status: response.status,
+      ok: response.ok,
+      data: data,
+    });
+
     const token = data.token || data.accessToken || data.access_token;
     const role = data.role?.toUpperCase() as UserRole;
+    
+    // Validate token and role
+    if (!token) {
+      console.error("Login response missing token");
+      return {
+        error: {
+          message: "Login response missing authentication token",
+          status: response.status,
+        },
+      };
+    }
+
+    if (!role) {
+      console.error("Login response missing role");
+      return {
+        error: {
+          message: "Login response missing user role",
+          status: response.status,
+        },
+      };
+    }
+
+    // Validate role is a known UserRole
+    const validRoles: UserRole[] = ['STORE_MANAGER', 'INVENTORY_MANAGER', 'CEO', 'CASHIER', 'CUSTOMER'];
+    if (!validRoles.includes(role)) {
+      console.error("Invalid role received:", role);
+      return {
+        error: {
+          message: `Invalid user role: ${role}`,
+          status: response.status,
+        },
+      };
+    }
     
     let phone = "";
     let address = "";
@@ -88,37 +128,42 @@ export async function login(
       address: data.address || data.userAddress || data.user_address || address,
     };
 
-    if (loginData.role && loginData.token) {
-      setTokenForRole(loginData.role, loginData.token);
-      
-      // Extract userId from response or token
-      let userId = data.userId || data.id || data.user?.id;
-      if (!userId && token) {
-        try {
-          const parts = token.split('.');
-          if (parts.length === 3) {
-            const payload = parts[1];
-            const decoded = JSON.parse(atob(payload.replace(/-/g, '+').replace(/_/g, '/')));
-            userId = decoded.userId || decoded.user_id || decoded.sub || decoded.id || decoded.user?.id;
-          }
-        } catch (e) {
-          console.error("Error decoding token for userId:", e);
+    // Store token and user info
+    setTokenForRole(loginData.role, loginData.token);
+    
+    // Extract userId from response or token
+    let userId = data.userId || data.id || data.user?.id;
+    if (!userId && token) {
+      try {
+        const parts = token.split('.');
+        if (parts.length === 3) {
+          const payload = parts[1];
+          const decoded = JSON.parse(atob(payload.replace(/-/g, '+').replace(/_/g, '/')));
+          userId = decoded.userId || decoded.user_id || decoded.sub || decoded.id || decoded.user?.id;
         }
+      } catch (e) {
+        console.error("Error decoding token for userId:", e);
       }
-
-      const userInfoToSave = {
-        id: userId ? (typeof userId === 'number' ? userId : parseInt(userId, 10)) : undefined,
-        userId: userId ? (typeof userId === 'number' ? userId : parseInt(userId, 10)) : undefined,
-        firstName: loginData.firstName || data.firstName || "",
-        lastName: loginData.lastName || data.lastName || "",
-        email: loginData.email || data.email || "",
-        phone: loginData.phone || "",
-        address: loginData.address || "",
-        role: loginData.role,
-      };
-      
-      setUserInfo(userInfoToSave);
     }
+
+    const userInfoToSave = {
+      id: userId ? (typeof userId === 'number' ? userId : parseInt(userId, 10)) : undefined,
+      userId: userId ? (typeof userId === 'number' ? userId : parseInt(userId, 10)) : undefined,
+      firstName: loginData.firstName || data.firstName || "",
+      lastName: loginData.lastName || data.lastName || "",
+      email: loginData.email || data.email || "",
+      phone: loginData.phone || "",
+      address: loginData.address || "",
+      role: loginData.role,
+    };
+    
+    setUserInfo(userInfoToSave);
+
+    console.log("Login successful:", {
+      role: loginData.role,
+      email: loginData.email,
+      hasToken: !!loginData.token,
+    });
 
     return { data: loginData };
   } catch (error) {

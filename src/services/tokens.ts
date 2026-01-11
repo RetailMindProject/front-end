@@ -1,7 +1,7 @@
 // Tokens for different roles
 // Each role has its own token stored in localStorage (set after login)
 
-export type UserRole = 'STORE_MANAGER' | 'INVENTORY_MANAGER' | 'CEO' | 'CASHIER';
+export type UserRole = 'STORE_MANAGER' | 'INVENTORY_MANAGER' | 'CEO' | 'CASHIER' | 'CUSTOMER';
 
 /**
  * Decode JWT token to extract payload (without verification)
@@ -34,7 +34,7 @@ export function getRoleFromToken(token: string | null): UserRole | null {
   if (!decoded || !decoded.role) return null;
   
   const role = decoded.role.toUpperCase();
-  if (role === 'STORE_MANAGER' || role === 'INVENTORY_MANAGER' || role === 'CEO' || role === 'CASHIER') {
+  if (role === 'STORE_MANAGER' || role === 'INVENTORY_MANAGER' || role === 'CEO' || role === 'CASHIER' || role === 'CUSTOMER') {
     return role as UserRole;
   }
   
@@ -61,6 +61,9 @@ export function getCurrentRole(): UserRole | null {
   if (pathname.startsWith('/cashier')) {
     return 'CASHIER';
   }
+  if (pathname.startsWith('/customer')) {
+    return 'CUSTOMER';
+  }
   
   return null;
 }
@@ -85,7 +88,7 @@ export function setTokenForRole(role: UserRole, token: string): void {
  */
 export function getCurrentToken(): string | null {
   // First, try to get token from any role and verify it matches current route
-  const roles: UserRole[] = ['STORE_MANAGER', 'INVENTORY_MANAGER', 'CEO', 'CASHIER'];
+  const roles: UserRole[] = ['STORE_MANAGER', 'INVENTORY_MANAGER', 'CEO', 'CASHIER', 'CUSTOMER'];
   
   for (const role of roles) {
     const token = getTokenForRole(role);
