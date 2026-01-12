@@ -1,4 +1,4 @@
-import { apiClient, storeManagerApiClient, ceoApiClient, cashierApiClient } from "./api.client";
+import { storeManagerApiClient, ceoApiClient, cashierApiClient } from "./api.client";
 
 // Sessions List Response (for Sessions page)
 export interface SessionListItem {

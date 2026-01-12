@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Search, ArrowLeft, Check, X, DollarSign, CreditCard, Loader2, RotateCcw } from "lucide-react";
+import { Search, ArrowLeft, Check, DollarSign, CreditCard, Loader2, RotateCcw } from "lucide-react";
 import { ordersApi, type OrderForReturn, type OrderItemForReturn } from "../services/orders.api";
 import { returnsApi, type ReturnItemRequest, type RefundRequest } from "../services/returns.api";
 

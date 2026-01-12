@@ -4,6 +4,7 @@ import { useAuth } from "../hooks/useAuth";
 import { useRecommendations } from "../hooks/useRecommendations";
 import { useOrders } from "../hooks/useOrders";
 import RecommendationsSection from "../components/customer/RecommendationsSection";
+import RecommendationsControls from "../components/customer/RecommendationsControls";
 import ChatPanel from "../components/customer/ChatPanel";
 import OrderHistorySection from "../components/customer/OrderHistorySection";
 import MessageManagerForm from "../components/customer/MessageManagerForm";
@@ -11,7 +12,11 @@ import MessageManagerForm from "../components/customer/MessageManagerForm";
 export default function CustomerMyPage() {
   const { user, loading: authLoading, logout } = useAuth();
   const [chatOpen, setChatOpen] = useState(false);
-  const { recommendations, loading: recommendationsLoading, isAvailable: recommendationsAvailable } = useRecommendations(10);
+  const [topK, setTopK] = useState(10);
+  const [inStockOnly, setInStockOnly] = useState(true);
+  const [candidateLimit, setCandidateLimit] = useState(500);
+  
+  const { recommendations, loading: recommendationsLoading, isAvailable: recommendationsAvailable, error: recommendationsError } = useRecommendations(topK, candidateLimit, inStockOnly);
   const { orders, loading: ordersLoading } = useOrders();
 
   // Handle 401/403 errors globally
@@ -82,21 +87,45 @@ export default function CustomerMyPage() {
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="space-y-8">
-          {/* Recommendations Section - Only show if endpoint is available or has data */}
-          {recommendationsAvailable && (
-            <section>
-              <div className="mb-4">
-                <h2 className="text-2xl font-bold text-gray-900">Recommendations</h2>
+          {/* Recommendations Section - Always show, even if endpoint is unavailable */}
+          <section>
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="text-2xl font-bold text-gray-900">Recommendations</h2>
+              {recommendationsAvailable && (
+                <RecommendationsControls
+                  topK={topK}
+                  inStockOnly={inStockOnly}
+                  candidateLimit={candidateLimit}
+                  onTopKChange={setTopK}
+                  onInStockOnlyChange={setInStockOnly}
+                  onCandidateLimitChange={setCandidateLimit}
+                />
+              )}
+            </div>
+            <RecommendationsSection
+              forYou={recommendationsData.forYou}
+              popular={recommendationsData.popular}
+              offers={recommendationsData.offers}
+              loading={recommendationsLoading}
+              meta={recommendations?.meta}
+              error={recommendationsError}
+              status={recommendations?.status}
+            />
+            {/* Debug info - remove in production */}
+            {import.meta.env.DEV && (
+              <div className="mt-4 p-3 bg-gray-100 rounded text-xs text-gray-600">
+                <p><strong>Debug Info:</strong></p>
+                <p>isAvailable: {recommendationsAvailable ? 'true' : 'false'}</p>
+                <p>loading: {recommendationsLoading ? 'true' : 'false'}</p>
+                <p>error: {recommendationsError || 'null'}</p>
+                <p>status: {recommendations?.status || 'null'}</p>
+                <p>hasData: {recommendations ? 'true' : 'false'}</p>
+                <p>forYou count: {recommendationsData.forYou.length}</p>
+                <p>popular count: {recommendationsData.popular.length}</p>
+                <p>offers count: {recommendationsData.offers.length}</p>
               </div>
-              <RecommendationsSection
-                forYou={recommendationsData.forYou}
-                popular={recommendationsData.popular}
-                offers={recommendationsData.offers}
-                loading={recommendationsLoading}
-                meta={recommendations?.meta}
-              />
-            </section>
-          )}
+            )}
+          </section>
 
           {/* Order History Section */}
           <section>

@@ -177,46 +177,48 @@ export default function SessionSetupDialog({
         }
 
         // Save sessionId and terminal info
-        setSessionId(pairResult.data.sessionId);
-        const userInfo = getUserInfo();
-        if (userInfo) {
-          setUserInfo({
-            ...userInfo,
-            sessionId: pairResult.data.sessionId,
-            terminalId: pairResult.data.terminalId,
-            terminalCode: pairResult.data.terminalCode,
-          });
-        } else {
-          // If no userInfo, create one with basic info
-          const cashierToken = getTokenForRole("CASHIER");
-          if (cashierToken) {
-            // Try to decode token to get user info
-            const decoded = decodeJWT(cashierToken);
-            if (decoded) {
-              setUserInfo({
-                id: decoded.userId || decoded.user_id || decoded.sub,
-                userId: decoded.userId || decoded.user_id || decoded.sub,
-                firstName: decoded.firstName || decoded.first_name || "",
-                lastName: decoded.lastName || decoded.last_name || "",
-                email: decoded.email || decoded.username || "",
-                phone: decoded.phone || "",
-                address: decoded.address || "",
-                role: "CASHIER",
-                sessionId: pairResult.data.sessionId,
-                terminalId: pairResult.data.terminalId,
-                terminalCode: pairResult.data.terminalCode,
-              });
+        if (pairResult.data.sessionId !== undefined) {
+          setSessionId(pairResult.data.sessionId);
+          const userInfo = getUserInfo();
+          if (userInfo) {
+            setUserInfo({
+              ...userInfo,
+              sessionId: pairResult.data.sessionId,
+              terminalId: pairResult.data.terminalId,
+              terminalCode: pairResult.data.terminalCode,
+            });
+          } else {
+            // If no userInfo, create one with basic info
+            const cashierToken = getTokenForRole("CASHIER");
+            if (cashierToken) {
+              // Try to decode token to get user info
+              const decoded = decodeJWT(cashierToken);
+              if (decoded) {
+                setUserInfo({
+                  id: decoded.userId || decoded.user_id || decoded.sub,
+                  userId: decoded.userId || decoded.user_id || decoded.sub,
+                  firstName: decoded.firstName || decoded.first_name || "",
+                  lastName: decoded.lastName || decoded.last_name || "",
+                  email: decoded.email || decoded.username || "",
+                  phone: decoded.phone || "",
+                  address: decoded.address || "",
+                  role: "CASHIER",
+                  sessionId: pairResult.data.sessionId,
+                  terminalId: pairResult.data.terminalId,
+                  terminalCode: pairResult.data.terminalCode,
+                });
+              }
             }
           }
-        }
 
-        // Wait a bit to show success message, then navigate
-        setTimeout(() => {
-          // Session is already opened by the backend, so call onSessionOpened
-          if (pairResult.data) {
-            onSessionOpened(pairResult.data.sessionId);
-          }
-        }, 1500);
+          // Wait a bit to show success message, then navigate
+          setTimeout(() => {
+            // Session is already opened by the backend, so call onSessionOpened
+            if (pairResult.data && pairResult.data.sessionId !== undefined) {
+              onSessionOpened(pairResult.data.sessionId);
+            }
+          }, 1500);
+        }
       } else {
         setError(pairResult.error || "Invalid pairing code. Please check the code and try again.");
         setStep("show-code");
@@ -278,7 +280,7 @@ export default function SessionSetupDialog({
                   <div className="flex justify-between">
                     <span className="text-gray-600">Opening Float:</span>
                     <span className="font-semibold text-gray-900">
-                      {fmtMoney(pairingResult.openingFloat)}
+                      {fmtMoney(pairingResult.openingFloat ?? 0)}
                     </span>
                   </div>
                 </div>

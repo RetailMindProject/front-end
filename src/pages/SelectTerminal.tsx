@@ -4,7 +4,6 @@ import {
   terminalApi,
   type Terminal,
   type PairTerminalResponse,
-  type PairingCodeResponse,
   type PairingRequestResponse,
   type PairingRequestStatusResponse,
 } from "../services/terminal.api";
@@ -100,64 +99,6 @@ export default function SelectTerminal() {
     }
   };
 
-  const persistPairingInfo = (pairing: PairTerminalResponse) => {
-    setSessionId(pairing.sessionId);
-    const userInfo = getUserInfo();
-    if (userInfo) {
-      setUserInfo({
-        ...userInfo,
-        sessionId: pairing.sessionId,
-        terminalId: pairing.terminalId,
-        terminalCode: pairing.terminalCode,
-      });
-    }
-  };
-
-  const ensureSessionReady = async (
-    pairing: PairTerminalResponse
-  ): Promise<{ openingFloat: number; sessionId: number }> => {
-    const fallbackOpeningFloat = pairing.openingFloat && pairing.openingFloat > 0
-      ? pairing.openingFloat
-      : DEFAULT_OPENING_FLOAT;
-
-    if (pairing.sessionStatus === "OPEN") {
-      return {
-        openingFloat: fallbackOpeningFloat,
-        sessionId: pairing.sessionId,
-      };
-    }
-
-    try {
-      const openResult = await terminalApi.openSession({
-        terminalId: pairing.terminalId,
-        openingFloat: fallbackOpeningFloat,
-      });
-
-      if (openResult.error) {
-        console.error("Failed to auto-open session:", openResult.error);
-      } else if (openResult.data?.sessionId) {
-        setSessionId(openResult.data.sessionId);
-        const userInfo = getUserInfo();
-        if (userInfo) {
-          setUserInfo({
-            ...userInfo,
-            sessionId: openResult.data.sessionId,
-          });
-        }
-        return {
-          openingFloat: fallbackOpeningFloat,
-          sessionId: openResult.data.sessionId,
-        };
-      }
-    } catch (err) {
-      console.error("Error while auto-opening session:", err);
-    }
-
-    return {
-      openingFloat: fallbackOpeningFloat,
-      sessionId: pairing.sessionId,
-    };
-  };
 
   const handleRequestPairing = async () => {
     if (!selectedTerminalId) {
@@ -319,6 +260,7 @@ export default function SelectTerminal() {
             terminalId: terminal.id,
             terminalCode: terminal.code,
             terminalDescription: terminal.description,
+            isPaired: true,
             sessionId: sessionId || 0,
             sessionStatus: "OPEN",
             openingFloat: DEFAULT_OPENING_FLOAT,

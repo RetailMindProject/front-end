@@ -49,10 +49,10 @@ export default function TerminalsManagement() {
     });
   }, [terminals, searchTerm, statusFilter]);
 
-  const handleCreate = async (data: CreateTerminalRequest) => {
+  const handleCreate = async (data: CreateTerminalRequest | UpdateTerminalRequest) => {
     setError(null);
     
-    const result = await terminalApi.createTerminal(data);
+    const result = await terminalApi.createTerminal(data as CreateTerminalRequest);
 
     if (result.error) {
       setError(result.error);
@@ -63,7 +63,7 @@ export default function TerminalsManagement() {
     await loadTerminals();
   };
 
-  const handleEdit = async (data: UpdateTerminalRequest) => {
+  const handleEdit = async (data: CreateTerminalRequest | UpdateTerminalRequest) => {
     if (!editingTerminal) {
       console.error("No editing terminal found");
       return;
@@ -71,7 +71,7 @@ export default function TerminalsManagement() {
     
     setError(null);
     
-    const result = await terminalApi.updateTerminal(editingTerminal.id, data);
+    const result = await terminalApi.updateTerminal(editingTerminal.id, data as UpdateTerminalRequest);
 
     if (result.error) {
       setError(result.error);
