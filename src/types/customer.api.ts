@@ -49,23 +49,32 @@ export interface ProductAvailabilityResponse {
 
 // Recommendation Types
 // Matches POS Backend response (camelCase normalized from Recommendation Service)
+
+export interface OfferInfo {
+  discountPercent: number;
+  offerStrength: number;
+}
+
 export interface RecommendationItem {
   productId: number;
   name: string;
   categoryName: string;
   score: number; // Relevance score
   hasOffer: boolean;
-  offer?: {
-    discountPercent?: number;
-    offerStrength?: number;
-  } | null;
+  offer: OfferInfo | null;
   // Additional fields for offers row only
-  baseScore?: number; // Pure recommendation strength (offers row only)
-  offerBoost?: number; // Offer effect boost (offers row only)
+  baseScore?: number | null; // Pure recommendation strength (offers row only)
+  offerBoost?: number | null; // Offer effect boost (offers row only)
   // Frontend-only fields (from product catalog if needed)
   price?: number; // Current price (from product catalog)
   available?: boolean; // Availability (from product catalog)
   imageUrl?: string; // Product image URL (from product catalog)
+}
+
+export interface RecommendationRows {
+  forYou: RecommendationItem[]; // Personalized recommendations (camelCase)
+  popular: RecommendationItem[]; // Trending / popular items (camelCase)
+  offers: RecommendationItem[]; // Items with strong offers (camelCase)
 }
 
 export interface RecommendationMeta {
@@ -75,19 +84,15 @@ export interface RecommendationMeta {
   numOffers: number;
   isColdStart: boolean;
   isStale: boolean;
-  userSegment?: string; // e.g., "frequent_buyer", "cold_start", "warm", etc.
+  userSegment: string | null; // e.g., "frequent_buyer", "cold_start", "warm", etc.
 }
 
 export interface RecommendationsResponse {
   status: "success" | "error";
   userId: number;
-  rows: {
-    forYou: RecommendationItem[]; // Personalized recommendations (camelCase)
-    popular: RecommendationItem[]; // Trending / popular items (camelCase)
-    offers: RecommendationItem[]; // Items with strong offers (camelCase)
-  };
-  meta?: RecommendationMeta;
-  message?: string; // Error message when status is "error"
+  rows: RecommendationRows;
+  meta: RecommendationMeta;
+  message: string | null; // Error message when status is "error"
 }
 
 // RAG Chatbot Types

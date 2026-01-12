@@ -88,8 +88,8 @@ export function setTokenForRole(role: UserRole, token: string): void {
  * This ensures we use the correct token for the current context
  */
 export function getCurrentToken(): string | null {
-  // First, try to get token from any role and verify it matches current route
-  const roles: UserRole[] = ['STORE_MANAGER', 'INVENTORY_MANAGER', 'CEO', 'CASHIER', 'CUSTOMER'];
+  // Get current role from URL
+  const currentRole = getCurrentRole();
   
   // PRIORITY 1: If we have a current role from URL, use token for that role
   // This is the most reliable way to ensure correct token isolation

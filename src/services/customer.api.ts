@@ -128,56 +128,105 @@ export const customerApi = {
    * Backend extracts customerId from authenticated user (JWT), frontend should NOT send it
    * 
    * Contract: Follows exact backend DTO structure with camelCase fields
-   * Error handling: 404/5xx/network errors return null data (graceful degradation)
+   * Important: Backend may return HTTP 200 with status="error" if Recommendation Service is down/timeout
+   * 
+   * Error handling:
+   * - 401/403: Returns error (triggers logout/redirect)
+   * - 404: Returns isEndpointMissing flag (graceful degradation)
+   * - 5xx/network: Returns error (graceful degradation)
+   * - HTTP 200 with status="error": Returns data with status="error" (non-blocking)
    */
   async getRecommendations(
     topK: number = 10,
     candidateLimit: number = 500,
     inStockOnly: boolean = true
-  ): Promise<{ data?: RecommendationsResponse; error?: string; isEndpointMissing?: boolean }> {
+  ): Promise<{ data?: RecommendationsResponse; error?: string; status?: number; isEndpointMissing?: boolean }> {
+    // Use CUSTOMER role explicitly to ensure correct token is used
     const response = await apiClient.get<RecommendationsResponse>(
-      `/api/recommendations/customers/me?topK=${topK}&candidateLimit=${candidateLimit}&inStockOnly=${inStockOnly}`
+      `/api/recommendations/customers/me?topK=${topK}&candidateLimit=${candidateLimit}&inStockOnly=${inStockOnly}`,
+      'CUSTOMER'
     );
     
-    // Handle 404 - endpoint not implemented yet (current state)
+    // Handle 404 - endpoint not implemented yet
     if (response.error && response.status === 404) {
       return { 
         error: undefined, // Don't surface error to user
+        status: 404,
         isEndpointMissing: true // Flag for hook to handle gracefully
       };
     }
     
-    // Handle auth errors (401/403) - should not call without valid token
+    // Handle auth errors (401/403) - trigger logout/redirect
     if (response.error && (response.status === 401 || response.status === 403)) {
-      return { error: "Unauthorized" };
+      return { 
+        error: response.status === 401 ? "Unauthorized" : "Forbidden - Customers only",
+        status: response.status
+      };
     }
     
     // Handle server errors (5xx) - graceful degradation
     if (response.error && response.status >= 500) {
-      return { error: undefined, isEndpointMissing: false }; // Hide error, show empty state
+      return { 
+        error: "Recommendation service is temporarily unavailable",
+        status: response.status
+      };
     }
     
-    // Handle other errors
+    // Handle network errors
+    if (response.error && response.status === 0) {
+      return { 
+        error: "Network error. Please check your connection.",
+        status: 0
+      };
+    }
+    
+    // Handle other HTTP errors
     if (response.error) {
-      return { error: undefined }; // Fail safe: hide widget on any error
+      return { 
+        error: response.error,
+        status: response.status
+      };
     }
 
     // Validate response structure
     if (!response.data) {
-      return { error: undefined }; // Missing data = no recommendations
+      return { 
+        error: "No data received from server",
+        status: response.status
+      };
     }
 
-    // Validate response status
+    // IMPORTANT: Backend may return HTTP 200 with status="error" if Recommendation Service is down
+    // We still return the data so the UI can show the error message non-blockingly
+    if (response.data.status === "error") {
+      // Return data with error status - UI will handle showing message
+      return { 
+        data: response.data,
+        error: response.data.message || "Recommendation service error",
+        status: response.status
+      };
+    }
+
+    // Validate response status is "success"
     if (response.data.status !== "success") {
-      return { error: response.data.message || undefined }; // Use message if available, otherwise undefined
+      return { 
+        error: response.data.message || "Unexpected response status",
+        status: response.status
+      };
     }
 
     // Validate required fields
     if (!response.data.rows || !response.data.meta) {
-      return { error: undefined }; // Malformed response = no recommendations
+      return { 
+        error: "Invalid response structure",
+        status: response.status
+      };
     }
 
-    return { data: response.data };
+    return { 
+      data: response.data,
+      status: response.status
+    };
   },
 
   // ========== RAG Chatbot API ==========

@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { Card } from "../components";
 import { terminalApi, type PairingRequestResponse } from "../services/terminal.api";
-import { Check, X, Clock, AlertCircle } from "lucide-react";
+import { Check, X, Clock } from "lucide-react";
 
 export default function PairingRequests() {
   const [requests, setRequests] = useState<PairingRequestResponse[]>([]);

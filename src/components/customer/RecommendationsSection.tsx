@@ -1,4 +1,4 @@
-import { ShoppingCart } from "lucide-react";
+import { ShoppingCart, AlertCircle, TrendingUp, Clock } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import type { RecommendationItem, RecommendationMeta } from "../../types/customer.api";
 
@@ -8,6 +8,8 @@ interface RecommendationsSectionProps {
   offers: RecommendationItem[];
   loading?: boolean;
   meta?: RecommendationMeta;
+  error?: string | null;
+  status?: "success" | "error";
 }
 
 export default function RecommendationsSection({
@@ -16,13 +18,19 @@ export default function RecommendationsSection({
   offers,
   loading = false,
   meta,
+  error,
+  status,
 }: RecommendationsSectionProps) {
   const navigate = useNavigate();
   
   // Determine section titles based on meta
   const forYouTitle = meta?.isColdStart ? "Popular near you" : "Recommended for you";
   const popularTitle = "Popular right now";
-  const offersTitle = "Top offers for you";
+  const offersTitle = "Special Offers";
+  const isColdStart = meta?.isColdStart === true;
+  const isStale = meta?.isStale === true;
+  const hasError = status === "error" || (error && status !== "success");
+  
   const ProductCard = ({ product, showDiscount = false }: { product: RecommendationItem; showDiscount?: boolean }) => {
     // Use price from product catalog if available
     const displayPrice = product.price ?? 0;
@@ -46,14 +54,17 @@ export default function RecommendationsSection({
               No Image
             </div>
           )}
-          {showDiscount && hasDiscount && (
+          {showDiscount && hasDiscount && product.offer && (
             <div className="absolute top-2 right-2 bg-red-500 text-white text-xs font-bold px-2 py-1 rounded">
-              {product.offer!.discountPercent}% OFF
+              {product.offer.discountPercent}% OFF
             </div>
           )}
         </div>
         <div className="p-3">
-          <h3 className="font-medium text-sm text-gray-900 mb-1 line-clamp-2">{product.name}</h3>
+          <div className="mb-1">
+            <h3 className="font-medium text-sm text-gray-900 line-clamp-2">{product.name}</h3>
+            <p className="text-xs text-gray-500 mt-0.5">{product.categoryName}</p>
+          </div>
           {displayPrice > 0 && (
             <p className="text-lg font-semibold text-gray-900 mb-2">${displayPrice.toFixed(2)}</p>
           )}
@@ -81,12 +92,20 @@ export default function RecommendationsSection({
     );
   };
 
-  const ProductRow = ({ title, products, isColdStart = false }: { title: string; products: RecommendationItem[]; isColdStart?: boolean }) => {
+  const ProductRow = ({ title, products, showColdStartBadge = false }: { title: string; products: RecommendationItem[]; showColdStartBadge?: boolean }) => {
     if (products.length === 0) return null;
 
     return (
       <div className="mb-8">
-        <h2 className={`text-xl font-bold mb-4 ${isColdStart ? "text-gray-700" : "text-gray-900"}`}>{title}</h2>
+        <div className="flex items-center gap-3 mb-4">
+          <h2 className="text-xl font-bold text-gray-900">{title}</h2>
+          {showColdStartBadge && (
+            <span className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-800 text-xs font-medium rounded-full">
+              <TrendingUp className="h-3 w-3" />
+              Trending for new users
+            </span>
+          )}
+        </div>
         <div className="flex gap-4 overflow-x-auto pb-2 scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100">
           {products.map((product) => (
             <ProductCard key={product.productId} product={product} showDiscount={title === "Special Offers"} />
@@ -111,9 +130,62 @@ export default function RecommendationsSection({
     );
   }
 
+  // Show error message if status="error" (non-blocking)
+  if (hasError && error) {
+    return (
+      <div className="space-y-4">
+        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 flex items-start gap-3">
+          <AlertCircle className="h-5 w-5 text-yellow-600 flex-shrink-0 mt-0.5" />
+          <div className="flex-1">
+            <p className="text-sm font-medium text-yellow-800">Recommendations temporarily unavailable</p>
+            <p className="text-xs text-yellow-700 mt-1">{error}</p>
+          </div>
+        </div>
+        
+        {/* Still show sections if we have data (even if status="error") */}
+        {(forYou.length > 0 || popular.length > 0 || offers.length > 0) && (
+          <div className="space-y-8">
+            {forYou.length > 0 && (
+              <ProductRow title={forYouTitle} products={forYou} showColdStartBadge={isColdStart} />
+            )}
+            {popular.length > 0 && (
+              <ProductRow title={popularTitle} products={popular} />
+            )}
+            {offers.length > 0 && (
+              <ProductRow title={offersTitle} products={offers} />
+            )}
+          </div>
+        )}
+      </div>
+    );
+  }
+
   const hasAnyRecommendations = forYou.length > 0 || popular.length > 0 || offers.length > 0;
 
-  if (!hasAnyRecommendations) {
+  // Show error message if there's an error and no data
+  if (error && !hasAnyRecommendations && !loading) {
+    return (
+      <div className="space-y-4">
+        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 flex items-start gap-3">
+          <AlertCircle className="h-5 w-5 text-yellow-600 flex-shrink-0 mt-0.5" />
+          <div className="flex-1">
+            <p className="text-sm font-medium text-yellow-800">Recommendations temporarily unavailable</p>
+            <p className="text-xs text-yellow-700 mt-1">{error}</p>
+          </div>
+        </div>
+        <div className="text-center py-12 bg-gray-50 rounded-lg border-2 border-dashed border-gray-200">
+          <div className="max-w-md mx-auto">
+            <p className="text-2xl mb-2">👋 Welcome to our store!</p>
+            <p className="text-gray-600 mb-4">
+              Shop around to get personalized recommendations based on your interests.
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!hasAnyRecommendations && !loading && !error) {
     return (
       <div className="text-center py-12 bg-gray-50 rounded-lg border-2 border-dashed border-gray-200">
         <div className="max-w-md mx-auto">
@@ -135,27 +207,17 @@ export default function RecommendationsSection({
     );
   }
 
-  // Determine which sections to show based on data and meta
+  // Determine which sections to show based on data
   const showForYou = forYou.length > 0;
   const showPopular = popular.length > 0;
   const showOffers = offers.length > 0;
-  const isColdStart = meta?.isColdStart === true;
-  const isStale = meta?.isStale === true;
-
-  // If all sections empty, hide entirely (handled by parent)
-  if (!showForYou && !showPopular && !showOffers) {
-    return null;
-  }
 
   return (
     <div className="space-y-8">
-      {/* For You section - de-emphasize if cold start */}
-      {showForYou ? (
-        <ProductRow title={forYouTitle} products={forYou} isColdStart={isColdStart} />
-      ) : showPopular || showOffers ? (
-        // Only show empty state if other sections have data
-        null
-      ) : null}
+      {/* For You section */}
+      {showForYou && (
+        <ProductRow title={forYouTitle} products={forYou} showColdStartBadge={isColdStart} />
+      )}
       
       {/* Popular section */}
       {showPopular && <ProductRow title={popularTitle} products={popular} />}
@@ -165,8 +227,9 @@ export default function RecommendationsSection({
       
       {/* Subtle stale indicator */}
       {isStale && (
-        <div className="text-xs text-gray-400 text-center italic">
-          Recommendations are being updated...
+        <div className="flex items-center justify-center gap-2 text-xs text-gray-400 italic">
+          <Clock className="h-3 w-3" />
+          <span>Recommendations are being updated...</span>
         </div>
       )}
     </div>

@@ -8,13 +8,18 @@ import type { RecommendationsResponse } from "../types/customer.api";
  * 
  * Behavior:
  * - 404 (endpoint not implemented): Returns null data, no error (graceful degradation)
- * - 401/403 (auth): Returns null data, no error (auth handled globally)
- * - 5xx/network: Returns null data, no error (fail safe)
+ * - 401/403 (auth): Returns error (triggers logout/redirect)
+ * - 5xx/network: Returns error (non-blocking message)
+ * - HTTP 200 with status="error": Returns data with status="error" (non-blocking message)
  * - Success: Returns recommendations data
  * 
  * Retry: 1-2 times on network/server errors (not on 4xx)
  */
-export function useRecommendations(topK: number = 10) {
+export function useRecommendations(
+  topK: number = 10,
+  candidateLimit: number = 500,
+  inStockOnly: boolean = true
+) {
   const [recommendations, setRecommendations] = useState<RecommendationsResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -25,51 +30,102 @@ export function useRecommendations(topK: number = 10) {
     setError(null);
 
     try {
-      const result = await customerApi.getRecommendations(topK, 500, true);
+      const result = await customerApi.getRecommendations(topK, candidateLimit, inStockOnly);
       
-      if (result.data) {
-        setRecommendations(result.data);
-        setIsAvailable(true);
-      } else {
-        // Handle endpoint missing (404) - graceful degradation
-        if (result.isEndpointMissing) {
-          setIsAvailable(false);
-          setRecommendations(null);
-          setError(null); // No error shown to user
-          return;
-        }
-        
-        // Handle auth errors - should not happen if token is valid
-        if (result.error === "Unauthorized") {
-          setIsAvailable(false);
-          setRecommendations(null);
-          setError(null); // Auth handled globally
-          return;
-        }
-        
-        // All other errors: fail safe - hide widget
+      // Log for debugging
+      console.log('[useRecommendations] API result:', {
+        hasData: !!result.data,
+        status: result.status,
+        error: result.error,
+        isEndpointMissing: result.isEndpointMissing,
+        dataStatus: result.data?.status,
+      });
+      
+      // Handle endpoint missing (404) - graceful degradation
+      if (result.isEndpointMissing) {
+        console.log('[useRecommendations] Endpoint missing (404)');
         setIsAvailable(false);
         setRecommendations(null);
+        setError(null); // No error shown to user
+        setLoading(false);
+        return;
+      }
+      
+      // Handle auth errors (401/403) - trigger logout/redirect (handled by API client)
+      if (result.status === 401 || result.status === 403) {
+        setIsAvailable(false);
+        setRecommendations(null);
+        setError(result.error || "Authentication required");
+        setLoading(false);
+        // API client already handles redirect to login
+        return;
+      }
+      
+      // Handle HTTP 200 with status="error" (Recommendation Service down/timeout)
+      if (result.data && result.data.status === "error") {
+        // Still set data so UI can show error message non-blockingly
+        setRecommendations(result.data);
+        setIsAvailable(true);
+        setError(result.data.message || "Recommendation service is temporarily unavailable");
+        setLoading(false);
+        return;
+      }
+      
+      // Handle other errors (5xx, network, etc.)
+      if (result.error && !result.data) {
+        console.log('[useRecommendations] Error without data:', result.error, 'status:', result.status);
+        // Network/timeout errors: retry 1-2 times
+        const status = result.status ?? 0;
+        if (retryCount < 2 && (status === 0 || status >= 500)) {
+          console.log('[useRecommendations] Retrying...', retryCount + 1);
+          setTimeout(() => {
+            fetchRecommendations(retryCount + 1);
+          }, 1000);
+          return;
+        }
+        
+        // After retries or non-retryable error: show error message but keep section visible
+        setIsAvailable(true); // Keep available so section shows with error
+        setRecommendations(null);
+        setError(result.error);
+        setLoading(false);
+        return;
+      }
+      
+      // Success case
+      if (result.data && result.data.status === "success") {
+        console.log('[useRecommendations] Success!', {
+          forYou: result.data.rows.forYou.length,
+          popular: result.data.rows.popular.length,
+          offers: result.data.rows.offers.length,
+        });
+        setRecommendations(result.data);
+        setIsAvailable(true);
         setError(null);
+      } else {
+        // Unexpected state
+        console.log('[useRecommendations] Unexpected state:', result);
+        setIsAvailable(true); // Keep available so section shows
+        setRecommendations(null);
+        setError("Unexpected response from server");
       }
     } catch (err) {
       // Network/timeout errors: retry 1-2 times
       if (retryCount < 2 && (err instanceof TypeError || err instanceof Error)) {
-        // Retry after short delay
         setTimeout(() => {
           fetchRecommendations(retryCount + 1);
         }, 1000);
         return;
       }
       
-      // After retries or non-retryable error: fail safe
+      // After retries or non-retryable error: show error
       setIsAvailable(false);
       setRecommendations(null);
-      setError(null);
+      setError(err instanceof Error ? err.message : "Network error occurred");
     } finally {
       setLoading(false);
     }
-  }, [topK]);
+  }, [topK, candidateLimit, inStockOnly]);
 
   useEffect(() => {
     fetchRecommendations();
