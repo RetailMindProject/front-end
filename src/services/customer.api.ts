@@ -1,7 +1,10 @@
 import { apiClient } from "./api.client";
+import { setTokenForRole, setUserInfo } from "./tokens";
 import type {
   LoginRequest,
   LoginResponse,
+  RegisterRequest,
+  RegisterResponse,
   AuthIntrospectResponse,
   UserProfileResponse,
   ProductSearchResponse,
@@ -78,6 +81,114 @@ export const customerApi = {
     return { data: response.data };
   },
 
+  /**
+   * POST /api/auth/register/customer
+   * Public customer self-registration (creates both users and customers records)
+   * Auth: No auth required (public)
+   * Role: Always forced to CUSTOMER by backend
+   */
+  async register(request: RegisterRequest): Promise<{ data?: RegisterResponse; error?: string; status?: number }> {
+    try {
+      const API_BASE_URL = import.meta.env.VITE_POS_BASE_URL || "http://localhost:8081";
+      
+      // Prepare request body - backend will force role to CUSTOMER and set isSelfRegistration to true
+      const requestBody = {
+        firstName: request.firstName,
+        ...(request.lastName && { lastName: request.lastName }),
+        email: request.email,
+        ...(request.phone && { phone: request.phone }),
+        ...(request.address && { address: request.address }),
+        role: "CUSTOMER", // Backend will ignore and force to CUSTOMER
+        password: request.password,
+        confirmPassword: request.confirmPassword,
+        // isSelfRegistration is optional, backend sets to true automatically
+      };
+
+      const response = await fetch(`${API_BASE_URL}/api/auth/register/customer`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(requestBody),
+      });
+
+      const contentType = response.headers.get("content-type");
+      let data: any;
+
+      if (contentType && contentType.includes("application/json")) {
+        data = await response.json();
+      } else {
+        const text = await response.text();
+        data = { message: text || "Registration failed" };
+      }
+
+      if (!response.ok) {
+        // Handle validation errors
+        let errorMessage = data.message || `HTTP error! status: ${response.status}`;
+        
+        // Handle specific error cases
+        if (response.status === 400) {
+          if (data.message) {
+            errorMessage = data.message;
+          } else if (data.errors) {
+            // Format validation errors
+            const errorMessages = Object.entries(data.errors)
+              .map(([field, messages]) => {
+                if (Array.isArray(messages)) {
+                  return `${field}: ${messages.join(', ')}`;
+                }
+                return `${field}: ${messages}`;
+              })
+              .join('; ');
+            errorMessage = errorMessages || errorMessage;
+          }
+        }
+
+        return {
+          error: errorMessage,
+          status: response.status,
+        };
+      }
+
+      // Success - status 201 Created
+      const registerData: RegisterResponse = {
+        id: data.id,
+        firstName: data.firstName,
+        lastName: data.lastName || "",
+        email: data.email,
+        phone: data.phone || "",
+        address: data.address || "",
+        role: "CUSTOMER",
+        isActive: data.isActive,
+        createdAt: data.createdAt,
+        token: data.token,
+        message: data.message || null,
+      };
+
+      // Store token and user info automatically
+      if (registerData.token) {
+        setTokenForRole("CUSTOMER", registerData.token);
+        setUserInfo({
+          id: registerData.id,
+          userId: registerData.id,
+          firstName: registerData.firstName,
+          lastName: registerData.lastName,
+          email: registerData.email,
+          phone: registerData.phone,
+          address: registerData.address,
+          role: "CUSTOMER",
+        });
+      }
+
+      return { data: registerData, status: response.status };
+    } catch (error) {
+      return {
+        error: error instanceof Error ? error.message : "Network error occurred",
+        status: 0,
+      };
+    }
+  },
+
   // ========== Product APIs ==========
 
   /**
@@ -142,13 +253,31 @@ export const customerApi = {
     inStockOnly: boolean = true
   ): Promise<{ data?: RecommendationsResponse; error?: string; status?: number; isEndpointMissing?: boolean }> {
     // Use CUSTOMER role explicitly to ensure correct token is used
+    const endpoint = `/api/recommendations/customers/me?topK=${topK}&candidateLimit=${candidateLimit}&inStockOnly=${inStockOnly}`;
+    
+    console.log('[customerApi.getRecommendations] Calling endpoint:', endpoint);
+    console.log('[customerApi.getRecommendations] Params:', { topK, candidateLimit, inStockOnly });
+    
     const response = await apiClient.get<RecommendationsResponse>(
-      `/api/recommendations/customers/me?topK=${topK}&candidateLimit=${candidateLimit}&inStockOnly=${inStockOnly}`,
+      endpoint,
       'CUSTOMER'
     );
     
+    console.log('[customerApi.getRecommendations] Response:', {
+      status: response.status,
+      hasError: !!response.error,
+      error: response.error,
+      hasData: !!response.data,
+      dataStatus: response.data?.status,
+      rowsForYou: response.data?.rows?.forYou?.length,
+      rowsPopular: response.data?.rows?.popular?.length,
+      rowsOffers: response.data?.rows?.offers?.length,
+      fullData: response.data,
+    });
+    
     // Handle 404 - endpoint not implemented yet
     if (response.error && response.status === 404) {
+      console.log('[customerApi.getRecommendations] Endpoint missing (404)');
       return { 
         error: undefined, // Don't surface error to user
         status: 404,
@@ -217,12 +346,35 @@ export const customerApi = {
 
     // Validate required fields
     if (!response.data.rows || !response.data.meta) {
+      console.error('[customerApi.getRecommendations] Invalid response structure:', {
+        hasRows: !!response.data.rows,
+        hasMeta: !!response.data.meta,
+        data: response.data,
+      });
       return { 
         error: "Invalid response structure",
         status: response.status
       };
     }
 
+    // Check if rows are empty (even with status="success")
+    const forYouCount = response.data.rows.forYou?.length || 0;
+    const popularCount = response.data.rows.popular?.length || 0;
+    const offersCount = response.data.rows.offers?.length || 0;
+    const totalCount = forYouCount + popularCount + offersCount;
+
+    console.log('[customerApi.getRecommendations] Success! Returning data:', {
+      status: response.data.status,
+      forYouCount,
+      popularCount,
+      offersCount,
+      totalCount,
+      meta: response.data.meta,
+      isColdStart: response.data.meta.isColdStart,
+      isStale: response.data.meta.isStale,
+    });
+
+    // Even if rows are empty, return the data so UI can show appropriate message
     return { 
       data: response.data,
       status: response.status
@@ -294,15 +446,16 @@ export const customerApi = {
   // ========== Order History API ==========
 
   /**
-   * GET /api/orders?since={ISO_date}&limit=50
+   * GET /api/customers/me/orders?since={ISO_date}&limit=50
+   * Note: Using customer-specific endpoint with CUSTOMER role
    */
   async getOrders(since?: string, limit: number = 50): Promise<{ data?: OrdersResponse; error?: string }> {
-    let endpoint = `/api/orders?limit=${limit}`;
+    let endpoint = `/api/customers/me/orders?limit=${limit}`;
     if (since) {
       endpoint += `&since=${encodeURIComponent(since)}`;
     }
 
-    const response = await apiClient.get<OrdersResponse>(endpoint);
+    const response = await apiClient.get<OrdersResponse>(endpoint, 'CUSTOMER');
     
     if (response.error) {
       return { error: response.error };

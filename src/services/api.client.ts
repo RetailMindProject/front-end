@@ -35,17 +35,32 @@ async function apiRequest<T>(
     // Skip browser tokens or other non-JWT tokens
     if (token.split('.').length === 3) {
       headers["Authorization"] = `Bearer ${token}`;
+      if (endpoint.includes('/recommendations')) {
+        console.log('[apiRequest] Token found for role:', role, 'Token length:', token.length, 'Token preview:', token.substring(0, 20) + '...');
+      }
     } else {
-      console.warn("Invalid JWT token format, skipping Authorization header");
+      console.warn("[apiRequest] Invalid JWT token format, skipping Authorization header. Token:", token.substring(0, 50));
+    }
+  } else {
+    if (endpoint.includes('/recommendations')) {
+      console.warn('[apiRequest] No token found for role:', role, 'endpoint:', endpoint);
     }
   }
 
   try {
+    if (endpoint.includes('/recommendations')) {
+      console.log('[apiRequest] Making request to:', `${API_BASE_URL}${endpoint}`, 'with headers:', { ...headers, Authorization: headers.Authorization ? 'Bearer ***' : 'none' });
+    }
+    
     const response = await fetch(`${API_BASE_URL}${endpoint}`, {
       ...options,
       headers,
       credentials: 'include', // إرسال cookies (بما فيها browser_token) مع كل request
     });
+    
+    if (endpoint.includes('/recommendations')) {
+      console.log('[apiRequest] Response status:', response.status, 'ok:', response.ok);
+    }
 
     // Handle 204 No Content
     if (response.status === 204) {
