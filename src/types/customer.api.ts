@@ -13,6 +13,33 @@ export interface LoginResponse {
   email: string;
 }
 
+// Customer Registration Types
+export interface RegisterRequest {
+  firstName: string; // required, max 60
+  lastName?: string; // optional, max 60
+  email: string; // required, valid email, max 120
+  phone?: string; // optional, max 20, regex ^[0-9+\-\s()]*$
+  address?: string; // optional
+  role: "CUSTOMER"; // required, but backend forces to CUSTOMER
+  password: string; // required, min 8, must include digit, lowercase, uppercase, special char
+  confirmPassword: string; // required, must match password
+  isSelfRegistration?: boolean; // optional, backend sets to true
+}
+
+export interface RegisterResponse {
+  id: number; // user id
+  firstName: string;
+  lastName: string;
+  email: string;
+  phone: string;
+  address: string;
+  role: "CUSTOMER"; // always CUSTOMER
+  isActive: boolean;
+  createdAt: string; // ISO datetime
+  token: string; // JWT
+  message: string | null; // optional
+}
+
 export interface AuthIntrospectResponse {
   valid: boolean;
   userId: number;
@@ -115,8 +142,40 @@ export interface RagChatResponse {
 }
 
 // Order Types
-export type OrderStatus = "completed" | "pending" | "cancelled";
+export type OrderStatus = "PAID" | "DRAFT" | "CANCELLED" | "REFUNDED" | "HELD" | "completed" | "pending" | "cancelled";
 
+export interface CustomerOrderItem {
+  id: number;
+  productId: number;
+  productName: string;
+  quantity: number;
+  unitPrice: number;
+  lineTotal: number;
+  discountAmount: number;
+}
+
+export interface CustomerOrder {
+  id: number;
+  orderNumber: string;
+  status: string; // "PAID", "DRAFT", "CANCELLED", etc.
+  subtotal: number;
+  discountTotal: number;
+  taxTotal: number;
+  grandTotal: number;
+  itemCount: number;
+  createdAt: string; // ISO 8601
+  paidAt: string | null; // ISO 8601 or null
+  items: CustomerOrderItem[];
+}
+
+export interface OrdersResponse {
+  orders: CustomerOrder[];
+  total: number;
+  limit: number;
+  hasMore: boolean;
+}
+
+// Legacy types for backward compatibility (if needed elsewhere)
 export interface OrderItem {
   productId: number;
   productName: string;
@@ -130,10 +189,6 @@ export interface Order {
   totalAmount: number;
   status: OrderStatus;
   items: OrderItem[];
-}
-
-export interface OrdersResponse {
-  orders: Order[];
 }
 
 // Messaging Types

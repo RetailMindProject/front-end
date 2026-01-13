@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { MessageSquare, LogOut } from "lucide-react";
+import { MessageSquare, LogOut, User } from "lucide-react";
 import { useAuth } from "../hooks/useAuth";
 import { useRecommendations } from "../hooks/useRecommendations";
 import { useOrders } from "../hooks/useOrders";
@@ -52,32 +52,41 @@ export default function CustomerMyPage() {
 
   const ordersData = orders?.orders || [];
 
+  const displayName = user.name || user.email?.split('@')[0] || 'Customer';
+
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
-      <header className="bg-white shadow-sm border-b border-gray-200">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+      <header className="bg-white shadow-sm border-b border-gray-100">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
           <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-2xl font-bold text-gray-900">
-                Welcome, {user.name || user.email}
-              </h1>
-              <p className="text-sm text-gray-500 mt-1">Customer Dashboard</p>
+            <div className="flex items-center gap-3">
+              <div className="h-10 w-10 rounded-full bg-blue-100 flex items-center justify-center">
+                <User className="h-5 w-5 text-blue-600" />
+              </div>
+              <div>
+                <h1 className="text-xl font-semibold text-gray-900">
+                  {displayName}
+                </h1>
+                <p className="text-sm text-gray-500">My Account</p>
+              </div>
             </div>
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-3">
               <button
                 onClick={() => setChatOpen(true)}
-                className="flex items-center gap-2 px-4 py-2 bg-[#2563eb] text-white rounded-lg hover:bg-[#1d4ed8] transition-colors"
+                className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors shadow-sm"
+                aria-label="Open AI Assistant"
               >
-                <MessageSquare className="h-5 w-5" />
-                <span className="hidden sm:inline">AI Assistant</span>
+                <MessageSquare className="h-4 w-4" />
+                <span className="hidden sm:inline text-sm font-medium">Help</span>
               </button>
               <button
                 onClick={logout}
-                className="flex items-center gap-2 px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+                className="flex items-center gap-2 px-4 py-2 text-gray-600 hover:text-gray-900 hover:bg-gray-50 rounded-lg transition-colors"
+                aria-label="Logout"
               >
-                <LogOut className="h-5 w-5" />
-                <span className="hidden sm:inline">Logout</span>
+                <LogOut className="h-4 w-4" />
+                <span className="hidden sm:inline text-sm">Sign Out</span>
               </button>
             </div>
           </div>
@@ -86,11 +95,14 @@ export default function CustomerMyPage() {
 
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="space-y-8">
-          {/* Recommendations Section - Always show, even if endpoint is unavailable */}
+        <div className="space-y-12">
+          {/* Recommendations Section */}
           <section>
-            <div className="mb-4 flex items-center justify-between">
-              <h2 className="text-2xl font-bold text-gray-900">Recommendations</h2>
+            <div className="mb-6 flex items-center justify-between">
+              <div>
+                <h2 className="text-2xl font-semibold text-gray-900">For You</h2>
+                <p className="text-sm text-gray-500 mt-1">Personalized recommendations based on your preferences</p>
+              </div>
               {recommendationsAvailable && (
                 <RecommendationsControls
                   topK={topK}
@@ -111,24 +123,14 @@ export default function CustomerMyPage() {
               error={recommendationsError}
               status={recommendations?.status}
             />
-            {/* Debug info - remove in production */}
-            {import.meta.env.DEV && (
-              <div className="mt-4 p-3 bg-gray-100 rounded text-xs text-gray-600">
-                <p><strong>Debug Info:</strong></p>
-                <p>isAvailable: {recommendationsAvailable ? 'true' : 'false'}</p>
-                <p>loading: {recommendationsLoading ? 'true' : 'false'}</p>
-                <p>error: {recommendationsError || 'null'}</p>
-                <p>status: {recommendations?.status || 'null'}</p>
-                <p>hasData: {recommendations ? 'true' : 'false'}</p>
-                <p>forYou count: {recommendationsData.forYou.length}</p>
-                <p>popular count: {recommendationsData.popular.length}</p>
-                <p>offers count: {recommendationsData.offers.length}</p>
-              </div>
-            )}
           </section>
 
           {/* Order History Section */}
           <section>
+            <div className="mb-6">
+              <h2 className="text-2xl font-semibold text-gray-900">Order History</h2>
+              <p className="text-sm text-gray-500 mt-1">View your recent purchases</p>
+            </div>
             <OrderHistorySection orders={ordersData} loading={ordersLoading} />
           </section>
 

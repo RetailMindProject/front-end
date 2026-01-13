@@ -94,14 +94,33 @@ export function useRecommendations(
       
       // Success case
       if (result.data && result.data.status === "success") {
+        const forYouCount = result.data.rows.forYou?.length || 0;
+        const popularCount = result.data.rows.popular?.length || 0;
+        const offersCount = result.data.rows.offers?.length || 0;
+        const totalCount = forYouCount + popularCount + offersCount;
+        
         console.log('[useRecommendations] Success!', {
-          forYou: result.data.rows.forYou.length,
-          popular: result.data.rows.popular.length,
-          offers: result.data.rows.offers.length,
+          forYou: forYouCount,
+          popular: popularCount,
+          offers: offersCount,
+          total: totalCount,
+          meta: result.data.meta,
+          isColdStart: result.data.meta.isColdStart,
+          isStale: result.data.meta.isStale,
         });
+        
+        // Set recommendations even if empty - UI will show appropriate message
         setRecommendations(result.data);
         setIsAvailable(true);
-        setError(null);
+        
+        // Only set error if rows are completely empty (might indicate an issue)
+        if (totalCount === 0) {
+          console.warn('[useRecommendations] Success but no recommendations returned. Meta:', result.data.meta);
+          // Don't set error - let UI show empty state message
+          setError(null);
+        } else {
+          setError(null);
+        }
       } else {
         // Unexpected state
         console.log('[useRecommendations] Unexpected state:', result);
