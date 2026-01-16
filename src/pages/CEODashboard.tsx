@@ -5,7 +5,7 @@ import StoreDashboard from "./StoreDashboard";
 import InventoryDashboard from "./InventoryDashboard";
 import ManageAccounts from "./ManageAccounts";
 import CreateAccountPage from "./CreateAccountPage";
-import ReportsPage from "./reports/ReportsPage";
+import CEOReportsPage from "./reports/CEOReportsPage";
 import Forecasting from "./Forecasting";
 import Outbox from "./Outbox";
 import MessageDetail from "./MessageDetail";
@@ -55,7 +55,7 @@ export default function CEODashboard() {
           />
           <Route path="manage-accounts" element={<div className="flex-1 overflow-auto"><ManageAccounts /></div>} />
           <Route path="create-account" element={<div className="flex-1 overflow-auto"><CreateAccountPage /></div>} />
-          <Route path="reports" element={<div className="flex-1 overflow-auto"><ReportsPage /></div>} />
+          <Route path="reports" element={<div className="flex-1 overflow-auto"><CEOReportsPage /></div>} />
           <Route path="forecasting" element={<div className="flex-1 overflow-auto"><Forecasting /></div>} />
           <Route path="outbox" element={<div className="flex-1 overflow-auto"><Outbox /></div>} />
           <Route path="compose" element={<div className="flex-1 overflow-auto"><Compose /></div>} />

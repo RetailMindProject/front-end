@@ -64,7 +64,7 @@ export default function DataTable<T>({ columns, data, total, page, pageSize, onP
         </table>
       </div>
       <div className="flex items-center justify-between px-4 py-2 border-t bg-muted/30">
-        <div className="text-xs text-muted-foreground">Page {page} of {totalPages}</div>
+        <div className="text-xs text-muted-foreground">Page {page} of {totalPages} {total > 0 && `(${total} total)`}</div>
         <div className="flex items-center gap-2">
           <select 
             value={pageSize} 
@@ -78,15 +78,17 @@ export default function DataTable<T>({ columns, data, total, page, pageSize, onP
               onClick={()=>onPageChange(Math.max(1, page-1))} 
               disabled={page === 1}
               className="px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-blue-50 hover:text-blue-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1"
+              title="Previous page"
             >
-              Prev
+              <ChevronLeft className="w-4 h-4" />
             </button>
             <button 
               onClick={()=>onPageChange(Math.min(totalPages, page+1))} 
               disabled={page === totalPages}
               className="px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-blue-50 hover:text-blue-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent transition-all duration-150 border-l border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1"
+              title="Next page"
             >
-              Next
+              <ChevronRight className="w-4 h-4" />
             </button>
           </div>
         </div>

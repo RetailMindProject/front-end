@@ -84,7 +84,16 @@ async function apiRequest<T>(
         } else if (errorData.errors) {
           // Format validation errors
           const errorMessages = Object.entries(errorData.errors)
-            .map(([field, messages]) => `${field}: ${messages.join(', ')}`)
+            .map(([field, messages]) => {
+              // Handle both array and string error messages
+              if (Array.isArray(messages)) {
+                return `${field}: ${messages.join(', ')}`;
+              } else if (typeof messages === 'string') {
+                return `${field}: ${messages}`;
+              } else {
+                return `${field}: ${String(messages)}`;
+              }
+            })
             .join('; ');
           errorMessage = errorMessages || errorMessage;
         }

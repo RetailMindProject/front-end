@@ -24,6 +24,8 @@ interface FormData {
   imageMimeType?: string;
   imageName?: string;
   isActive: boolean; // Product active status
+  hasExpirationDate: boolean; // Whether to set expiration date for initial quantity
+  expirationDate: string; // Expiration date for initial quantity
 }
 
 interface FormErrors {
@@ -56,7 +58,9 @@ const CreateProduct = ({ onAdd, onCancel, loading = false }: CreateProductProps)
     categoryId: '',
     parentCategoryId: '',
     subCategoryId: '',
-    isActive: true // Default to active
+    isActive: true, // Default to active
+    hasExpirationDate: false, // Default to no expiration date
+    expirationDate: '' // Empty by default
   });
   const [errors, setErrors] = useState<FormErrors>({});
   const [_imagePreview, setImagePreview] = useState<string | null>(null);
@@ -378,6 +382,11 @@ const [parentType, setParentType] = useState<'select' | 'create'>('select'); // 
       newErrors.quantity = 'Please enter a valid quantity (0 or greater)';
     }
     
+    // Validate expiration date if hasExpirationDate is true
+    if (formData.hasExpirationDate && !formData.expirationDate.trim()) {
+      newErrors.expirationDate = 'Expiration date is required when expiration date tracking is enabled';
+    }
+    
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
@@ -429,7 +438,8 @@ const [parentType, setParentType] = useState<'select' | 'create'>('select'); // 
         imageUrl: formData.image,
         imageMimeType: formData.imageMimeType,
         imageTitle: formData.imageName,
-        quantity: formData.quantity ? parseFloat(formData.quantity) : 0
+        quantity: formData.quantity ? parseFloat(formData.quantity) : 0,
+        expirationDate: formData.hasExpirationDate && formData.expirationDate.trim() ? formData.expirationDate : null
       });
     }
   };
@@ -670,6 +680,65 @@ const [parentType, setParentType] = useState<'select' | 'create'>('select'); // 
             <p className="mt-1 text-xs text-slate-500">
               Initial stock quantity in warehouse
             </p>
+          </div>
+
+          {/* Expiration Date for Initial Quantity */}
+          <div>
+            <div className="flex items-center gap-2 mb-3">
+              <input
+                type="checkbox"
+                id="hasExpirationDate"
+                name="hasExpirationDate"
+                checked={formData.hasExpirationDate}
+                onChange={(e) => {
+                  const checked = e.target.checked;
+                  setFormData(prev => ({
+                    ...prev,
+                    hasExpirationDate: checked,
+                    expirationDate: checked ? prev.expirationDate : '' // Clear date if unchecked
+                  }));
+                  // Clear error when toggling
+                  if (errors.expirationDate) {
+                    setErrors(prev => {
+                      const newErrors = { ...prev };
+                      delete newErrors.expirationDate;
+                      return newErrors;
+                    });
+                  }
+                }}
+                className="w-4 h-4 text-blue-600 border-slate-300 rounded focus:ring-blue-500"
+              />
+              <label htmlFor="hasExpirationDate" className="text-sm font-medium text-slate-700">
+                Set expiration date
+              </label>
+            </div>
+            
+            {formData.hasExpirationDate && (
+              <div>
+                <label htmlFor="expirationDate" className="block text-sm font-medium text-slate-700 mb-1.5">
+                  Expiration Date <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="date"
+                  id="expirationDate"
+                  name="expirationDate"
+                  value={formData.expirationDate}
+                  onChange={handleChange}
+                  min={(() => {
+                    // Set minimum date to tomorrow (disable today and past dates)
+                    const tomorrow = new Date();
+                    tomorrow.setDate(tomorrow.getDate() + 1);
+                    return tomorrow.toISOString().split('T')[0];
+                  })()}
+                  className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                    errors.expirationDate ? 'border-red-500' : 'border-slate-300'
+                  }`}
+                />
+                {errors.expirationDate && (
+                  <p className="mt-1 text-sm text-red-600">{errors.expirationDate}</p>
+                )}
+              </div>
+            )}
           </div>
         </div>
 

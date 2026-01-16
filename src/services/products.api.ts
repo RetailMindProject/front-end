@@ -1,4 +1,4 @@
-simimport { apiClient, type ApiResponse } from "./api.client";
+import { apiClient, type ApiResponse } from "./api.client";
 import { getCurrentToken } from "./tokens";
 
 const API_BASE_URL = "http://localhost:8081";
@@ -39,7 +39,7 @@ export interface ProductDTO {
   images?: Array<{ id: number; url: string; mimeType?: string; title?: string; altText?: string; sortOrder?: number; isPrimary?: boolean }>;
   isActive?: boolean;
   taxRate?: number;
-  createdAt?: string;
+  createdAt?: string; 
   updatedAt?: string;
 }
 

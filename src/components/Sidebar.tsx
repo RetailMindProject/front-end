@@ -15,7 +15,7 @@ export default function Sidebar({ open, onToggle, links }: {
       <div className="pointer-events-none absolute inset-0 opacity-5 bg-[radial-gradient(circle_at_2px_2px,_indigo_500_1px,_transparent_0)] bg-[length:40px_40px]"></div>
       
       {/* Header */}
-      <div className="relative flex items-center justify-between px-3 py-4 border-b border-indigo-200/30">
+      <div className={`relative border-b border-indigo-200/30 ${open ? "flex items-center justify-between px-3 py-4" : "flex flex-col items-center px-2 py-3 gap-2"}`}>
         <div className="flex items-center gap-3">
           <div className="grid h-10 w-10 place-items-center rounded-xl bg-gradient-to-br from-indigo-500 to-blue-600 shadow-lg ring-2 ring-white/20 transition-transform duration-200 hover:scale-105">
             <img 
@@ -63,13 +63,13 @@ export default function Sidebar({ open, onToggle, links }: {
           
           return (
             <Link key={link.to} to={link.to} className="block mb-1">
-              <div className={`relative flex items-center gap-3 rounded-lg px-3 py-2.5 transition-all duration-200 ease-in-out group ${
+              <div className={`relative flex items-center ${open ? 'gap-3 px-3 py-2.5' : 'justify-center px-2 py-2'} rounded-lg transition-all duration-200 ease-in-out group ${
                 isActive 
                   ? 'bg-gradient-to-r from-blue-500 to-blue-400 text-white shadow-md shadow-blue-500/30' 
                   : 'hover:bg-indigo-100/60 text-slate-700 hover:shadow-sm'
               } focus-within:ring-2 focus-within:ring-blue-400 focus-within:ring-offset-2`}>
                 {/* Active left accent */}
-                {isActive && (
+                {isActive && open && (
                   <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-8 rounded-r-full bg-white/40 transition-all duration-200"></div>
                 )}
                 <span className={`h-4 w-4 flex-shrink-0 transition-all duration-200 ${isActive ? 'text-white scale-110' : 'text-slate-700 group-hover:scale-110 group-hover:text-[#0066FF] group-hover:rotate-3'}`}>
