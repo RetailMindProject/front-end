@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import type { ChangeEvent } from 'react';
+import { MoreVertical, Eye, Edit, Package, Trash2, ChevronLeft, ChevronRight } from 'lucide-react';
 import ProductViewModal from './ProductViewModal';
 import ConfirmDeleteModal from './ConfirmDeleteModal';
 import AuthenticatedImage from './AuthenticatedImage';
@@ -31,29 +32,74 @@ interface ProductListProps {
   onDelete: (id: string | number) => void;
   onEdit: (id: string | number) => void;
   onCreate: () => void;
+  onRestock?: (id: string | number, name: string) => void;
   loading?: boolean;
+  currentPage?: number;
+  totalPages?: number;
+  itemsPerPage?: number;
+  totalElements?: number;
+  onPageChange?: (page: number) => void;
+  onItemsPerPageChange?: (size: number) => void;
 }
 
-const ProductList = ({ products, onDelete, onEdit, onCreate, loading = false }: ProductListProps) => {
+const ProductList = ({ 
+  products, 
+  onDelete, 
+  onEdit, 
+  onCreate, 
+  onRestock, 
+  loading = false,
+  currentPage = 0,
+  totalPages = 0,
+  itemsPerPage = 10,
+  totalElements = 0,
+  onPageChange,
+  onItemsPerPageChange
+}: ProductListProps) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [searchResults, setSearchResults] = useState<Product[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState({ isOpen: false, productId: null as string | number | null, productName: '' });
+  const [openMenuId, setOpenMenuId] = useState<string | number | null>(null);
+  const menuRefs = useRef<Map<string | number, HTMLDivElement>>(new Map());
+
+  // Close menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (openMenuId !== null) {
+        const menuElement = menuRefs.current.get(openMenuId);
+        if (menuElement && !menuElement.contains(event.target as Node)) {
+          setOpenMenuId(null);
+        }
+      }
+    };
+
+    if (openMenuId !== null) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => {
+        document.removeEventListener('mousedown', handleClickOutside);
+      };
+    }
+  }, [openMenuId]);
 
   const handleSearchChange = (e: ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
     setSearchTerm(value);
     
     if (value.trim()) {
-      const results = products.filter(product =>
-        product.name.toLowerCase().includes(value.toLowerCase()) ||
-        (product.description && product.description.toLowerCase().includes(value.toLowerCase())) ||
-        (product.category && product.category.toLowerCase().includes(value.toLowerCase())) ||
-        (product.sku && product.sku.toLowerCase().includes(value.toLowerCase())) ||
-        (product.brand && product.brand.toLowerCase().includes(value.toLowerCase()))
-      );
+      const searchLower = value.toLowerCase().trim();
+      const results = products.filter(product => {
+        // Search by name
+        const nameMatch = product.name.toLowerCase().includes(searchLower);
+        // Search by SKU
+        const skuMatch = product.sku && product.sku.toLowerCase().includes(searchLower);
+        // Search by ID (convert both to string for comparison)
+        const idMatch = String(product.id).includes(searchLower);
+        
+        return nameMatch || skuMatch || idMatch;
+      });
       setSearchResults(results);
       setIsSearching(true);
     } else {
@@ -212,7 +258,7 @@ const ProductList = ({ products, onDelete, onEdit, onCreate, loading = false }: 
               type="text"
               value={searchTerm}
               onChange={handleSearchChange}
-              placeholder="Search for product"
+              placeholder="Search product"
               className="px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent w-64"
             />
             {isSearching && (
@@ -227,7 +273,12 @@ const ProductList = ({ products, onDelete, onEdit, onCreate, loading = false }: 
           
           <div className="flex items-center gap-3 ml-auto">
             <span className="text-sm text-slate-600">
-              {isSearching ? `${searchResults.length} product${searchResults.length !== 1 ? 's' : ''} found` : `${products.length} products`}
+              {isSearching 
+                ? `${searchResults.length} product${searchResults.length !== 1 ? 's' : ''} found` 
+                : onPageChange && totalElements > 0
+                  ? `${totalElements} total product${totalElements !== 1 ? 's' : ''}`
+                  : `${products.length} product${products.length !== 1 ? 's' : ''}`
+              }
             </span>
           </div>
         </div>
@@ -293,29 +344,75 @@ const ProductList = ({ products, onDelete, onEdit, onCreate, loading = false }: 
                 </div>
               </div>
               
-              {/* Action Buttons */}
-              <div className="flex items-center gap-1.5 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
-                <button 
-                  onClick={() => onEdit(product.id)}
-                  className="px-2.5 py-1.5 text-xs font-medium bg-slate-100 hover:bg-blue-100 hover:text-blue-700 text-slate-700 rounded-md transition-all duration-150 hover:scale-105 active:scale-95 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:ring-offset-1"
-                  title="Edit product"
+              {/* Action Menu */}
+              <div className="relative flex-shrink-0">
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setOpenMenuId(openMenuId === product.id ? null : product.id);
+                  }}
+                  className="p-1.5 text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-md transition-all duration-150 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  title="Actions"
                 >
-                  Edit
+                  <MoreVertical className="w-4 h-4" />
                 </button>
-                <button 
-                  onClick={() => handleViewProduct(product)}
-                  className="px-2.5 py-1.5 text-xs font-medium bg-slate-100 hover:bg-blue-100 hover:text-blue-700 text-slate-700 rounded-md transition-all duration-150 hover:scale-105 active:scale-95 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:ring-offset-1"
-                  title="View product details"
-                >
-                  View
-                </button>
-                <button 
-                  onClick={() => handleDelete(product.id, product.name)}
-                  className="px-2.5 py-1.5 text-xs font-medium bg-red-100 hover:bg-red-200 text-red-700 rounded-md transition-all duration-150 hover:scale-105 active:scale-95 focus:outline-none focus:ring-1 focus:ring-red-500 focus:ring-offset-1"
-                  title="Remove product"
-                >
-                  Remove
-                </button>
+                
+                {openMenuId === product.id && (
+                  <div
+                    ref={(el) => {
+                      if (el) {
+                        menuRefs.current.set(product.id, el);
+                      } else {
+                        menuRefs.current.delete(product.id);
+                      }
+                    }}
+                    className="absolute right-0 top-8 z-50 w-40 bg-white rounded-lg shadow-lg border border-slate-200 py-1"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <button
+                      onClick={() => {
+                        handleViewProduct(product);
+                        setOpenMenuId(null);
+                      }}
+                      className="w-full flex items-center gap-2 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-colors"
+                    >
+                      <Eye className="w-4 h-4" />
+                      <span>View</span>
+                    </button>
+                    <button
+                      onClick={() => {
+                        onEdit(product.id);
+                        setOpenMenuId(null);
+                      }}
+                      className="w-full flex items-center gap-2 px-3 py-2 text-sm text-slate-700 hover:bg-blue-50 hover:text-blue-700 transition-colors"
+                    >
+                      <Edit className="w-4 h-4" />
+                      <span>Edit</span>
+                    </button>
+                    {onRestock && (
+                      <button
+                        onClick={() => {
+                          onRestock(product.id, product.name);
+                          setOpenMenuId(null);
+                        }}
+                        className="w-full flex items-center gap-2 px-3 py-2 text-sm text-slate-700 hover:bg-green-50 hover:text-green-700 transition-colors"
+                      >
+                        <Package className="w-4 h-4" />
+                        <span>Re-stock</span>
+                      </button>
+                    )}
+                    <button
+                      onClick={() => {
+                        handleDelete(product.id, product.name);
+                        setOpenMenuId(null);
+                      }}
+                      className="w-full flex items-center gap-2 px-3 py-2 text-sm text-slate-700 hover:bg-red-50 hover:text-red-700 transition-colors"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                      <span>Remove</span>
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
           ))}
@@ -331,6 +428,52 @@ const ProductList = ({ products, onDelete, onEdit, onCreate, loading = false }: 
             <span>+</span>
             Add Product
           </button>
+        </div>
+      )}
+
+      {/* Pagination Controls */}
+      {!isSearching && onPageChange && totalPages > 1 && (
+        <div className="px-6 py-4 border-t border-slate-200 flex items-center justify-between bg-slate-50/50">
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-slate-600">Rows per page:</span>
+            <select
+              value={itemsPerPage}
+              onChange={(e) => {
+                if (onItemsPerPageChange) {
+                  onItemsPerPageChange(Number(e.target.value));
+                }
+              }}
+              className="px-2.5 py-1.5 text-sm border border-slate-300 rounded-md bg-white hover:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-150 cursor-pointer"
+            >
+              <option value={10}>10</option>
+              <option value={20}>20</option>
+              <option value={50}>50</option>
+              <option value={100}>100</option>
+            </select>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-slate-600">
+              Page {currentPage + 1} of {totalPages} {totalElements > 0 && `(${totalElements} total)`}
+            </span>
+            <div className="inline-flex rounded-lg overflow-hidden border border-slate-300 bg-white shadow-sm">
+              <button
+                onClick={() => onPageChange(Math.max(0, currentPage - 1))}
+                disabled={currentPage === 0}
+                className="px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-blue-50 hover:text-blue-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1"
+                title="Previous page"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+              <button
+                onClick={() => onPageChange(Math.min(totalPages - 1, currentPage + 1))}
+                disabled={currentPage >= totalPages - 1}
+                className="px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-blue-50 hover:text-blue-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent transition-all duration-150 border-l border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1"
+                title="Next page"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
         </div>
       )}
       

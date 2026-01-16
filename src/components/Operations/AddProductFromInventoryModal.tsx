@@ -26,7 +26,7 @@ interface AddProductFromInventoryModalProps {
   storeProducts: Product[];
   isOpen: boolean;
   onClose: () => void;
-  onSelect: (product: ProductDTO, quantity: number) => void | Promise<void>;
+  onSelect: (product: ProductDTO, quantity: number, expirationDate?: string | null) => void | Promise<void>;
   onAdjustQuantity?: (productId: number, quantity: number, isIncrease: boolean) => Promise<void>;
   getAvailableInventoryProducts?: () => Promise<(ProductDTO & { warehouseQuantity?: number; storeQuantity?: number })[]>;
 }
@@ -53,13 +53,19 @@ const AddProductFromInventoryModal = ({
   const [pendingQuantities, setPendingQuantities] = useState<Map<number | string, number>>(new Map());
   // Track quantity input values for each product (productId -> input value string)
   const [quantityInputs, setQuantityInputs] = useState<Map<number | string, string>>(new Map());
+  // Track expiration dates for each product (productId -> expiration date string)
+  const [expirationDates, setExpirationDates] = useState<Map<number | string, string>>(new Map());
+  // Track whether expiration date is enabled for each product (productId -> boolean)
+  const [hasExpirationDate, setHasExpirationDate] = useState<Map<number | string, boolean>>(new Map());
 
   useEffect(() => {
     if (isOpen) {
       loadAvailableProducts();
-      // Clear pending quantities and inputs when modal opens
+      // Clear pending quantities, inputs, and expiration dates when modal opens
       setPendingQuantities(new Map());
       setQuantityInputs(new Map());
+      setExpirationDates(new Map());
+      setHasExpirationDate(new Map());
     }
   }, [isOpen, inventoryProducts]);
 
@@ -237,14 +243,28 @@ const AddProductFromInventoryModal = ({
       return;
     }
     try {
-      await onSelect(product, qty);
-      // Clear pending quantity and input for this product after successful transfer
+      // Get expiration date if enabled for this product
+      const expirationDateEnabled = hasExpirationDate.get(productId) || false;
+      const expirationDateValue = expirationDateEnabled ? (expirationDates.get(productId) || null) : null;
+      
+      await onSelect(product, qty, expirationDateValue);
+      // Clear pending quantity, input, and expiration date for this product after successful transfer
       setPendingQuantities(prev => {
         const newMap = new Map(prev);
         newMap.delete(productId);
         return newMap;
       });
       setQuantityInputs(prev => {
+        const newMap = new Map(prev);
+        newMap.delete(productId);
+        return newMap;
+      });
+      setExpirationDates(prev => {
+        const newMap = new Map(prev);
+        newMap.delete(productId);
+        return newMap;
+      });
+      setHasExpirationDate(prev => {
         const newMap = new Map(prev);
         newMap.delete(productId);
         return newMap;
@@ -362,6 +382,66 @@ const AddProductFromInventoryModal = ({
                   <p className="mt-1 text-xs text-slate-500">
                     Enter the quantity to transfer from warehouse to store (max: {selectedProduct.warehouseQuantity || 0})
                   </p>
+                </div>
+
+                {/* Expiration Date Section */}
+                <div>
+                  <div className="flex items-center gap-2 mb-3">
+                    <input
+                      type="checkbox"
+                      id="hasExpirationDateSelected"
+                      checked={hasExpirationDate.get(selectedProduct.id) || false}
+                      onChange={(e) => {
+                        const checked = e.target.checked;
+                        const productId = typeof selectedProduct.id === 'string' ? parseInt(selectedProduct.id) : selectedProduct.id;
+                        setHasExpirationDate(prev => {
+                          const newMap = new Map(prev);
+                          if (checked) {
+                            newMap.set(productId, true);
+                          } else {
+                            newMap.delete(productId);
+                            // Clear expiration date when unchecked
+                            setExpirationDates(prev => {
+                              const newMap2 = new Map(prev);
+                              newMap2.delete(productId);
+                              return newMap2;
+                            });
+                          }
+                          return newMap;
+                        });
+                      }}
+                      className="w-4 h-4 text-blue-600 border-slate-300 rounded focus:ring-blue-500"
+                    />
+                    <label htmlFor="hasExpirationDateSelected" className="text-sm font-medium text-slate-700">
+                      Set expiration date
+                    </label>
+                  </div>
+                  
+                  {hasExpirationDate.get(selectedProduct.id) && (
+                    <div>
+                      <label htmlFor="expirationDateSelected" className="block text-sm font-medium text-slate-700 mb-1.5">
+                        Expiration Date <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        type="date"
+                        id="expirationDateSelected"
+                        value={expirationDates.get(selectedProduct.id) || ''}
+                        onChange={(e) => {
+                          const productId = typeof selectedProduct.id === 'string' ? parseInt(selectedProduct.id) : selectedProduct.id;
+                          setExpirationDates(prev => {
+                            const newMap = new Map(prev);
+                            if (e.target.value) {
+                              newMap.set(productId, e.target.value);
+                            } else {
+                              newMap.delete(productId);
+                            }
+                            return newMap;
+                          });
+                        }}
+                        className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+                  )}
                 </div>
                 
                 <div className="flex gap-3">

@@ -15,7 +15,6 @@ interface FormData {
   price: string;
   wholesalePrice: string;
   unit: string;
-  quantity: string; // Warehouse quantity
   category: string; // category name for display
   categoryId: string; // category ID for API
   parentCategoryId: string; // Parent category ID
@@ -50,7 +49,6 @@ const EditProduct = ({ products, productId, onUpdate, onCancel, loading = false 
     price: '',
     wholesalePrice: '',
     unit: '',
-    quantity: '0',
     category: '',
     categoryId: '',
     parentCategoryId: '',
@@ -182,22 +180,6 @@ const EditProduct = ({ products, productId, onUpdate, onCancel, loading = false 
             }
           }
 
-          // Fetch warehouse quantity
-          let warehouseQty = '0';
-          if (product.id) {
-            try {
-              const { storeProductsApi } = await import('../../services/store-products.api');
-              const stockRes = await storeProductsApi.getByProductId(product.id);
-              if (stockRes.data) {
-                const qty = (stockRes.data as any).warehouseQty || (stockRes.data as any).warehouseQuantity || 0;
-                warehouseQty = String(qty);
-              }
-            } catch (err) {
-              console.error('Failed to load warehouse quantity:', err);
-              // Default to 0 if fetch fails
-            }
-          }
-          
           let resolvedCategoryName = categoryName;
           let resolvedCategoryId = categoryId;
 
@@ -245,7 +227,6 @@ const EditProduct = ({ products, productId, onUpdate, onCancel, loading = false 
               : '',
           wholesalePrice: product.wholesalePrice !== undefined && product.wholesalePrice !== null ? String(product.wholesalePrice) : '',
           unit: product.unit || '',
-          quantity: warehouseQty,
           description: product.description || '',
           category: resolvedCategoryName,
           categoryId: resolvedCategoryId,
@@ -1113,10 +1094,6 @@ const EditProduct = ({ products, productId, onUpdate, onCancel, loading = false 
       newErrors.parent = 'Parent category is required';
     }
     
-    if (formData.quantity && (isNaN(Number(formData.quantity)) || parseFloat(formData.quantity) < 0)) {
-      newErrors.quantity = 'Please enter a valid quantity (0 or greater)';
-    }
-    
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
@@ -1153,11 +1130,10 @@ const EditProduct = ({ products, productId, onUpdate, onCancel, loading = false 
         taxRate: 0,
       };
       
-      // Include quantity, parentCategoryId, and subCategoryId in the update payload
-      const quantity = formData.quantity ? parseFloat(formData.quantity) : 0;
+      // Include parentCategoryId and subCategoryId in the update payload
       const parentCategoryId = formData.parentCategoryId ? Number(formData.parentCategoryId) : undefined;
       const subCategoryId = formData.subCategoryId ? Number(formData.subCategoryId) : undefined;
-      await onUpdate(productId, { ...updatedProduct, quantity, parentCategoryId, subCategoryId } as any);
+      await onUpdate(productId, { ...updatedProduct, parentCategoryId, subCategoryId } as any);
     }
   };
 
@@ -1387,28 +1363,6 @@ const EditProduct = ({ products, productId, onUpdate, onCancel, loading = false 
           )}
           </div>
 
-          <div>
-            <label htmlFor="quantity" className="block text-sm font-medium text-slate-700 mb-1.5">
-              Warehouse Quantity
-            </label>
-            <input
-              type="number"
-              id="quantity"
-              name="quantity"
-              value={formData.quantity}
-              onChange={handleChange}
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
-              placeholder="0"
-              step="1"
-              min="0"
-            />
-            {errors.quantity && (
-              <p className="mt-1 text-xs text-red-600">{errors.quantity}</p>
-            )}
-            <p className="mt-1 text-xs text-slate-500">
-              Current stock quantity in warehouse
-            </p>
-          </div>
         </div>
 
         <div className="flex items-center gap-2">
