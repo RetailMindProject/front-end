@@ -1,7 +1,7 @@
 // Tokens for different roles
 // Each role has its own token stored in localStorage (set after login)
 
-export type UserRole = 'STORE_MANAGER' | 'INVENTORY_MANAGER' | 'CEO' | 'CASHIER';
+export type UserRole = 'STORE_MANAGER' | 'INVENTORY_MANAGER' | 'CEO' | 'CASHIER' | 'CUSTOMER';
 
 /**
  * Decode JWT token to extract payload (without verification)
@@ -34,7 +34,7 @@ export function getRoleFromToken(token: string | null): UserRole | null {
   if (!decoded || !decoded.role) return null;
   
   const role = decoded.role.toUpperCase();
-  if (role === 'STORE_MANAGER' || role === 'INVENTORY_MANAGER' || role === 'CEO' || role === 'CASHIER') {
+  if (role === 'STORE_MANAGER' || role === 'INVENTORY_MANAGER' || role === 'CEO' || role === 'CASHIER' || role === 'CUSTOMER') {
     return role as UserRole;
   }
   
@@ -61,6 +61,9 @@ export function getCurrentRole(): UserRole | null {
   if (pathname.startsWith('/cashier')) {
     return 'CASHIER';
   }
+  if (pathname.startsWith('/customer')) {
+    return 'CUSTOMER';
+  }
   
   return null;
 }
@@ -81,33 +84,61 @@ export function setTokenForRole(role: UserRole, token: string): void {
 
 /**
  * Get the current user's token based on the current route
- * First tries to get token from JWT if available, then falls back to URL-based role
+ * PRIORITY: URL-based role > userInfo role > token validation
+ * This ensures we use the correct token for the current context
  */
 export function getCurrentToken(): string | null {
-  // First, try to get token from any role and verify it matches current route
-  const roles: UserRole[] = ['STORE_MANAGER', 'INVENTORY_MANAGER', 'CEO', 'CASHIER'];
+  // Get current role from URL
+  const currentRole = getCurrentRole();
   
-  for (const role of roles) {
-    const token = getTokenForRole(role);
-    if (token) {
-      const tokenRole = getRoleFromToken(token);
-      const currentRole = getCurrentRole();
-      
-      // If token role matches current route role, use it
+  // PRIORITY 1: If we have a current role from URL, use token for that role
+  // This is the most reliable way to ensure correct token isolation
+  if (currentRole) {
+    const roleToken = getTokenForRole(currentRole);
+    if (roleToken) {
+      // Validate that token role matches URL role
+      const tokenRole = getRoleFromToken(roleToken);
       if (tokenRole === currentRole) {
-        return token;
+        return roleToken;
       }
-      
-      // If no current role from URL, use the first valid token found
-      if (!currentRole) {
-        return token;
+      // If token role doesn't match, don't use it (prevents cross-role contamination)
+    }
+  }
+  
+  // PRIORITY 2: Try to get token from userInfo role
+  // But only if it matches the current route role
+  const userInfo = getUserInfo();
+  if (userInfo?.role) {
+    // Only use userInfo token if it matches current route
+    if (!currentRole || userInfo.role === currentRole) {
+      const roleToken = getTokenForRole(userInfo.role);
+      if (roleToken) {
+        const tokenRole = getRoleFromToken(roleToken);
+        if (tokenRole === userInfo.role) {
+          return roleToken;
+        }
       }
     }
   }
   
-  // Fallback: try to get generic authToken
+  // PRIORITY 3: If no current role from URL, try to find any valid token
+  // This is a fallback for pages that don't have role-specific routes
+  if (!currentRole) {
+    const roles: UserRole[] = ['STORE_MANAGER', 'INVENTORY_MANAGER', 'CEO', 'CASHIER'];
+    for (const role of roles) {
+      const token = getTokenForRole(role);
+      if (token) {
+        const tokenRole = getRoleFromToken(token);
+        if (tokenRole === role) {
+          return token;
+        }
+      }
+    }
+  }
+  
+  // Fallback: try to get generic authToken (legacy support)
   const genericToken = localStorage.getItem('authToken');
-  if (genericToken) {
+  if (genericToken && genericToken.split('.').length === 3) {
     return genericToken;
   }
   
@@ -122,18 +153,50 @@ export function clearTokenForRole(role: UserRole): void {
 }
 
 /**
- * Clear all tokens
+ * Clear user info for a specific role
+ */
+export function clearUserInfoForRole(role: UserRole): void {
+  localStorage.removeItem(`userInfo_${role}`);
+  // Also clear generic userInfo if it matches the role
+  const userInfo = getUserInfo();
+  if (userInfo?.role === role) {
+    localStorage.removeItem('userInfo');
+  }
+}
+
+/**
+ * Clear all data for a specific role (token + userInfo + sessionId if cashier)
+ */
+export function clearRoleData(role: UserRole): void {
+  clearTokenForRole(role);
+  clearUserInfoForRole(role);
+  
+  // If clearing cashier data, also clear session-related data
+  if (role === 'CASHIER') {
+    clearSessionId();
+    // Clear any cashier-specific session data
+    sessionStorage.clear();
+  }
+}
+
+/**
+ * Clear all tokens (use with caution - only for full logout)
  */
 export function clearAllTokens(): void {
   // Clear all role-specific tokens
   const roles: UserRole[] = ['STORE_MANAGER', 'INVENTORY_MANAGER', 'CEO', 'CASHIER'];
   roles.forEach(role => {
     localStorage.removeItem(`authToken_${role}`);
+    localStorage.removeItem(`userInfo_${role}`);
   });
   // Clear generic authToken if exists
   localStorage.removeItem('authToken');
-  // Clear user info
+  // Clear generic user info
   localStorage.removeItem('userInfo');
+  // Clear cached session id if exists
+  localStorage.removeItem('currentSessionId');
+  // Clear session storage
+  sessionStorage.clear();
 }
 
 /**
@@ -148,16 +211,54 @@ export interface UserInfo {
   phone?: string;
   address?: string;
   role: UserRole;
+  sessionId?: number;
+  terminalId?: number;
+  terminalCode?: string;
 }
 
+/**
+ * Set user info for a specific role
+ * This ensures userInfo is isolated per role
+ */
 export function setUserInfo(userInfo: UserInfo): void {
+  // Store userInfo with role-specific key to prevent cross-contamination
+  const role = userInfo.role;
+  localStorage.setItem(`userInfo_${role}`, JSON.stringify(userInfo));
+  // Also store in generic key for backward compatibility
   localStorage.setItem('userInfo', JSON.stringify(userInfo));
 }
 
 /**
  * Get stored user info
+ * Tries to get role-specific userInfo first, then falls back to generic
  */
-export function getUserInfo(): UserInfo | null {
+export function getUserInfo(role?: UserRole): UserInfo | null {
+  // If role is specified, try to get role-specific userInfo first
+  if (role) {
+    const roleStored = localStorage.getItem(`userInfo_${role}`);
+    if (roleStored) {
+      try {
+        return JSON.parse(roleStored);
+      } catch {
+        // Continue to fallback
+      }
+    }
+  }
+  
+  // Try to get from current role
+  const currentRole = getCurrentRole();
+  if (currentRole) {
+    const roleStored = localStorage.getItem(`userInfo_${currentRole}`);
+    if (roleStored) {
+      try {
+        return JSON.parse(roleStored);
+      } catch {
+        // Continue to fallback
+      }
+    }
+  }
+  
+  // Fallback to generic userInfo (for backward compatibility)
   const stored = localStorage.getItem('userInfo');
   if (!stored) return null;
   
@@ -203,5 +304,49 @@ export function getUserDisplayName(): string {
   }
   
   return "Guest";
+}
+
+/**
+ * Get stored session ID for cashier
+ */
+export function getSessionId(): number | null {
+  const userInfo = getUserInfo();
+  if (userInfo?.sessionId) {
+    return userInfo.sessionId;
+  }
+  
+  // Fallback: try to get from localStorage directly
+  const stored = localStorage.getItem('currentSessionId');
+  if (stored) {
+    const sessionId = parseInt(stored, 10);
+    if (!isNaN(sessionId)) {
+      return sessionId;
+    }
+  }
+  
+  return null;
+}
+
+/**
+ * Set session ID for cashier
+ */
+export function setSessionId(sessionId: number): void {
+  // Save in userInfo
+  const userInfo = getUserInfo();
+  if (userInfo) {
+    setUserInfo({ ...userInfo, sessionId });
+  }
+  
+  // Also save directly in localStorage as backup
+  localStorage.setItem('currentSessionId', sessionId.toString());
+}
+
+export function clearSessionId(): void {
+  const userInfo = getUserInfo();
+  if (userInfo) {
+    const { sessionId, ...rest } = userInfo;
+    setUserInfo({ ...rest });
+  }
+  localStorage.removeItem('currentSessionId');
 }
 

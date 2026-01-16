@@ -1,5 +1,5 @@
 import { apiClient } from "./api.client";
-import { setTokenForRole, setUserInfo, clearAllTokens, type UserRole } from "./tokens";
+import { setTokenForRole, setUserInfo, clearAllTokens, clearRoleData, type UserRole } from "./tokens";
 import type { UserAccount } from "../types/user";
 
 export interface LoginRequest {
@@ -17,9 +17,24 @@ export interface LoginResponse {
   address?: string;
 }
 
+export interface CashierLoginResponse {
+  token: string;
+  userId: number;
+  username: string;
+  role: UserRole;
+  terminalId?: number;
+  terminalCode?: string;
+  sessionId?: number;
+  sessionStatus?: "OPEN" | "CLOSED";
+  openingFloat?: number;
+  message?: string;
+  paired?: boolean;
+}
+
 export interface AuthError {
   message: string;
   status: number;
+  details?: Record<string, unknown> | null;
 }
 
 /**
@@ -36,6 +51,7 @@ export async function login(
       headers: {
         "Content-Type": "application/json",
       },
+      credentials: "include",
       body: JSON.stringify({ email, password }),
     });
 
@@ -54,12 +70,53 @@ export async function login(
         error: {
           message: data.message || `HTTP error! status: ${response.status}`,
           status: response.status,
+          details: typeof data === "object" && data !== null ? data : null,
         },
       };
     }
 
+    // Log full response for debugging
+    console.log("Login API response:", {
+      status: response.status,
+      ok: response.ok,
+      data: data,
+    });
+
     const token = data.token || data.accessToken || data.access_token;
     const role = data.role?.toUpperCase() as UserRole;
+    
+    // Validate token and role
+    if (!token) {
+      console.error("Login response missing token");
+      return {
+        error: {
+          message: "Login response missing authentication token",
+          status: response.status,
+        },
+      };
+    }
+
+    if (!role) {
+      console.error("Login response missing role");
+      return {
+        error: {
+          message: "Login response missing user role",
+          status: response.status,
+        },
+      };
+    }
+
+    // Validate role is a known UserRole
+    const validRoles: UserRole[] = ['STORE_MANAGER', 'INVENTORY_MANAGER', 'CEO', 'CASHIER', 'CUSTOMER'];
+    if (!validRoles.includes(role)) {
+      console.error("Invalid role received:", role);
+      return {
+        error: {
+          message: `Invalid user role: ${role}`,
+          status: response.status,
+        },
+      };
+    }
     
     let phone = "";
     let address = "";
@@ -88,37 +145,42 @@ export async function login(
       address: data.address || data.userAddress || data.user_address || address,
     };
 
-    if (loginData.role && loginData.token) {
-      setTokenForRole(loginData.role, loginData.token);
-      
-      // Extract userId from response or token
-      let userId = data.userId || data.id || data.user?.id;
-      if (!userId && token) {
-        try {
-          const parts = token.split('.');
-          if (parts.length === 3) {
-            const payload = parts[1];
-            const decoded = JSON.parse(atob(payload.replace(/-/g, '+').replace(/_/g, '/')));
-            userId = decoded.userId || decoded.user_id || decoded.sub || decoded.id || decoded.user?.id;
-          }
-        } catch (e) {
-          console.error("Error decoding token for userId:", e);
+    // Store token and user info
+    setTokenForRole(loginData.role, loginData.token);
+    
+    // Extract userId from response or token
+    let userId = data.userId || data.id || data.user?.id;
+    if (!userId && token) {
+      try {
+        const parts = token.split('.');
+        if (parts.length === 3) {
+          const payload = parts[1];
+          const decoded = JSON.parse(atob(payload.replace(/-/g, '+').replace(/_/g, '/')));
+          userId = decoded.userId || decoded.user_id || decoded.sub || decoded.id || decoded.user?.id;
         }
+      } catch (e) {
+        console.error("Error decoding token for userId:", e);
       }
-
-      const userInfoToSave = {
-        id: userId ? (typeof userId === 'number' ? userId : parseInt(userId, 10)) : undefined,
-        userId: userId ? (typeof userId === 'number' ? userId : parseInt(userId, 10)) : undefined,
-        firstName: loginData.firstName || data.firstName || "",
-        lastName: loginData.lastName || data.lastName || "",
-        email: loginData.email || data.email || "",
-        phone: loginData.phone || "",
-        address: loginData.address || "",
-        role: loginData.role,
-      };
-      
-      setUserInfo(userInfoToSave);
     }
+
+    const userInfoToSave = {
+      id: userId ? (typeof userId === 'number' ? userId : parseInt(userId, 10)) : undefined,
+      userId: userId ? (typeof userId === 'number' ? userId : parseInt(userId, 10)) : undefined,
+      firstName: loginData.firstName || data.firstName || "",
+      lastName: loginData.lastName || data.lastName || "",
+      email: loginData.email || data.email || "",
+      phone: loginData.phone || "",
+      address: loginData.address || "",
+      role: loginData.role,
+    };
+    
+    setUserInfo(userInfoToSave);
+
+    console.log("Login successful:", {
+      role: loginData.role,
+      email: loginData.email,
+      hasToken: !!loginData.token,
+    });
 
     return { data: loginData };
   } catch (error) {
@@ -132,7 +194,113 @@ export async function login(
 }
 
 /**
- * Logout current user
+ * Cashier Login with Pairing Support
+ * POST /api/sessions/cashier/login
+ * This endpoint handles login and returns pairing status
+ */
+export async function cashierLogin(
+  username: string,
+  password: string
+): Promise<{ data?: CashierLoginResponse; error?: AuthError }> {
+  try {
+    console.log("Cashier login attempt for:", username);
+    const response = await fetch("http://localhost:8081/api/sessions/cashier/login", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      credentials: "include", // CRITICAL: This sends and receives cookies (browser token)
+      body: JSON.stringify({ username, password }),
+    });
+    
+    console.log("Cashier login response status:", response.status);
+    console.log("Response cookies:", document.cookie);
+
+    // Handle non-JSON responses
+    let data;
+    const contentType = response.headers.get("content-type");
+    if (contentType && contentType.includes("application/json")) {
+      data = await response.json();
+    } else {
+      const text = await response.text();
+      data = { message: text || "An error occurred" };
+    }
+
+    if (!response.ok) {
+      return {
+        error: {
+          message: data.message || `HTTP error! status: ${response.status}`,
+          status: response.status,
+          details: typeof data === "object" && data !== null ? data : null,
+        },
+      };
+    }
+
+    const token = data.token;
+    const role = (data.role?.toUpperCase() || "CASHIER") as UserRole;
+
+    const loginData: CashierLoginResponse = {
+      token,
+      userId: data.userId,
+      username: data.username,
+      role,
+      terminalId: data.terminalId,
+      terminalCode: data.terminalCode,
+      sessionId: data.sessionId,
+      sessionStatus: data.sessionStatus,
+      openingFloat: data.openingFloat,
+      message: data.message,
+      paired: data.paired || false,
+    };
+
+    // Save token and user info regardless of pairing result
+    if (token) {
+      setTokenForRole(role, token);
+    }
+
+    const userInfoToSave = {
+      id: loginData.userId,
+      userId: loginData.userId,
+      firstName: data.firstName || "",
+      lastName: data.lastName || "",
+      email: loginData.username,
+      phone: data.phone || "",
+      address: data.address || "",
+      role: role,
+      sessionId: loginData.sessionId,
+      terminalId: loginData.terminalId,
+      terminalCode: loginData.terminalCode,
+    };
+    
+    setUserInfo(userInfoToSave);
+
+    return { data: loginData };
+  } catch (error) {
+    return {
+      error: {
+        message: error instanceof Error ? error.message : "Network error occurred",
+        status: 0,
+        details: null,
+      },
+    };
+  }
+}
+
+/**
+ * Logout for a specific role (clears only that role's data)
+ */
+export function logoutForRole(role: UserRole): void {
+  clearRoleData(role);
+  
+  // Redirect to login page using window.location to ensure full page reload
+  if (typeof window !== 'undefined') {
+    window.location.href = "/login";
+  }
+}
+
+/**
+ * Logout current user (clears all tokens - use with caution)
+ * This should only be used when you want to completely log out all users
  */
 export function logout(): void {
   // Clear all tokens and user info
@@ -172,6 +340,7 @@ export async function getCurrentUserProfile(): Promise<{ data?: UserProfileRespo
       error: {
         message: error instanceof Error ? error.message : "Network error occurred",
         status: 0,
+        details: null,
       },
     };
   }
