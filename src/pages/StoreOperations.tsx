@@ -170,14 +170,15 @@ export default function StoreOperations() {
     }
   };
 
-  const addProductFromInventory = async (product: ProductDTO, quantity: number = 1) => {
+  const addProductFromInventory = async (product: ProductDTO, quantity: number = 1, expirationDate?: string | null) => {
     setLoading(true);
     setError(null);
     try {
       const dto: StoreTransferRequestDTO = {
         productId: typeof product.id === 'string' ? parseInt(product.id) : product.id,
         quantity: quantity,
-        notes: `Added to store from inventory`
+        notes: `Added to store from inventory`,
+        expirationDate: expirationDate || null
       };
       
       console.log('Transferring product to store:', dto);

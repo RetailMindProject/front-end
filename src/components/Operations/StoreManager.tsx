@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import type { ChangeEvent } from 'react';
-import { Filter } from 'lucide-react';
+import { Filter, MoreVertical, Eye, RotateCcw } from 'lucide-react';
 import ProductViewModal from './ProductViewModal';
 import AddProductFromInventoryModal from './AddProductFromInventoryModal';
 import ConfirmDeleteModal from './ConfirmDeleteModal';
@@ -49,6 +49,8 @@ const StoreManager = ({
   const [searchTerm, setSearchTerm] = useState('');
   const [searchResults, setSearchResults] = useState<(StoreProductResponseDTO & { imageUrl?: string | null })[]>([]);
   const [isSearching, setIsSearching] = useState(false);
+  const [openMenuId, setOpenMenuId] = useState<number | null>(null);
+  const menuRefs = useRef<Map<number, HTMLDivElement>>(new Map());
   const [selectedProduct, setSelectedProduct] = useState<(StoreProductResponseDTO & { imageUrl?: string | null; name: string; category?: string; cost?: number; price?: number; wholesalePrice?: number; unit?: string; description?: string }) | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -68,11 +70,17 @@ const StoreManager = ({
     setSearchTerm(value);
     
     if (value.trim()) {
-      const results = storeProducts.filter(product =>
-        product.productName.toLowerCase().includes(value.toLowerCase()) ||
-        (product.sku && product.sku.toLowerCase().includes(value.toLowerCase())) ||
-        (product.brand && product.brand.toLowerCase().includes(value.toLowerCase()))
-      );
+      const searchLower = value.toLowerCase().trim();
+      const results = storeProducts.filter(product => {
+        // Search by name
+        const nameMatch = product.productName && product.productName.toLowerCase().includes(searchLower);
+        // Search by SKU
+        const skuMatch = product.sku && product.sku.toLowerCase().includes(searchLower);
+        // Search by ID (convert both to string for comparison)
+        const idMatch = String(product.productId).includes(searchLower);
+        
+        return nameMatch || skuMatch || idMatch;
+      });
       setSearchResults(results);
       setIsSearching(true);
     } else {
@@ -81,6 +89,24 @@ const StoreManager = ({
     }
   };
 
+  // Close menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (openMenuId !== null) {
+        const menuElement = menuRefs.current.get(openMenuId);
+        if (menuElement && !menuElement.contains(event.target as Node)) {
+          setOpenMenuId(null);
+        }
+      }
+    };
+
+    if (openMenuId !== null) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => {
+        document.removeEventListener('mousedown', handleClickOutside);
+      };
+    }
+  }, [openMenuId]);
 
   const handleDelete = (id: string | number, name: string) => {
     // Find the product to get store quantity
@@ -416,7 +442,7 @@ const StoreManager = ({
               type="text"
               value={searchTerm}
               onChange={handleSearchChange}
-              placeholder="Search for product"
+              placeholder="Search by name, SKU, or ID"
               className="px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent w-64"
             />
             {isSearching && (
@@ -500,22 +526,53 @@ const StoreManager = ({
                 </div>
               </div>
               
-              {/* Action Buttons */}
-              <div className="flex items-center gap-1.5 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
-                <button 
-                  onClick={() => handleViewProduct(product)}
-                  className="px-2.5 py-1.5 text-xs font-medium bg-slate-100 hover:bg-blue-100 hover:text-blue-700 text-slate-700 rounded-md transition-all duration-150 hover:scale-105 active:scale-95 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:ring-offset-1"
-                  title="View product details"
+              {/* Action Menu */}
+              <div className="relative flex-shrink-0">
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setOpenMenuId(openMenuId === product.productId ? null : product.productId);
+                  }}
+                  className="p-1.5 text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-md transition-all duration-150 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  title="Actions"
                 >
-                  View
+                  <MoreVertical className="w-4 h-4" />
                 </button>
-                <button 
-                  onClick={() => handleDelete(product.productId, product.productName)}
-                  className="px-2.5 py-1.5 text-xs font-medium bg-red-100 hover:bg-red-200 text-red-700 rounded-md transition-all duration-150 hover:scale-105 active:scale-95 focus:outline-none focus:ring-1 focus:ring-red-500 focus:ring-offset-1"
-                  title="Revert to warehouse"
-                >
-                  Revert
-                </button>
+                
+                {openMenuId === product.productId && (
+                  <div
+                    ref={(el) => {
+                      if (el) {
+                        menuRefs.current.set(product.productId, el);
+                      } else {
+                        menuRefs.current.delete(product.productId);
+                      }
+                    }}
+                    className="absolute right-0 top-8 z-50 w-40 bg-white rounded-lg shadow-lg border border-slate-200 py-1"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <button
+                      onClick={() => {
+                        handleViewProduct(product);
+                        setOpenMenuId(null);
+                      }}
+                      className="w-full flex items-center gap-2 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-colors"
+                    >
+                      <Eye className="w-4 h-4" />
+                      <span>View</span>
+                    </button>
+                    <button
+                      onClick={() => {
+                        handleDelete(product.productId, product.productName);
+                        setOpenMenuId(null);
+                      }}
+                      className="w-full flex items-center gap-2 px-3 py-2 text-sm text-slate-700 hover:bg-red-50 hover:text-red-700 transition-colors"
+                    >
+                      <RotateCcw className="w-4 h-4" />
+                      <span>Revert</span>
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
           ))}

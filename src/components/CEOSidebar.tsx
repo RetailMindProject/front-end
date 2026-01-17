@@ -17,9 +17,11 @@ export default function CEOSidebar({ open, onToggle }: {
   ];
   
   return (
-    <aside className={`${open ? "w-64" : "w-16"} sticky top-0 h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 border-r border-gray-300 transition-all duration-300 ease-in-out relative flex flex-col`}>
-      {/* Header - Dark Background */}
-      <div className="flex items-center justify-between px-3 py-4 bg-slate-900">
+    <aside className={`${open ? "w-64" : "w-16"} sticky top-0 h-screen bg-gradient-to-br from-indigo-50 via-blue-50 to-purple-50 border-r border-indigo-200/50 transition-all duration-300 ease-in-out shadow-lg relative flex flex-col`}>
+      <div className="pointer-events-none absolute inset-0 opacity-5 bg-[radial-gradient(circle_at_2px_2px,_indigo_500_1px,_transparent_0)] bg-[length:40px_40px]"></div>
+      
+      {/* Header */}
+      <div className={`relative border-b border-indigo-200/30 ${open ? "flex items-center justify-between px-3 py-4" : "flex flex-col items-center px-2 py-3 gap-2"}`}>
         <div className="flex items-center gap-3">
           <div className="h-10 w-10 rounded-full bg-blue-600 flex items-center justify-center ring-2 ring-blue-400/30">
             <img 
@@ -67,12 +69,16 @@ export default function CEOSidebar({ open, onToggle }: {
           
           return (
             <Link key={item.to} to={item.to} className="block mb-1">
-              <div className={`relative flex items-center gap-3 rounded-lg px-3 py-2.5 transition-all duration-200 ease-in-out ${
+              <div className={`relative flex items-center ${open ? 'gap-3 px-3 py-2.5' : 'justify-center px-2 py-2'} rounded-lg transition-all duration-200 ease-in-out group ${
                 isActive 
                   ? 'bg-gray-600 text-white' 
                   : 'hover:bg-gray-200 text-gray-700'
               }`}>
-                <span className={`h-4 w-4 flex-shrink-0 ${isActive ? 'text-white' : 'text-gray-700'}`}>
+                {/* Active left accent */}
+                {isActive && open && (
+                  <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-8 rounded-r-full bg-white/40"></div>
+                )}
+                <span className={`h-4 w-4 flex-shrink-0 transition-all duration-200 ${isActive ? 'text-white scale-110' : 'text-slate-700 group-hover:scale-105 group-hover:text-[#0066FF]'}`}>
                   {item.icon}
                 </span>
                 <span className={`truncate ${isActive ? 'font-semibold text-white' : 'text-gray-700'} ${open ? 'opacity-100' : 'opacity-0 hidden'}`}>

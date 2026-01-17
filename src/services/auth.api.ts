@@ -46,7 +46,8 @@ export async function login(
 ): Promise<{ data?: LoginResponse; error?: AuthError }> {
   try {
     // Note: Login endpoint doesn't need token, so we use fetch directly
-    const response = await fetch("http://localhost:8081/api/auth/login", {
+    const API_BASE_URL = import.meta.env.VITE_POS_BASE_URL || "http://localhost:8081";
+    const response = await fetch(`${API_BASE_URL}/api/auth/login`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
