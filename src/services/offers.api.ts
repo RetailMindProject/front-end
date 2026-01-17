@@ -7,6 +7,10 @@ export interface Product {
   name: string;
   price: number;
   category?: string | null;
+  image?: {
+    url?: string;
+    altText?: string;
+  } | null;
 }
 
 export interface Category {
@@ -266,6 +270,7 @@ export const offersApi = {
               name: p.name || "",
               price: p.defaultPrice || p.price || 0,
               category: categoryName,
+              image: p.image ? { url: p.image.url, altText: p.image.altText } : null,
             };
           });
 
@@ -331,6 +336,7 @@ export const offersApi = {
             name: p.name || "",
             price: p.price || p.defaultPrice || 0,
             category: categoryName,
+            image: p.image ? { url: p.image.url } : null,
           };
         });
 

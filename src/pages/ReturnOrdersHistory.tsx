@@ -472,6 +472,10 @@ export default function ReturnOrdersHistory() {
                           {selectedReturn.status}
                         </span>
                       </div>
+                      <div>
+                        <p className="text-sm text-gray-600">Customer</p>
+                        <p className="font-semibold text-gray-900">{selectedReturn.customerName}</p>
+                      </div>
                       {selectedReturn.createdBy && (
                         <div>
                           <p className="text-sm text-gray-600">Created By</p>

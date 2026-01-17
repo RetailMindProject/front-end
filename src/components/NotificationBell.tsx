@@ -20,10 +20,10 @@ export default function NotificationBell() {
     <div className="relative">
       <button 
         onClick={() => setOpen((v) => !v)} 
-        className="relative rounded-lg p-2 text-slate-600 hover:text-[#0066FF] hover:bg-blue-50/80 transition-all duration-200 ease-in-out hover:scale-110 active:scale-95 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2" 
+        className="relative rounded-lg p-2 text-white hover:bg-slate-800 transition-all duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2" 
         aria-label="Notifications"
       >
-        <Bell className="h-5 w-5 transition-transform duration-200 hover:rotate-12" />
+        <Bell className="h-5 w-5 transition-transform duration-200" />
         {unread > 0 && (
           <span className="absolute -right-0.5 -top-0.5 grid h-4 w-4 place-items-center rounded-full bg-[#0066FF] text-[10px] text-white font-semibold ring-2 ring-white shadow-sm animate-pulse hover:animate-none hover:scale-125 transition-transform duration-200">
             {unread}

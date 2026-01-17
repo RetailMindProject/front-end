@@ -1,4 +1,5 @@
 import { apiClient } from "./api.client";
+import { getCurrentToken } from "./tokens";
 
 // Order Item
 export interface OrderItem {
@@ -10,7 +11,16 @@ export interface OrderItem {
   lineTotal: number;
   offerId?: number | null; // ID of the offer applied to this item (if any)
   offerTitle?: string | null; // Title of the offer applied to this item (if any)
+  offerType?: "PRODUCT" | "CATEGORY" | "ORDER" | "BUNDLE" | null; // Type of the offer applied to this item (if any)
   originalLineTotal?: number; // Original line total before any discounts
+  product?: {
+    id: number;
+    name: string;
+    image?: {
+      url?: string;
+      altText?: string;
+    } | null;
+  } | null; // Product object with image (from backend)
 }
 
 // Payment
@@ -26,9 +36,21 @@ export interface Order {
   id: number;
   orderNumber: string;
   sessionId: number;
-  status: "DRAFT" | "PAID" | "CANCELLED" | "HELD"; // أضفت HELD عشان يطابق الباك
-  customerName: string | null;
-  customerPhone: string | null;
+  status: "DRAFT" | "PAID" | "CANCELLED" | "HOLD"; // Changed from HELD to HOLD
+  customerName?: string | null;
+  customerPhone?: string | null;
+  customerId?: number | null; // Customer ID (from attach-by-phone response)
+  userId?: number | null; // User ID (from attach-by-phone response)
+  customer?: {
+    id: number;
+    customerName?: string; // Customer name from backend response
+    firstName?: string;
+    lastName?: string;
+    name?: string;
+    fullName?: string;
+    phone?: string;
+    email?: string | null;
+  } | null; // Customer object may be present
   items: OrderItem[];
   itemCount: number;
   subtotal: number;
@@ -47,7 +69,7 @@ export interface Order {
 export interface OrderHistoryItem {
   id: number;
   orderNumber: string;
-  status: "DRAFT" | "PAID" | "CANCELLED" | "HELD";
+  status: "DRAFT" | "PAID" | "CANCELLED" | "HOLD";
   customerName: string | null;
   itemCount: number;
   grandTotal: number;
@@ -332,6 +354,58 @@ export const ordersApi = {
   },
 
   /**
+   * Attach customer to order by customer ID (PUT)
+   * PUT /api/orders/{orderId}/customer
+   * Headers: X-Browser-Token (sent via cookies)
+   * Body: { customerId: number }
+   * Response: Updated order
+   */
+  async linkCustomerToOrder(
+    orderId: number,
+    customerId: number
+  ): Promise<{ data?: Order; error?: string }> {
+    const response = await apiClient.put<Order>(
+      `/api/orders/${orderId}/customer`,
+      { customerId }
+    );
+
+    if (response.error) {
+      return { error: response.error };
+    }
+
+    return { data: response.data };
+  },
+
+  /**
+   * Attach customer to order by phone (create + attach in one step)
+   * POST /api/orders/{orderId}/customer/attach-by-phone
+   * Headers: X-Browser-Token (sent via cookies)
+   * Body: { phone: string, createIfMissing: boolean, firstName: string, lastName: string, email?: string }
+   * Response: Updated order
+   */
+  async attachCustomerByPhone(
+    orderId: number,
+    request: {
+      phone: string;
+      createIfMissing: boolean;
+      firstName: string;
+      lastName: string;
+      email?: string;
+    }
+  ): Promise<{ data?: Order; error?: string }> {
+    const response = await apiClient.post<Order>(
+      `/api/orders/${orderId}/customer/attach-by-phone`,
+      request
+    );
+
+    if (response.error) {
+      return { error: response.error };
+    }
+
+    return { data: response.data };
+  },
+
+  /**
    * Search order by orderNumber (for returns)
    * GET /api/orders/search?orderNumber=...
    * Headers: X-Browser-Token (sent via cookies)
@@ -349,6 +423,63 @@ export const ordersApi = {
     }
 
     return { data: response.data };
+  },
+
+  /**
+   * Download/Print Receipt
+   * GET /api/orders/{orderId}/receipt.pdf
+   * Headers: Accept: application/pdf
+   * Response: PDF blob
+   */
+  async downloadReceipt(
+    orderId: number
+  ): Promise<{ data?: Blob; error?: string; status?: number }> {
+    const API_BASE_URL = import.meta.env.VITE_POS_BASE_URL || "http://localhost:8081";
+    const token = getCurrentToken();
+    
+    const headers: Record<string, string> = {
+      "Accept": "application/pdf",
+    };
+
+    if (token && token.split('.').length === 3) {
+      headers["Authorization"] = `Bearer ${token}`;
+    }
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/orders/${orderId}/receipt.pdf`, {
+        method: "GET",
+        headers,
+        credentials: 'include',
+      });
+
+      if (response.status === 404) {
+        return { error: "Order not found.", status: 404 };
+      }
+
+      if (response.status === 409) {
+        return { error: "Cannot print receipt: Order is not PAID yet.", status: 409 };
+      }
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        let errorMessage = `HTTP error! status: ${response.status}`;
+        try {
+          const errorData = JSON.parse(errorText);
+          errorMessage = errorData.error || errorData.message || errorMessage;
+        } catch {
+          if (errorText) errorMessage = errorText;
+        }
+        return { error: errorMessage, status: response.status };
+      }
+
+      const blob = await response.blob();
+      return { data: blob, status: response.status };
+    } catch (error) {
+      return {
+        error: error instanceof Error ? error.message : "Network error occurred",
+        status: 0,
+      };
+    }
   },
 };
 
@@ -385,6 +516,7 @@ export interface OrderForReturn {
     name: string;
     phone: string;
   } | null;
+  customerName?: string; // Customer name (may be present in API response)
   items: OrderItemForReturn[];
   payments: Payment[];
 }

@@ -3,7 +3,10 @@ import { apiClient } from "./api.client";
 // Customer Response
 export interface Customer {
   id: number;
-  name: string;
+  name?: string; // Optional - may not be present if firstName/lastName are used
+  firstName?: string;
+  lastName?: string;
+  fullName?: string; // Alternative field name
   phone: string;
   email?: string | null;
   address?: string | null;
@@ -26,6 +29,12 @@ export interface CreateCustomerResponse {
   phone: string;
   email?: string | null;
   address?: string | null;
+}
+
+// Search Customer Response
+export interface SearchCustomerResponse {
+  found: boolean;
+  customer?: Customer;
 }
 
 export const customersApi = {
@@ -51,6 +60,26 @@ export const customersApi = {
     }
 
     return { data: response.data, status: response.status };
+  },
+
+  /**
+   * Search customer by phone number
+   * GET /api/customers/search?phone=...
+   * Headers: X-Browser-Token (sent via cookies)
+   * Response: { found: boolean, customer?: Customer }
+   */
+  async searchCustomerByPhone(
+    phone: string
+  ): Promise<{ data?: SearchCustomerResponse; error?: string }> {
+    const response = await apiClient.get<SearchCustomerResponse>(
+      `/api/customers/search?phone=${encodeURIComponent(phone)}`
+    );
+
+    if (response.error) {
+      return { error: response.error };
+    }
+
+    return { data: response.data };
   },
 
   /**

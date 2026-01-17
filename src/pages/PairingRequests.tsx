@@ -125,7 +125,9 @@ export default function PairingRequests() {
                   <div className="flex-1">
                     <div className="flex items-center gap-3 mb-2">
                       <h3 className="text-lg font-semibold text-gray-900">
-                        {request.requestedByName}
+                        {(request.requestedByName && request.requestedByName.trim()) 
+                          ? request.requestedByName.trim() 
+                          : `Cashier #${request.requestedBy}`}
                       </h3>
                       <span className="px-2 py-1 rounded-lg text-xs font-medium bg-yellow-100 text-yellow-700">
                         {request.status}

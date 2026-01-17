@@ -1,12 +1,11 @@
 import { useState, useEffect } from "react";
-import { LogOut, MessageSquare, UserCheck } from "lucide-react";
+import { LogOut, MessageSquare, User, ChevronDown } from "lucide-react";
 import NotificationBell from "./NotificationBell";
 import MessagesPanel from "./MessagesPanel";
 import { Link, useLocation } from "react-router-dom";
-import { getUserDisplayName, getUserInfo, getCurrentRole } from "../services/tokens";
+import { getUserInfo, getCurrentRole, getUserDisplayName } from "../services/tokens";
 import { logout } from "../services/auth.api";
 import { messagesApi } from "../services/messages.api";
-import { terminalApi } from "../services/terminal.api";
 
 function useRoleHeader() {
   useLocation(); // Keep for potential future use
@@ -39,15 +38,30 @@ function useRoleHeader() {
 }
 
 export default function Topbar() {
-  const { role, name } = useRoleHeader();
-  const location = useLocation();
+  const { name: userName } = useRoleHeader();
   const [unreadCount, setUnreadCount] = useState(0);
   const [messagesOpen, setMessagesOpen] = useState(false);
-  const [pendingPairingRequests, setPendingPairingRequests] = useState(0);
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
   const currentRole = getCurrentRole();
-  const isStoreManager = currentRole === 'STORE_MANAGER' || currentRole === 'CEO';
+  
+  // Get avatar image based on role
+  const getAvatarImage = (): string => {
+    if (currentRole === "CEO") {
+      return `${window.location.origin}/picture/ceo.png`;
+    } else if (currentRole === "STORE_MANAGER") {
+      return `${window.location.origin}/picture/storemanager.png`;
+    } else if (currentRole === "INVENTORY_MANAGER") {
+      return `${window.location.origin}/picture/inventorymanager.png`;
+    }
+    return `${window.location.origin}/picture/storemanager.png`; // Default fallback
+  };
 
   useEffect(() => {
+    // Don't load unread count for CASHIER role (endpoint requires JWT)
+    if (currentRole === 'CASHIER') {
+      return;
+    }
+
     const loadUnreadCount = async () => {
       const result = await messagesApi.getUnreadCount();
       if (result.data !== undefined) {
@@ -59,82 +73,91 @@ export default function Topbar() {
     const interval = setInterval(loadUnreadCount, 30000);
     
     return () => clearInterval(interval);
-  }, []);
+  }, [currentRole]);
 
+  // Close user menu when clicking outside
   useEffect(() => {
-    if (!isStoreManager) return;
-
-    const loadPendingRequests = async () => {
-      const result = await terminalApi.getPendingPairingRequests();
-      if (result.data) {
-        setPendingPairingRequests(result.data.length);
+    const handleClickOutside = (event: MouseEvent) => {
+      if (userMenuOpen && !(event.target as Element).closest('.user-menu-container')) {
+        setUserMenuOpen(false);
       }
     };
 
-    loadPendingRequests();
-    const interval = setInterval(loadPendingRequests, 5000);
-    
-    return () => clearInterval(interval);
-  }, [isStoreManager]);
-  
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [userMenuOpen]);
+
   return (
-    <header className="sticky top-0 z-10 border-b border-[#0066FF]/20 shadow-sm bg-white/80 backdrop-blur-md transition-all duration-200 ease-in-out">
-      {/* Primary accent line */}
-      <div className="h-0.5 bg-gradient-to-r from-[#0066FF] via-[#3572EF] to-[#0066FF]"></div>
-      
-      <div className="flex items-center justify-between px-4 sm:px-6 py-3 sm:py-4">
-        {/* Right section: Name and Position */}
+    <header className="sticky top-0 z-10 bg-slate-900 shadow-md">
+      <div className="flex items-center justify-between px-4 sm:px-6 py-3">
+        {/* Left: User Name (Clickable to Profile) */}
         <div className="flex items-center gap-3">
-          <div className="h-2 w-2 rounded-full bg-gradient-to-r from-indigo-500 to-blue-500 animate-pulse shadow-sm shadow-indigo-500/50"></div>
-          <Link to="/profile" className="leading-tight group">
-            <div className="text-base sm:text-lg font-semibold text-slate-800 group-hover:text-[#0066FF] transition-all duration-200 ease-in-out cursor-pointer">
-              {name}
-            </div>
-            <div className="text-[11px] sm:text-xs text-slate-500 group-hover:text-slate-600 transition-colors duration-200">{role}</div>
+          <Link 
+            to="/profile"
+            className="text-white font-medium text-sm hover:text-slate-300 transition-colors cursor-pointer"
+          >
+            {userName}
           </Link>
         </div>
 
-        {/* Soft divider */}
-        <div className="hidden sm:block h-6 w-px bg-gradient-to-b from-transparent via-indigo-200/60 to-transparent" />
-
-        {/* Left section: Messages, Pairing Requests, Notifications, Logout */}
-        <div className="flex items-center gap-1 sm:gap-2">
+        {/* Right: Icons + User Avatar */}
+        <div className="flex items-center gap-2">
           <button 
             onClick={() => setMessagesOpen(true)}
             aria-label="Messages" 
-            className="relative rounded-lg p-2 text-slate-600 hover:text-[#0066FF] hover:bg-blue-50/80 transition-all duration-200 ease-in-out hover:scale-105 active:scale-95"
+            className="relative p-2 text-white hover:bg-slate-800 rounded-lg transition-colors"
           >
-            <MessageSquare className="h-5 w-5 transition-transform duration-200" />
+            <MessageSquare className="h-5 w-5" />
             {unreadCount > 0 && (
-              <span className="absolute -right-0.5 -top-0.5 grid h-4 w-4 place-items-center rounded-full bg-[#0066FF] text-[10px] text-white font-semibold ring-2 ring-white shadow-sm">
+              <span className="absolute -right-0.5 -top-0.5 grid h-4 w-4 place-items-center rounded-full bg-red-500 text-[10px] text-white font-semibold">
                 {unreadCount > 9 ? "9+" : unreadCount}
               </span>
             )}
           </button>
-          {isStoreManager && (
-            <Link
-              to="/store-manager/pairing-requests"
-              aria-label="Pairing Requests"
-              className={`relative rounded-lg p-2 text-slate-600 hover:text-[#0066FF] hover:bg-blue-50/80 transition-all duration-200 ease-in-out hover:scale-105 active:scale-95 ${
-                location.pathname === "/store-manager/pairing-requests" ? "text-[#0066FF] bg-blue-50/80" : ""
-              }`}
-            >
-              <UserCheck className="h-5 w-5 transition-transform duration-200" />
-              {pendingPairingRequests > 0 && (
-                <span className="absolute -right-0.5 -top-0.5 grid h-4 w-4 place-items-center rounded-full bg-orange-500 text-[10px] text-white font-semibold ring-2 ring-white shadow-sm">
-                  {pendingPairingRequests > 9 ? "9+" : pendingPairingRequests}
-                </span>
-              )}
-            </Link>
-          )}
-          <NotificationBell />
           <button 
-            onClick={logout}
-            className="flex items-center gap-2 rounded-lg border border-slate-200/60 bg-white/80 backdrop-blur-sm px-3 py-2 text-sm font-medium text-slate-700 hover:bg-white hover:shadow-sm hover:border-[#0066FF]/20 hover:text-[#0066FF] transition-all duration-200 ease-in-out hover:scale-105 active:scale-95"
+            className="p-2 text-white hover:bg-slate-800 rounded-lg transition-colors"
+            aria-label="User"
           >
-            <LogOut className="h-4 w-4 transition-transform duration-200" />
-            <span className="hidden sm:inline">Logout</span>
+            <User className="h-5 w-5" />
           </button>
+          <NotificationBell />
+          <div className="relative user-menu-container">
+            <button
+              onClick={() => setUserMenuOpen(!userMenuOpen)}
+              className="flex items-center gap-2 p-1 rounded-lg hover:bg-slate-800 transition-colors"
+            >
+              <img
+                src={getAvatarImage()}
+                alt="Profile"
+                className="w-8 h-8 rounded-full object-cover border-2 border-white/30"
+                onError={(e) => {
+                  (e.target as HTMLImageElement).src = `${window.location.origin}/picture/ceo.png`;
+                }}
+              />
+              <ChevronDown className="h-4 w-4 text-white" />
+            </button>
+            {userMenuOpen && (
+              <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-50">
+                <Link
+                  to="/profile"
+                  onClick={() => setUserMenuOpen(false)}
+                  className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                >
+                  Profile
+                </Link>
+                <button
+                  onClick={() => {
+                    setUserMenuOpen(false);
+                    logout();
+                  }}
+                  className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2"
+                >
+                  <LogOut className="h-4 w-4" />
+                  Logout
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
