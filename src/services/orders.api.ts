@@ -26,9 +26,18 @@ export interface Order {
   id: number;
   orderNumber: string;
   sessionId: number;
-  status: "DRAFT" | "PAID" | "CANCELLED" | "HELD"; // أضفت HELD عشان يطابق الباك
-  customerName: string | null;
-  customerPhone: string | null;
+  status: "DRAFT" | "PAID" | "CANCELLED" | "HOLD"; // Changed from HELD to HOLD
+  customerName?: string | null;
+  customerPhone?: string | null;
+  customer?: {
+    id: number;
+    firstName?: string;
+    lastName?: string;
+    name?: string;
+    fullName?: string;
+    phone?: string;
+    email?: string | null;
+  } | null; // Customer object may be present
   items: OrderItem[];
   itemCount: number;
   subtotal: number;
@@ -47,7 +56,7 @@ export interface Order {
 export interface OrderHistoryItem {
   id: number;
   orderNumber: string;
-  status: "DRAFT" | "PAID" | "CANCELLED" | "HELD";
+  status: "DRAFT" | "PAID" | "CANCELLED" | "HOLD";
   customerName: string | null;
   itemCount: number;
   grandTotal: number;
@@ -322,6 +331,58 @@ export const ordersApi = {
     const response = await apiClient.patch<Order>(
       `/api/orders/${orderId}/customer`,
       { customerId }
+    );
+
+    if (response.error) {
+      return { error: response.error };
+    }
+
+    return { data: response.data };
+  },
+
+  /**
+   * Attach customer to order by customer ID (PUT)
+   * PUT /api/orders/{orderId}/customer
+   * Headers: X-Browser-Token (sent via cookies)
+   * Body: { customerId: number }
+   * Response: Updated order
+   */
+  async linkCustomerToOrder(
+    orderId: number,
+    customerId: number
+  ): Promise<{ data?: Order; error?: string }> {
+    const response = await apiClient.put<Order>(
+      `/api/orders/${orderId}/customer`,
+      { customerId }
+    );
+
+    if (response.error) {
+      return { error: response.error };
+    }
+
+    return { data: response.data };
+  },
+
+  /**
+   * Attach customer to order by phone (create + attach in one step)
+   * POST /api/orders/{orderId}/customer/attach-by-phone
+   * Headers: X-Browser-Token (sent via cookies)
+   * Body: { phone: string, createIfMissing: boolean, firstName: string, lastName: string, email?: string }
+   * Response: Updated order
+   */
+  async attachCustomerByPhone(
+    orderId: number,
+    request: {
+      phone: string;
+      createIfMissing: boolean;
+      firstName: string;
+      lastName: string;
+      email?: string;
+    }
+  ): Promise<{ data?: Order; error?: string }> {
+    const response = await apiClient.post<Order>(
+      `/api/orders/${orderId}/customer/attach-by-phone`,
+      request
     );
 
     if (response.error) {

@@ -279,7 +279,27 @@ export default function ReturnOrdersHistory() {
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
                           <span className="text-sm text-gray-900">
-                            {order.customerName || "N/A"}
+                            {(() => {
+                              // Try customerName first (direct field)
+                              const customerName = (order.customerName ?? "").trim();
+                              if (customerName) {
+                                return customerName;
+                              }
+                              // Try customer object with firstName/lastName
+                              if (order.customer) {
+                                const firstName = (order.customer.firstName ?? "").trim();
+                                const lastName = (order.customer.lastName ?? "").trim();
+                                if (firstName || lastName) {
+                                  return `${firstName} ${lastName}`.trim();
+                                }
+                                // Try customer.name or customer.fullName
+                                const name = (order.customer.name ?? order.customer.fullName ?? "").trim();
+                                if (name) {
+                                  return name;
+                                }
+                              }
+                              return "N/A";
+                            })()}
                           </span>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">

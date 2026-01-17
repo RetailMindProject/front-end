@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Search,
@@ -87,13 +87,21 @@ export default function CashierTerminal() {
   // Customer registration state
   const [showCustomerModal, setShowCustomerModal] = useState(false);
   const [customerPhone, setCustomerPhone] = useState("");
-  const [customerName, setCustomerName] = useState("");
+  const [customerFirstName, setCustomerFirstName] = useState("");
+  const [customerLastName, setCustomerLastName] = useState("");
   const [customerEmail, setCustomerEmail] = useState("");
   const [customerAddress, setCustomerAddress] = useState("");
   const [searchingCustomer, setSearchingCustomer] = useState(false);
   const [creatingCustomer, setCreatingCustomer] = useState(false);
   const [customerError, setCustomerError] = useState<string | null>(null);
   const [currentCustomer, setCurrentCustomer] = useState<Customer | null>(null);
+  const [shouldPromptForCustomer, setShouldPromptForCustomer] = useState(false);
+  const [customerFound, setCustomerFound] = useState(false);
+
+  // Barcode scanner state
+  const [barcodeBuffer, setBarcodeBuffer] = useState("");
+  const [isTypingInInput, setIsTypingInInput] = useState(false);
+  const barcodeInputRef = useRef<HTMLInputElement>(null);
 
   const cashierName = getUserDisplayName();
   const redirectToSelectTerminal = (customMessage?: string) => {
@@ -153,7 +161,7 @@ export default function CashierTerminal() {
 
       // Load categories hierarchy from database
       const categoriesResult = await categoriesApi.getHierarchy();
-      if (categoriesResult.data && categoriesResult.data.length > 0) {
+      if (categoriesResult.data && (categoriesResult.data ?? []).length > 0) {
         setCategories(categoriesResult.data);
       } else if (categoriesResult.error) {
         console.error("Failed to load categories:", categoriesResult.error);
@@ -238,7 +246,7 @@ export default function CashierTerminal() {
 
   // Sync cart with order items
   useEffect(() => {
-    if (currentOrder && products.length > 0) {
+    if (currentOrder && (products ?? []).length > 0) {
       const cartItems: CartItem[] = [];
       for (const orderItem of currentOrder.items) {
         const product = products.find((p) => p.id === orderItem.productId);
@@ -255,6 +263,133 @@ export default function CashierTerminal() {
       setCart([]);
     }
   }, [currentOrder, products]);
+
+  // Handle barcode scanner input
+  const handleBarcodeInput = (e: React.ChangeEvent<HTMLInputElement>) => {
+    // Only process if not typing in regular inputs and no modals are open
+    if (isTypingInInput || showSplitModal || showOrdersModal || showCustomerModal || showLogoutConfirm) {
+      return;
+    }
+    setBarcodeBuffer(e.target.value);
+  };
+
+  const handleBarcodeKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    // Only process if not typing in regular inputs and no modals are open
+    if (isTypingInInput || showSplitModal || showOrdersModal || showCustomerModal || showLogoutConfirm) {
+      return;
+    }
+
+    // Handle Enter key - process barcode
+    if (e.key === "Enter") {
+      e.preventDefault();
+      // Get barcode from input value directly (in case onChange hasn't updated state yet)
+      const barcode = (e.currentTarget.value || barcodeBuffer).trim();
+      
+      if (!barcode) {
+        return;
+      }
+      
+      // Find product by SKU
+      const product = products.find((p) => p.sku && p.sku === barcode);
+      
+      if (product) {
+        // Add to cart using existing addToCart function
+        addToCart(product);
+      } else {
+        // Product not found - could show a message, but silently ignore for now
+        console.warn(`Product with SKU "${barcode}" not found`);
+      }
+      
+      // Clear buffer and input
+      setBarcodeBuffer("");
+      if (barcodeInputRef.current) {
+        barcodeInputRef.current.value = "";
+      }
+    }
+  };
+
+  // Keep hidden input focused when not typing in other inputs
+  useEffect(() => {
+    if (isTypingInInput || showSplitModal || showOrdersModal || showCustomerModal || showLogoutConfirm) {
+      return;
+    }
+
+    const focusHiddenInput = () => {
+      if (barcodeInputRef.current && document.activeElement !== barcodeInputRef.current) {
+        barcodeInputRef.current.focus();
+      }
+    };
+
+    // Focus immediately and then periodically
+    focusHiddenInput();
+    const focusInterval = setInterval(focusHiddenInput, 500);
+
+    return () => {
+      clearInterval(focusInterval);
+    };
+  }, [isTypingInInput, showSplitModal, showOrdersModal, showCustomerModal, showLogoutConfirm]);
+
+  // Handle Enter key in search field to add product by SKU
+  const handleSearchKeyDown = async (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter" && (searchTerm ?? "").trim()) {
+      e.preventDefault();
+      const sku = (searchTerm ?? "").trim();
+      
+      // Find product by SKU
+      const product = products.find((p) => p.sku && p.sku === sku);
+      
+      if (product) {
+        // Add to cart using existing addToCart function
+        await addToCart(product);
+        // Clear search term after adding
+        setSearchTerm("");
+      } else {
+        // Product not found - show message
+        alert("SKU not found");
+      }
+    }
+  };
+
+  // Auto-detect barcode scanner input (when barcode is entered without Enter)
+  // Barcode scanners typically input numbers quickly, so we detect when searchTerm
+  // matches a product SKU exactly and hasn't changed for a short period
+  useEffect(() => {
+    // Don't auto-process if user is actively typing or modals are open
+    if (showSplitModal || showOrdersModal || showCustomerModal || showLogoutConfirm) {
+      return;
+    }
+
+    if (!(searchTerm ?? "").trim()) {
+      return;
+    }
+
+    // Check if searchTerm is a numeric string (likely a barcode)
+    const isNumericBarcode = /^\d+$/.test((searchTerm ?? "").trim());
+    
+    // Only auto-process if it looks like a barcode (numeric and at least 8 digits)
+    // and matches a product SKU exactly
+    if (isNumericBarcode && (searchTerm ?? "").trim().length >= 8) {
+      const timeoutId = setTimeout(async () => {
+        // Double-check that searchTerm hasn't changed (user might still be typing)
+        const currentSearchTerm = (searchTerm ?? "").trim();
+        
+        // Find product by SKU (exact match)
+        const product = products.find((p) => p.sku && p.sku === currentSearchTerm);
+        
+        if (product) {
+          // Add to cart using existing addToCart function
+          await addToCart(product);
+          // Clear search term after adding
+          setSearchTerm("");
+        }
+      }, 500); // Wait 500ms after last input to process
+
+      return () => {
+        clearTimeout(timeoutId);
+      };
+    }
+  }, [searchTerm, products, showSplitModal, showOrdersModal, showCustomerModal, showLogoutConfirm]);
+
 
   const filteredProducts = products.filter((product) => {
     const matchesSearch =
@@ -305,6 +440,7 @@ export default function CashierTerminal() {
       // Create order if it doesn't exist
       // Note: لا نرسل sessionId - الـ backend يجلب sessionId تلقائياً من browser token
       let orderId = currentOrder?.id;
+      let isNewOrder = false;
       if (!orderId) {
         const createResult = await ordersApi.createOrder();
         if (createResult.error) {
@@ -315,7 +451,22 @@ export default function CashierTerminal() {
         if (createResult.data) {
           setCurrentOrder(createResult.data);
           orderId = createResult.data.id;
+          isNewOrder = true;
         }
+      }
+
+      // If this is a new order and no customer is attached, prompt for customer phone
+        if (isNewOrder && !currentOrder?.customer?.id && !shouldPromptForCustomer) {
+        setShouldPromptForCustomer(true);
+        setShowCustomerModal(true);
+        setCustomerPhone("");
+        setCustomerFirstName("");
+        setCustomerLastName("");
+        setCustomerEmail("");
+        setCustomerAddress("");
+        setCurrentCustomer(null);
+        setCustomerFound(false);
+        setCustomerError(null);
       }
 
       if (!orderId) {
@@ -491,9 +642,16 @@ export default function CashierTerminal() {
   const total = currentOrder?.grandTotal || (subtotal - discount + tax);
 
   // Customer registration functions
+
   const handleSearchCustomer = async () => {
-    if (!customerPhone.trim()) {
+    if (!(customerPhone ?? "").trim()) {
       setCustomerError("Please enter a phone number");
+      return;
+    }
+
+    // Check if order already has a customer attached (use customer.id instead of customerName)
+    if (currentOrder?.customer?.id) {
+      setCustomerError("This order already has a customer attached. Cannot link another customer.");
       return;
     }
 
@@ -501,35 +659,66 @@ export default function CashierTerminal() {
     setCustomerError(null);
 
     try {
-      const result = await customersApi.getCustomerByPhone(customerPhone.trim());
+      const result = await customersApi.searchCustomerByPhone((customerPhone ?? "").trim());
       
-      if (result.error && result.status === 404) {
-        // Customer not found - show create form
-        setCustomerError(null);
-        setCustomerName("");
+      if (result.error) {
+        setCustomerError(result.error);
+        setCustomerFound(false);
+        setCurrentCustomer(null);
+        setCustomerFirstName("");
+        setCustomerLastName("");
         setCustomerEmail("");
         setCustomerAddress("");
-      } else if (result.error) {
-        setCustomerError(result.error);
       } else if (result.data) {
-        // Customer found
-        setCurrentCustomer(result.data);
-        setCustomerName(result.data.name);
-        setCustomerEmail(result.data.email || "");
-        setCustomerAddress(result.data.address || "");
-        setCustomerError(null);
+        if (result.data.found && result.data.customer) {
+          // Customer found
+          setCustomerFound(true);
+          setCurrentCustomer(result.data.customer);
+          
+          // Use firstName/lastName directly from response (never use split)
+          const customer = result.data.customer;
+          setCustomerFirstName(customer.firstName ?? "");
+          setCustomerLastName(customer.lastName ?? "");
+          
+          setCustomerEmail(customer.email ?? "");
+          setCustomerAddress(customer.address ?? "");
+          setCustomerError(null);
+        } else {
+          // Customer not found - show create form
+          setCustomerFound(false);
+          setCurrentCustomer(null);
+          setCustomerFirstName("");
+          setCustomerLastName("");
+          setCustomerEmail("");
+          setCustomerAddress("");
+          setCustomerError(null);
+        }
       }
     } catch (err) {
       setCustomerError("An error occurred while searching for customer");
       console.error(err);
+      setCustomerFound(false);
+      setCurrentCustomer(null);
     } finally {
       setSearchingCustomer(false);
     }
   };
 
-  const handleCreateCustomer = async () => {
-    if (!customerName.trim() || !customerPhone.trim()) {
-      setCustomerError("Name and phone are required");
+  const handleLinkOrCreateCustomer = async () => {
+    if (!currentOrder) {
+      setCustomerError("No order found");
+      return;
+    }
+
+    // Prevent linking another customer if one is already attached (use customer.id instead of customerName)
+    if (currentOrder.customer?.id) {
+      setCustomerError("This order already has a customer attached. Cannot link another customer.");
+      return;
+    }
+
+    // Only allow if order status is DRAFT or HOLD
+    if (currentOrder.status !== "DRAFT" && currentOrder.status !== "HOLD") {
+      setCustomerError("Cannot attach customer to this order status");
       return;
     }
 
@@ -537,64 +726,191 @@ export default function CashierTerminal() {
     setCustomerError(null);
 
     try {
-      const result = await customersApi.createCustomer({
-        name: customerName.trim(),
-        phone: customerPhone.trim(),
-        email: customerEmail.trim() || undefined,
-        address: customerAddress.trim() || undefined,
-      });
+      if (customerFound && currentCustomer) {
+        // Customer found - link using PUT /api/orders/{orderId}/customer
+        const result = await ordersApi.linkCustomerToOrder(
+          currentOrder.id,
+          currentCustomer.id
+        );
 
-      if (result.error) {
-        setCustomerError(result.error);
-      } else if (result.data) {
-        setCurrentCustomer({
-          id: result.data.customerId,
-          name: result.data.name,
-          phone: result.data.phone,
-          email: result.data.email || null,
-          address: result.data.address || null,
-        });
-        setCustomerError(null);
+        if (result.error) {
+          setCustomerError(result.error);
+        } else if (result.data) {
+          // Merge customer data only - don't replace entire order
+          // Use fallback from currentCustomer if result.data.customer is not available
+          setCurrentOrder((prev) => {
+            if (!prev) return result.data || null;
+            if (!result.data) return prev;
+            
+            // Use customer from response, or fallback to currentCustomer
+            const responseCustomer = result.data.customer;
+            const fallbackCustomer = currentCustomer;
+            const customerToUse = responseCustomer ?? fallbackCustomer;
+            
+            // Build customerName from:
+            // 1. result.data.customer if available
+            // 2. Otherwise currentCustomer.firstName + lastName
+            let customerName: string | null = result.data.customerName ?? null;
+            if (!customerName && customerToUse) {
+              const firstName = (customerToUse.firstName ?? "").trim();
+              const lastName = (customerToUse.lastName ?? "").trim();
+              if (firstName || lastName) {
+                customerName = `${firstName} ${lastName}`.trim();
+              } else {
+                customerName = (customerToUse.name ?? customerToUse.fullName ?? "").trim() || null;
+              }
+            }
+            
+            // Build customerPhone from response or fallback
+            const customerPhoneValue = result.data.customerPhone 
+              ?? responseCustomer?.phone 
+              ?? fallbackCustomer?.phone 
+              ?? prev.customerPhone 
+              ?? null;
+            
+            return {
+              ...prev,
+              // Only merge customer fields, keep all other order data intact
+              customerName: customerName ?? prev.customerName ?? null,
+              customerPhone: customerPhoneValue,
+              customer: customerToUse ? {
+                id: customerToUse.id,
+                firstName: customerToUse.firstName,
+                lastName: customerToUse.lastName,
+                name: customerToUse.name,
+                fullName: customerToUse.fullName,
+                phone: customerToUse.phone,
+                email: customerToUse.email,
+              } : prev.customer ?? null,
+            };
+          });
+          // Close modal and reset form
+          setShowCustomerModal(false);
+          setShouldPromptForCustomer(false);
+          setCustomerPhone("");
+          setCustomerFirstName("");
+          setCustomerLastName("");
+          setCustomerEmail("");
+          setCustomerAddress("");
+          setCurrentCustomer(null);
+          setCustomerFound(false);
+        }
+      } else {
+        // Customer not found - create and attach using POST /api/orders/{orderId}/customer/attach-by-phone
+        if (!(customerFirstName ?? "").trim() || !(customerLastName ?? "").trim() || !(customerPhone ?? "").trim()) {
+          setCustomerError("First name, last name, and phone are required");
+          setCreatingCustomer(false);
+          return;
+        }
+
+        const result = await ordersApi.attachCustomerByPhone(
+          currentOrder.id,
+          {
+            phone: (customerPhone ?? "").trim(),
+            createIfMissing: true,
+            firstName: (customerFirstName ?? "").trim(),
+            lastName: (customerLastName ?? "").trim(),
+            email: (customerEmail ?? "").trim() || undefined,
+          }
+        );
+
+        if (result.error) {
+          setCustomerError(result.error);
+        } else if (result.data) {
+          // Merge customer data only - don't replace entire order
+          // Use fallback from input data (customerFirstName/customerLastName) if result.data.customer is not available
+          setCurrentOrder((prev) => {
+            if (!prev) return result.data || null;
+            if (!result.data) return prev;
+            
+            // Use customer from response, or build from input data
+            const responseCustomer = result.data.customer;
+            let customerToUse = responseCustomer;
+            
+            // If no customer in response, build from input data
+            if (!customerToUse) {
+              const firstName = (customerFirstName ?? "").trim();
+              const lastName = (customerLastName ?? "").trim();
+              if (firstName || lastName) {
+                customerToUse = {
+                  id: 0, // Will be set by backend
+                  firstName: firstName || undefined,
+                  lastName: lastName || undefined,
+                  phone: (customerPhone ?? "").trim(),
+                  email: (customerEmail ?? "").trim() || undefined,
+                };
+              }
+            }
+            
+            // Build customerName from:
+            // 1. result.data.customer if available
+            // 2. Otherwise customerFirstName + customerLastName from input
+            let customerName: string | null = result.data.customerName ?? null;
+            if (!customerName && customerToUse) {
+              const firstName = (customerToUse.firstName ?? "").trim();
+              const lastName = (customerToUse.lastName ?? "").trim();
+              if (firstName || lastName) {
+                customerName = `${firstName} ${lastName}`.trim();
+              } else {
+                customerName = (customerToUse.name ?? customerToUse.fullName ?? "").trim() || null;
+              }
+            }
+            
+            // Build customerPhone from response or input
+            const customerPhoneValue = result.data.customerPhone 
+              ?? responseCustomer?.phone 
+              ?? (customerPhone ?? "").trim() 
+              ?? prev.customerPhone 
+              ?? null;
+            
+            return {
+              ...prev,
+              // Only merge customer fields, keep all other order data intact
+              customerName: customerName ?? prev.customerName ?? null,
+              customerPhone: customerPhoneValue,
+              customer: customerToUse ? {
+                id: customerToUse.id,
+                firstName: customerToUse.firstName,
+                lastName: customerToUse.lastName,
+                name: customerToUse.name,
+                fullName: customerToUse.fullName,
+                phone: customerToUse.phone,
+                email: customerToUse.email,
+              } : prev.customer ?? null,
+            };
+          });
+          // Close modal and reset form
+          setShowCustomerModal(false);
+          setShouldPromptForCustomer(false);
+          setCustomerPhone("");
+          setCustomerFirstName("");
+          setCustomerLastName("");
+          setCustomerEmail("");
+          setCustomerAddress("");
+          setCurrentCustomer(null);
+          setCustomerFound(false);
+        }
       }
     } catch (err) {
-      setCustomerError("An error occurred while creating customer");
+      setCustomerError("An error occurred while processing customer");
       console.error(err);
     } finally {
       setCreatingCustomer(false);
     }
   };
 
-  const handleAttachCustomer = async () => {
-    if (!currentOrder || !currentCustomer) {
-      setCustomerError("No customer selected");
-      return;
-    }
-
-    setProcessing(true);
-    try {
-      const result = await ordersApi.attachCustomerToOrder(
-        currentOrder.id,
-        currentCustomer.id
-      );
-
-      if (result.error) {
-        setCustomerError(result.error);
-      } else if (result.data) {
-        setCurrentOrder(result.data);
-        setShowCustomerModal(false);
-        setCustomerError(null);
-        // Reset customer form
-        setCustomerPhone("");
-        setCustomerName("");
-        setCustomerEmail("");
-        setCustomerAddress("");
-      }
-    } catch (err) {
-      setCustomerError("An error occurred while attaching customer");
-      console.error(err);
-    } finally {
-      setProcessing(false);
-    }
+  // Handle skip/close customer modal
+  const handleSkipCustomer = () => {
+    setShowCustomerModal(false);
+    setShouldPromptForCustomer(false);
+    setCustomerPhone("");
+    setCustomerFirstName("");
+    setCustomerLastName("");
+    setCustomerEmail("");
+    setCustomerAddress("");
+    setCurrentCustomer(null);
+    setCustomerFound(false);
+    setCustomerError(null);
   };
 
   const handleRemoveCustomer = async () => {
@@ -619,7 +935,7 @@ export default function CashierTerminal() {
   };
 
   const handlePayment = async (method: "cash" | "card" | "both") => {
-    if (!currentOrder || currentOrder.items.length === 0) {
+    if (!currentOrder || (currentOrder.items ?? []).length === 0) {
       alert("Order is empty");
       return;
     }
@@ -850,7 +1166,7 @@ export default function CashierTerminal() {
           setSessionStats({
             totalCash: cashTotal,
             totalCard: cardTotal,
-            totalOrders: ordersResult.data.length,
+            totalOrders: (ordersResult.data ?? []).length,
             openingFloat,
             totalSales,
             expectedDrawer: openingFloat + cashTotal,
@@ -894,7 +1210,7 @@ export default function CashierTerminal() {
   };
 
   const finalizeSessionBeforeExit = async () => {
-    if (currentOrder && currentOrder.status !== "PAID" && currentOrder.items.length > 0) {
+    if (currentOrder && currentOrder.status !== "PAID" && (currentOrder.items ?? []).length > 0) {
       console.log("Holding order before exit:", currentOrder.id, currentOrder.status);
       try {
         const holdResult = await ordersApi.holdOrder(currentOrder.id);
@@ -1011,7 +1327,7 @@ export default function CashierTerminal() {
       try {
         const historyResult = await ordersApi.getSessionHistory(currentSessionId);
         if (historyResult.data) {
-          const held = historyResult.data.filter((o) => o.status === "HELD");
+          const held = historyResult.data.filter((o) => o.status === "HOLD");
           for (const heldOrder of held) {
             const fullOrder = await ordersApi.getOrder(heldOrder.id);
             if (fullOrder.data) {
@@ -1033,7 +1349,7 @@ export default function CashierTerminal() {
   };
 
   const handleHoldOrder = async () => {
-    if (!currentOrder || currentOrder.items.length === 0) {
+    if (!currentOrder || (currentOrder.items ?? []).length === 0) {
       alert("Order is empty");
       return;
     }
@@ -1043,7 +1359,7 @@ export default function CashierTerminal() {
       return;
     }
 
-    if (currentOrder.status === "HELD") {
+    if (currentOrder.status === "HOLD") {
       alert("Order is already held");
       return;
     }
@@ -1169,10 +1485,32 @@ export default function CashierTerminal() {
                 placeholder="Search by product name or SKU..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
+                onKeyDown={handleSearchKeyDown}
+                onFocus={() => setIsTypingInInput(true)}
+                onBlur={() => setIsTypingInInput(false)}
                 className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
           </div>
+          
+          {/* Hidden input for barcode scanner */}
+          <input
+            ref={barcodeInputRef}
+            type="text"
+            autoFocus
+            value={barcodeBuffer}
+            onChange={handleBarcodeInput}
+            onKeyDown={handleBarcodeKeyDown}
+            style={{
+              position: "absolute",
+              left: "-9999px",
+              width: "1px",
+              height: "1px",
+              opacity: 0,
+              pointerEvents: "none",
+            }}
+            tabIndex={-1}
+          />
 
           {/* Categories */}
           <div className="p-4 border-b border-gray-200">
@@ -1224,7 +1562,7 @@ export default function CashierTerminal() {
                   </button>
                   {expandedCategory === category.id &&
                     category.subCategories &&
-                    category.subCategories.length > 0 && (
+                    (category.subCategories ?? []).length > 0 && (
                       <div className="ml-4 mt-1 space-y-1">
                         {category.subCategories
                           .filter((sc) => sc != null)
@@ -1285,7 +1623,7 @@ export default function CashierTerminal() {
                   </div>
                 </button>
               ))}
-              {filteredProducts.length === 0 && (
+              {(filteredProducts ?? []).length === 0 && (
                   <p className="text-center text-gray-500 py-8">
                     No products found
                   </p>
@@ -1303,17 +1641,17 @@ export default function CashierTerminal() {
             </h2>
           </div>
           <div className="flex-1 overflow-y-auto p-6">
-            {(!currentOrder || currentOrder.items.length === 0) &&
-            cart.length === 0 ? (
+            {(!currentOrder || (currentOrder.items ?? []).length === 0) &&
+            (cart ?? []).length === 0 ? (
               <div className="flex items-center justify-center h-full">
                 <p className="text-gray-400">No items in order</p>
               </div>
             ) : (
               <div className="space-y-3">
-                {(currentOrder?.items.length ? currentOrder.items : cart).map(
+                {((currentOrder?.items ?? []).length ? (currentOrder?.items ?? []) : (cart ?? [])).map(
                   (item, index) => {
-                  const orderItem = currentOrder?.items[index];
-                  const cartItem = cart[index] as CartItem | undefined;
+                  const orderItem = (currentOrder?.items ?? [])[index];
+                  const cartItem = (cart ?? [])[index] as CartItem | undefined;
                   const product = orderItem 
                       ? products.find((p) => p.id === orderItem.productId) || {
                           id: orderItem.productId,
@@ -1436,14 +1774,19 @@ export default function CashierTerminal() {
             {/* Customer Section */}
             {currentOrder && (
               <div className="border-b border-gray-200 pb-4 mb-4">
-                {currentOrder.customerName ? (
+                {currentOrder.customer?.id ? (
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <User className="h-4 w-4 text-gray-600" />
                       <div>
-                        <p className="text-sm font-medium text-gray-800">{currentOrder.customerName}</p>
-                        {currentOrder.customerPhone && (
-                          <p className="text-xs text-gray-500">{currentOrder.customerPhone}</p>
+                        <p className="text-sm font-medium text-gray-800">
+                          {currentOrder.customerName ?? 
+                            (currentOrder.customer?.firstName && currentOrder.customer?.lastName
+                              ? `${currentOrder.customer.firstName} ${currentOrder.customer.lastName}`.trim()
+                              : currentOrder.customer?.name ?? currentOrder.customer?.fullName ?? "Customer")}
+                        </p>
+                        {(currentOrder.customerPhone ?? currentOrder.customer?.phone) && (
+                          <p className="text-xs text-gray-500">{currentOrder.customerPhone ?? currentOrder.customer?.phone}</p>
                         )}
                       </div>
                     </div>
@@ -1458,13 +1801,20 @@ export default function CashierTerminal() {
                 ) : (
                   <button
                     onClick={() => {
+                      // Prevent opening modal if customer is already attached
+                      if (currentOrder?.customer?.id) {
+                        alert("This order already has a customer attached. Cannot link another customer.");
+                        return;
+                      }
                       setShowCustomerModal(true);
                       setCustomerPhone("");
-                      setCustomerName("");
+                      setCustomerFirstName("");
+                      setCustomerLastName("");
                       setCustomerEmail("");
                       setCustomerAddress("");
                       setCurrentCustomer(null);
                       setCustomerError(null);
+                      setCustomerFound(false);
                     }}
                     className="w-full flex items-center justify-center gap-2 py-2 px-3 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors text-sm"
                   >
@@ -1517,7 +1867,7 @@ export default function CashierTerminal() {
             <button
               onClick={handleHoldOrder}
               disabled={
-                processing || !currentOrder || currentOrder.items.length === 0 || currentOrder.status === "PAID" || currentOrder.status === "HELD"
+                processing || !currentOrder || (currentOrder.items ?? []).length === 0 || currentOrder.status === "PAID" || currentOrder.status === "HOLD"
               }
               className="w-full flex items-center justify-center gap-2 py-3 px-4 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
@@ -1530,7 +1880,7 @@ export default function CashierTerminal() {
               <button
                 onClick={() => handlePayment("cash")}
                 disabled={
-                  processing || !currentOrder || currentOrder.items.length === 0
+                  processing || !currentOrder || (currentOrder.items ?? []).length === 0
                 }
                 className="w-full flex items-center justify-center gap-2 py-4 px-4 bg-blue-50 text-blue-600 rounded-lg font-medium hover:bg-blue-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
@@ -1546,7 +1896,7 @@ export default function CashierTerminal() {
               <button
                 onClick={() => handlePayment("card")}
                 disabled={
-                  processing || !currentOrder || currentOrder.items.length === 0
+                  processing || !currentOrder || (currentOrder.items ?? []).length === 0
                 }
                 className="w-full flex items-center justify-center gap-2 py-4 px-4 bg-blue-50 text-blue-600 rounded-lg font-medium hover:bg-blue-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
@@ -1562,7 +1912,7 @@ export default function CashierTerminal() {
               <button
                 onClick={() => handlePayment("both")}
                 disabled={
-                  processing || !currentOrder || currentOrder.items.length === 0
+                  processing || !currentOrder || (currentOrder.items ?? []).length === 0
                 }
                 className="w-full flex items-center justify-center gap-2 py-4 px-4 bg-blue-50 text-blue-600 rounded-lg font-medium hover:bg-blue-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
@@ -1581,7 +1931,7 @@ export default function CashierTerminal() {
         </div>
 
         {/* Held Orders Section */}
-        {heldOrders.length > 0 && (
+        {(heldOrders ?? []).length > 0 && (
           <div className="border-t border-gray-200 bg-yellow-50">
             <button
               onClick={() => setHeldOrdersExpanded(!heldOrdersExpanded)}
@@ -1590,7 +1940,7 @@ export default function CashierTerminal() {
               <div className="flex items-center gap-2">
                 <Pause className="h-4 w-4 text-yellow-600" />
                 <span className="text-sm font-semibold text-gray-800">
-                  Held Orders ({heldOrders.length})
+                  Held Orders ({(heldOrders ?? []).length})
                 </span>
               </div>
               {heldOrdersExpanded ? (
@@ -1602,7 +1952,7 @@ export default function CashierTerminal() {
             {heldOrdersExpanded && (
               <div className="px-4 pb-4 max-h-48 overflow-y-auto">
                 <div className="flex gap-3 overflow-x-auto pb-2">
-                  {heldOrders.map((order) => (
+                  {(heldOrders ?? []).map((order) => (
                     <div
                       key={order.id}
                       className="flex-shrink-0 w-56 p-3 bg-white border border-yellow-300 rounded-lg shadow-sm"
@@ -1612,7 +1962,7 @@ export default function CashierTerminal() {
                           {order.orderNumber}
                         </span>
                         <span className="px-2 py-1 bg-yellow-100 text-yellow-700 rounded text-xs font-medium flex-shrink-0">
-                          HELD
+                          HOLD
                         </span>
                       </div>
                       <div className="text-xs text-gray-600 space-y-1 mb-3">
@@ -1656,17 +2006,34 @@ export default function CashierTerminal() {
           <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4 max-h-[90vh] overflow-y-auto">
             <div className="p-6">
               <div className="flex items-center justify-between mb-4">
-                <h2 className="text-xl font-semibold text-gray-800">Add Customer</h2>
+                <h2 className="text-xl font-semibold text-gray-800">
+                  {shouldPromptForCustomer ? "Add Customer (Optional)" : "Add Customer"}
+                </h2>
                 <button
-                  onClick={() => {
-                    setShowCustomerModal(false);
-                    setCustomerError(null);
-                  }}
+                  onClick={handleSkipCustomer}
                   className="text-gray-400 hover:text-gray-600"
                 >
                   <X className="h-5 w-5" />
                 </button>
               </div>
+              
+              {shouldPromptForCustomer && (
+                <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg text-blue-700 text-sm">
+                  Enter customer phone number to link this order to a customer (optional).
+                </div>
+              )}
+
+              {currentOrder?.customer?.id && (
+                <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg text-yellow-700 text-sm">
+                  This order already has a customer attached: {
+                    currentOrder.customerName ?? 
+                    (currentOrder.customer?.firstName && currentOrder.customer?.lastName
+                      ? `${currentOrder.customer.firstName} ${currentOrder.customer.lastName}`.trim()
+                      : currentOrder.customer?.name ?? currentOrder.customer?.fullName ?? "Customer")
+                  }
+                  {(currentOrder.customerPhone ?? currentOrder.customer?.phone) && ` (${currentOrder.customerPhone ?? currentOrder.customer?.phone})`}
+                </div>
+              )}
 
               {customerError && (
                 <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
@@ -1685,12 +2052,14 @@ export default function CashierTerminal() {
                       type="tel"
                       value={customerPhone}
                       onChange={(e) => setCustomerPhone(e.target.value)}
+                      onFocus={() => setIsTypingInInput(true)}
+                      onBlur={() => setIsTypingInInput(false)}
                       placeholder="Enter phone number"
                       className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
                     />
                     <button
                       onClick={handleSearchCustomer}
-                      disabled={searchingCustomer || !customerPhone.trim()}
+                      disabled={searchingCustomer || !(customerPhone ?? "").trim()}
                       className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition flex items-center gap-2"
                     >
                       {searchingCustomer ? (
@@ -1702,21 +2071,46 @@ export default function CashierTerminal() {
                   </div>
                 </div>
 
-                {/* Customer Form */}
-                {(!currentCustomer || customerError) && (
+                {/* Customer Form - Show after search (if customer found or not found) */}
+                {(customerPhone ?? "").trim() && (customerFound || (!customerFound && !searchingCustomer)) && (
                   <>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Name *
-                      </label>
-                      <input
-                        type="text"
-                        value={customerName}
-                        onChange={(e) => setCustomerName(e.target.value)}
-                        placeholder="Enter customer name"
-                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                        required
-                      />
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          First Name *
+                        </label>
+                        <input
+                          type="text"
+                          value={customerFirstName}
+                          onChange={(e) => setCustomerFirstName(e.target.value)}
+                          onFocus={() => setIsTypingInInput(true)}
+                          onBlur={() => setIsTypingInInput(false)}
+                          placeholder="Enter first name"
+                          readOnly={customerFound}
+                          className={`w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 ${
+                            customerFound ? "bg-gray-100 cursor-not-allowed" : ""
+                          }`}
+                          required
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          Last Name *
+                        </label>
+                        <input
+                          type="text"
+                          value={customerLastName}
+                          onChange={(e) => setCustomerLastName(e.target.value)}
+                          onFocus={() => setIsTypingInInput(true)}
+                          onBlur={() => setIsTypingInInput(false)}
+                          placeholder="Enter last name"
+                          readOnly={customerFound}
+                          className={`w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 ${
+                            customerFound ? "bg-gray-100 cursor-not-allowed" : ""
+                          }`}
+                          required
+                        />
+                      </div>
                     </div>
 
                     <div>
@@ -1727,66 +2121,49 @@ export default function CashierTerminal() {
                         type="email"
                         value={customerEmail}
                         onChange={(e) => setCustomerEmail(e.target.value)}
+                        onFocus={() => setIsTypingInInput(true)}
+                        onBlur={() => setIsTypingInInput(false)}
                         placeholder="Enter email address"
-                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                        readOnly={customerFound}
+                        className={`w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 ${
+                          customerFound ? "bg-gray-100 cursor-not-allowed" : ""
+                        }`}
                       />
                     </div>
 
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Address (Optional)
-                      </label>
-                      <textarea
-                        value={customerAddress}
-                        onChange={(e) => setCustomerAddress(e.target.value)}
-                        placeholder="Enter address"
-                        rows={3}
-                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                      />
-                    </div>
-
-                    {!currentCustomer && (
-                      <button
-                        onClick={handleCreateCustomer}
-                        disabled={creatingCustomer || !customerName.trim() || !customerPhone.trim()}
-                        className="w-full px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition flex items-center justify-center gap-2"
-                      >
-                        {creatingCustomer ? (
-                          <>
-                            <Loader2 className="w-4 h-4 animate-spin" />
-                            Creating...
-                          </>
-                        ) : (
-                          "Create Customer"
-                        )}
-                      </button>
-                    )}
+                    {/* Main Action Button */}
+                    <button
+                      onClick={handleLinkOrCreateCustomer}
+                      disabled={
+                        creatingCustomer ||
+                        !(customerPhone ?? "").trim() ||
+                        !(customerFirstName ?? "").trim() ||
+                        !(customerLastName ?? "").trim()
+                      }
+                      className={`w-full px-4 py-2 text-white rounded-lg hover:opacity-90 disabled:bg-gray-400 disabled:cursor-not-allowed transition flex items-center justify-center gap-2 ${
+                        customerFound ? "bg-blue-600 hover:bg-blue-700" : "bg-green-600 hover:bg-green-700"
+                      }`}
+                    >
+                      {creatingCustomer ? (
+                        <>
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                          {customerFound ? "Linking..." : "Creating & Linking..."}
+                        </>
+                      ) : (
+                        customerFound ? "Link Customer" : "Create & Link"
+                      )}
+                    </button>
                   </>
                 )}
 
-                {/* Attach Customer Button */}
-                {currentCustomer && (
-                  <div className="space-y-3">
-                    <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
-                      <p className="text-sm font-medium text-green-800">Customer Found/Created</p>
-                      <p className="text-sm text-green-700">{currentCustomer.name}</p>
-                      <p className="text-xs text-green-600">{currentCustomer.phone}</p>
-                    </div>
-                    <button
-                      onClick={handleAttachCustomer}
-                      disabled={processing}
-                      className="w-full px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition flex items-center justify-center gap-2"
-                    >
-                      {processing ? (
-                        <>
-                          <Loader2 className="w-4 h-4 animate-spin" />
-                          Attaching...
-                        </>
-                      ) : (
-                        "Attach to Order"
-                      )}
-                    </button>
-                  </div>
+                {/* Skip button - only show if this is a prompt for new order */}
+                {shouldPromptForCustomer && (
+                  <button
+                    onClick={handleSkipCustomer}
+                    className="w-full px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+                  >
+                    Skip (Continue without customer)
+                  </button>
                 )}
               </div>
             </div>
@@ -1827,6 +2204,8 @@ export default function CashierTerminal() {
                   max={total}
                   value={splitCashAmount}
                   onChange={(e) => handleCashAmountChange(e.target.value)}
+                  onFocus={() => setIsTypingInInput(true)}
+                  onBlur={() => setIsTypingInInput(false)}
                   placeholder="0.00"
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
@@ -1842,6 +2221,8 @@ export default function CashierTerminal() {
                   max={total}
                   value={splitCardAmount}
                   onChange={(e) => handleCardAmountChange(e.target.value)}
+                  onFocus={() => setIsTypingInInput(true)}
+                  onBlur={() => setIsTypingInInput(false)}
                   placeholder="0.00"
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
@@ -1926,7 +2307,7 @@ export default function CashierTerminal() {
                                   ? "bg-green-100 text-green-700"
                                   : order.status === "CANCELLED"
                                   ? "bg-red-100 text-red-700"
-                                  : order.status === "HELD"
+                                  : order.status === "HOLD"
                                   ? "bg-yellow-100 text-yellow-700"
                                   : "bg-gray-100 text-gray-700"
                               }`}
@@ -1985,7 +2366,7 @@ export default function CashierTerminal() {
                               ? "bg-green-100 text-green-700"
                               : selectedOrder.status === "CANCELLED"
                               ? "bg-red-100 text-red-700"
-                              : selectedOrder.status === "HELD"
+                              : selectedOrder.status === "HOLD"
                               ? "bg-yellow-100 text-yellow-700"
                               : "bg-gray-100 text-gray-700"
                           }`}

@@ -243,7 +243,15 @@ export interface ReturnOrderSummary {
   orderId: number;
   orderNumber: string;
   orderDate: string;
-  customerName: string | null;
+  customerName?: string | null; // May not be present
+  customer?: {
+    id: number;
+    firstName?: string;
+    lastName?: string;
+    name?: string;
+    fullName?: string;
+    phone?: string;
+  } | null; // Customer object may be present instead
   totalPaid: number;
   returnCount: number;
   totalReturned: number;
