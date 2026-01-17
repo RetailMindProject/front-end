@@ -279,27 +279,7 @@ export default function ReturnOrdersHistory() {
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
                           <span className="text-sm text-gray-900">
-                            {(() => {
-                              // Try customerName first (direct field)
-                              const customerName = (order.customerName ?? "").trim();
-                              if (customerName) {
-                                return customerName;
-                              }
-                              // Try customer object with firstName/lastName
-                              if (order.customer) {
-                                const firstName = (order.customer.firstName ?? "").trim();
-                                const lastName = (order.customer.lastName ?? "").trim();
-                                if (firstName || lastName) {
-                                  return `${firstName} ${lastName}`.trim();
-                                }
-                                // Try customer.name or customer.fullName
-                                const name = (order.customer.name ?? order.customer.fullName ?? "").trim();
-                                if (name) {
-                                  return name;
-                                }
-                              }
-                              return "N/A";
-                            })()}
+                            {order.customerName || "N/A"}
                           </span>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
@@ -491,6 +471,10 @@ export default function ReturnOrdersHistory() {
                         >
                           {selectedReturn.status}
                         </span>
+                      </div>
+                      <div>
+                        <p className="text-sm text-gray-600">Customer</p>
+                        <p className="font-semibold text-gray-900">{selectedReturn.customerName}</p>
                       </div>
                       {selectedReturn.createdBy && (
                         <div>

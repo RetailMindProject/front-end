@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import {
   Search,
   ChevronRight,
+  ChevronLeft,
   ChevronDown,
   ChevronUp,
   LogOut,
@@ -15,6 +16,8 @@ import {
   X,
   Loader2,
   RotateCcw,
+  Store,
+  Printer,
 } from "lucide-react";
 import { getUserDisplayName, setSessionId, clearSessionId } from "../services/tokens";
 import { logoutForRole } from "../services/auth.api";
@@ -24,6 +27,7 @@ import { ordersApi, type Order, type OrderHistoryItem } from "../services/orders
 import { categoriesApi, type CategoryHierarchy } from "../services/categories.api";
 import { terminalApi } from "../services/terminal.api";
 import { customersApi, type Customer } from "../services/customers.api";
+import { productsApi } from "../services/products.api";
 
 interface Product {
   id: string | number;
@@ -31,6 +35,10 @@ interface Product {
   sku?: string;
   price: number;
   category?: string | null;
+  image?: {
+    url?: string;
+    altText?: string;
+  } | null;
 }
 
 interface CartItem {
@@ -83,6 +91,14 @@ export default function CashierTerminal() {
   const [heldOrders, setHeldOrders] = useState<Order[]>([]);
   const [heldOrdersExpanded, setHeldOrdersExpanded] = useState(false);
   const [unpairing, setUnpairing] = useState(false);
+  const [paidOrderId, setPaidOrderId] = useState<number | null>(null);
+  const [paidOrderNumber, setPaidOrderNumber] = useState<string | null>(null);
+  const [printingReceipt, setPrintingReceipt] = useState(false);
+  // Pagination state
+  const [productsPage, setProductsPage] = useState(0);
+  const [productsPageSize] = useState(20); // Products per page
+  const [productsTotalPages, setProductsTotalPages] = useState(1);
+  const [productsTotalElements, setProductsTotalElements] = useState(0);
   
   // Customer registration state
   const [showCustomerModal, setShowCustomerModal] = useState(false);
@@ -104,6 +120,7 @@ export default function CashierTerminal() {
   const barcodeInputRef = useRef<HTMLInputElement>(null);
 
   const cashierName = getUserDisplayName();
+  const storeName = "My store"; // يمكن جلبها من API لاحقاً
   const redirectToSelectTerminal = (customMessage?: string) => {
     setCurrentSessionId(null);
     clearSessionId();
@@ -186,63 +203,107 @@ export default function CashierTerminal() {
     loadData();
   }, [cashierName]);
 
-  // Load products when subcategory is selected
+  // Load products with pagination
   useEffect(() => {
-    const loadProductsBySubCategory = async () => {
-      if (selectedSubCategory) {
-        setLoadingProducts(true);
-        const fetchedProducts = await offersApi.fetchProductsBySubCategory(
-          selectedSubCategory
-        );
-        if (fetchedProducts) {
-          // Map to local Product interface
-          setProducts(fetchedProducts.map(p => ({
-            id: p.id,
-            name: p.name,
-            sku: p.sku,
-            price: p.price,
-            category: p.category ?? undefined,
-          })));
+    const loadProducts = async () => {
+      setLoadingProducts(true);
+      try {
+        let response;
+        
+        if (selectedSubCategory) {
+          // For subcategory, we need to fetch all and filter client-side
+          // But for pagination, we'll use the filter API with category filter
+          response = await productsApi.filter({
+            page: productsPage,
+            size: productsPageSize,
+            isActive: true,
+          });
+        } else if (selectedCategory && !selectedSubCategory) {
+          // For parent category, use filter API
+          response = await productsApi.filter({
+            page: productsPage,
+            size: productsPageSize,
+            isActive: true,
+          });
         } else {
-          // If no products found, set empty array
+          // No category selected, load all products with pagination
+          response = await productsApi.filter({
+            page: productsPage,
+            size: productsPageSize,
+            isActive: true,
+          });
+        }
+
+        if (response.data) {
+          let pageProducts = response.data.content || [];
+          
+          // Filter by subcategory if selected (client-side filtering)
+          if (selectedSubCategory) {
+            pageProducts = pageProducts.filter((p: any) => {
+              if (p.categories && Array.isArray(p.categories)) {
+                return p.categories.some((cat: any) => cat.id === selectedSubCategory);
+              }
+              return false;
+            });
+          }
+          
+          // Filter by parent category if selected (client-side filtering)
+          if (selectedCategory && !selectedSubCategory) {
+            const selectedCategoryName = categories.find(
+              (c) => c.id === selectedCategory
+            )?.name;
+            if (selectedCategoryName) {
+              pageProducts = pageProducts.filter((p: any) => {
+                const productCategoryName =
+                  (p.categories && p.categories.length > 0)
+                    ? p.categories[0].name
+                    : (typeof p.category === 'string' 
+                        ? p.category 
+                        : (p.category?.name || null));
+                return productCategoryName === selectedCategoryName;
+              });
+            }
+          }
+
+          // Map to local Product interface
+          const mappedProducts = pageProducts.map((p: any) => {
+            const categoryName =
+              (p.categories && p.categories.length > 0)
+                ? p.categories[0].name
+                : (typeof p.category === 'string' 
+                    ? p.category 
+                    : (p.category?.name || null));
+
+            return {
+              id: p.id,
+              name: p.name || "",
+              sku: p.sku || "",
+              price: p.defaultPrice || p.price || 0,
+              category: categoryName ?? undefined,
+              image: p.image ? { url: p.image.url, altText: p.image.altText } : null,
+            };
+          });
+
+          setProducts(mappedProducts);
+          setProductsTotalPages(response.data.totalPages || 1);
+          setProductsTotalElements(response.data.totalElements || 0);
+        } else {
           setProducts([]);
+          setProductsTotalPages(1);
+          setProductsTotalElements(0);
         }
-        setLoadingProducts(false);
-      } else if (selectedCategory && !selectedSubCategory) {
-        // If only parent category is selected, load all products and filter by category name
-        setLoadingProducts(true);
-        const fetchedProducts = await offersApi.fetchProducts();
-        if (fetchedProducts) {
-          // Map to local Product interface
-          setProducts(fetchedProducts.map(p => ({
-            id: p.id,
-            name: p.name,
-            sku: p.sku,
-            price: p.price,
-            category: p.category ?? undefined,
-          })));
-        }
-        setLoadingProducts(false);
-      } else if (!selectedCategory && !selectedSubCategory) {
-        // If no category selected, load all products
-        setLoadingProducts(true);
-        const fetchedProducts = await offersApi.fetchProducts();
-        if (fetchedProducts) {
-          // Map to local Product interface
-          setProducts(fetchedProducts.map(p => ({
-            id: p.id,
-            name: p.name,
-            sku: p.sku,
-            price: p.price,
-            category: p.category ?? undefined,
-          })));
-        }
+      } catch (error) {
+        console.error("Error loading products:", error);
+        setProducts([]);
+        setProductsTotalPages(1);
+        setProductsTotalElements(0);
+      } finally {
         setLoadingProducts(false);
       }
     };
 
-    loadProductsBySubCategory();
-  }, [selectedSubCategory, selectedCategory]);
+    loadProducts();
+  }, [selectedSubCategory, selectedCategory, productsPage, productsPageSize]);
 
   // Sync cart with order items
   useEffect(() => {
@@ -390,6 +451,11 @@ export default function CashierTerminal() {
     }
   }, [searchTerm, products, showSplitModal, showOrdersModal, showCustomerModal, showLogoutConfirm]);
 
+  // Reset to first page when category/subcategory changes
+  useEffect(() => {
+    setProductsPage(0);
+  }, [selectedCategory, selectedSubCategory]);
+
 
   const filteredProducts = products.filter((product) => {
     const matchesSearch =
@@ -440,7 +506,6 @@ export default function CashierTerminal() {
       // Create order if it doesn't exist
       // Note: لا نرسل sessionId - الـ backend يجلب sessionId تلقائياً من browser token
       let orderId = currentOrder?.id;
-      let isNewOrder = false;
       if (!orderId) {
         const createResult = await ordersApi.createOrder();
         if (createResult.error) {
@@ -451,23 +516,13 @@ export default function CashierTerminal() {
         if (createResult.data) {
           setCurrentOrder(createResult.data);
           orderId = createResult.data.id;
-          isNewOrder = true;
+          // Clear paid order info when starting a new order
+          setPaidOrderId(null);
+          setPaidOrderNumber(null);
         }
       }
 
-      // If this is a new order and no customer is attached, prompt for customer phone
-        if (isNewOrder && !currentOrder?.customer?.id && !shouldPromptForCustomer) {
-        setShouldPromptForCustomer(true);
-        setShowCustomerModal(true);
-        setCustomerPhone("");
-        setCustomerFirstName("");
-        setCustomerLastName("");
-        setCustomerEmail("");
-        setCustomerAddress("");
-        setCurrentCustomer(null);
-        setCustomerFound(false);
-        setCustomerError(null);
-      }
+      // Customer linking is now optional - only when user clicks "Add Customer" button
 
       if (!orderId) {
         alert("Failed to get order ID");
@@ -743,14 +798,20 @@ export default function CashierTerminal() {
             if (!result.data) return prev;
             
             // Use customer from response, or fallback to currentCustomer
+            // New API may return customerId, userId, and customer object
             const responseCustomer = result.data.customer;
             const fallbackCustomer = currentCustomer;
             const customerToUse = responseCustomer ?? fallbackCustomer;
             
-            // Build customerName from:
-            // 1. result.data.customer if available
-            // 2. Otherwise currentCustomer.firstName + lastName
-            let customerName: string | null = result.data.customerName ?? null;
+            // Use customerId from response or customer.id
+            const customerIdFromResponse = result.data.customerId ?? responseCustomer?.id ?? fallbackCustomer?.id;
+            
+            // Use customerName directly from result.data.customer.customerName (backend now returns it)
+            let customerName: string | null = result.data.customer?.customerName 
+              ?? result.data.customerName 
+              ?? null;
+            
+            // Fallback: build from firstName + lastName if customerName not available
             if (!customerName && customerToUse) {
               const firstName = (customerToUse.firstName ?? "").trim();
               const lastName = (customerToUse.lastName ?? "").trim();
@@ -773,8 +834,10 @@ export default function CashierTerminal() {
               // Only merge customer fields, keep all other order data intact
               customerName: customerName ?? prev.customerName ?? null,
               customerPhone: customerPhoneValue,
+              customerId: customerIdFromResponse ?? prev.customerId ?? null,
+              userId: result.data.userId ?? prev.userId ?? null,
               customer: customerToUse ? {
-                id: customerToUse.id,
+                id: customerIdFromResponse ?? customerToUse.id ?? 0, // Use customerId from response
                 firstName: customerToUse.firstName,
                 lastName: customerToUse.lastName,
                 name: customerToUse.name,
@@ -823,12 +886,28 @@ export default function CashierTerminal() {
             if (!prev) return result.data || null;
             if (!result.data) return prev;
             
-            // Use customer from response, or build from input data
+            // Use customer from response (new API returns customerId, userId, and customer object)
             const responseCustomer = result.data.customer;
+            // Use customerId from response or customer.id
+            const customerIdFromResponse = result.data.customerId ?? responseCustomer?.id;
+            
             let customerToUse = responseCustomer;
             
-            // If no customer in response, build from input data
-            if (!customerToUse) {
+            // If no customer object in response but we have customerId, build from input data
+            if (!customerToUse && customerIdFromResponse) {
+              const firstName = (customerFirstName ?? "").trim();
+              const lastName = (customerLastName ?? "").trim();
+              if (firstName || lastName) {
+                customerToUse = {
+                  id: customerIdFromResponse, // Use customerId from response
+                  firstName: firstName || undefined,
+                  lastName: lastName || undefined,
+                  phone: (customerPhone ?? "").trim(),
+                  email: (customerEmail ?? "").trim() || undefined,
+                };
+              }
+            } else if (!customerToUse) {
+              // If no customerId either, build from input data (fallback)
               const firstName = (customerFirstName ?? "").trim();
               const lastName = (customerLastName ?? "").trim();
               if (firstName || lastName) {
@@ -842,10 +921,12 @@ export default function CashierTerminal() {
               }
             }
             
-            // Build customerName from:
-            // 1. result.data.customer if available
-            // 2. Otherwise customerFirstName + customerLastName from input
-            let customerName: string | null = result.data.customerName ?? null;
+            // Use customerName directly from result.data.customer.customerName (backend now returns it)
+            let customerName: string | null = result.data.customer?.customerName 
+              ?? result.data.customerName 
+              ?? null;
+            
+            // Fallback: build from firstName + lastName if customerName not available
             if (!customerName && customerToUse) {
               const firstName = (customerToUse.firstName ?? "").trim();
               const lastName = (customerToUse.lastName ?? "").trim();
@@ -868,8 +949,10 @@ export default function CashierTerminal() {
               // Only merge customer fields, keep all other order data intact
               customerName: customerName ?? prev.customerName ?? null,
               customerPhone: customerPhoneValue,
+              customerId: customerIdFromResponse ?? prev.customerId ?? null,
+              userId: result.data.userId ?? prev.userId ?? null,
               customer: customerToUse ? {
-                id: customerToUse.id,
+                id: customerIdFromResponse ?? customerToUse.id ?? 0, // Use customerId from response
                 firstName: customerToUse.firstName,
                 lastName: customerToUse.lastName,
                 name: customerToUse.name,
@@ -973,6 +1056,9 @@ export default function CashierTerminal() {
       if (result.error) {
         alert(`Payment failed: ${result.error}`);
       } else if (result.data) {
+        // Save order info before clearing
+        setPaidOrderId(result.data.id);
+        setPaidOrderNumber(result.data.orderNumber);
         setCurrentOrder(result.data);
         // Clear cart and reset order
         setCart([]);
@@ -1031,6 +1117,9 @@ export default function CashierTerminal() {
       if (result.error) {
         alert(`Payment failed: ${result.error}`);
       } else if (result.data) {
+        // Save order info before clearing
+        setPaidOrderId(result.data.id);
+        setPaidOrderNumber(result.data.orderNumber);
         setCurrentOrder(result.data);
         setShowSplitModal(false);
         // Clear cart and reset order
@@ -1066,6 +1155,40 @@ export default function CashierTerminal() {
       setSplitCashAmount(remaining.toFixed(2));
     } else if (value === "" || value === "0") {
       setSplitCashAmount("");
+    }
+  };
+
+  const handlePrintReceipt = async () => {
+    if (!paidOrderId) return;
+
+    setPrintingReceipt(true);
+    try {
+      const result = await ordersApi.downloadReceipt(paidOrderId);
+
+      if (result.error) {
+        if (result.status === 409) {
+          alert("Cannot print receipt: Order is not PAID yet.");
+        } else if (result.status === 404) {
+          alert("Order not found.");
+        } else {
+          alert(`Failed to print receipt: ${result.error}`);
+        }
+      } else if (result.data) {
+        // Create blob URL and open/download
+        const blobUrl = URL.createObjectURL(result.data);
+        const link = document.createElement("a");
+        link.href = blobUrl;
+        link.download = `receipt-${paidOrderNumber}.pdf`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(blobUrl);
+      }
+    } catch (error) {
+      console.error("Error printing receipt:", error);
+      alert("An error occurred while printing receipt");
+    } finally {
+      setPrintingReceipt(false);
     }
   };
 
@@ -1419,8 +1542,41 @@ export default function CashierTerminal() {
   return (
     <div className="h-screen flex flex-col bg-white">
       {/* Header */}
-      <header className="border-b border-gray-200 px-6 py-4 flex items-center justify-between">
-        <h1 className="text-2xl font-semibold text-gray-800">{cashierName}</h1>
+      <header className="border-b border-gray-200 px-6 py-4 flex items-center justify-between bg-white">
+        {/* Left: My Store with Cashier Image and Name */}
+        <button
+          onClick={() => navigate("/cashier/profile")}
+          className="flex items-center gap-3 hover:opacity-80 transition-opacity cursor-pointer"
+        >
+          <div className="relative">
+            <img
+              src={`${window.location.origin}/picture/cashier.png`}
+              alt="Cashier"
+              className="w-10 h-10 rounded-full object-cover border-2 border-gray-200"
+              onError={(e) => {
+                (e.target as HTMLImageElement).src = `${window.location.origin}/picture/ceo.png`;
+              }}
+            />
+          </div>
+          <div className="flex flex-col">
+            <div className="flex items-center gap-2">
+              <Store className="h-4 w-4 text-gray-600" />
+              <span className="text-sm font-medium text-gray-800">{storeName}</span>
+            </div>
+            <span className="text-xs text-gray-500">{cashierName}</span>
+          </div>
+        </button>
+
+        {/* Center: Session with Green Dot and Dropdown */}
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-gray-50 border border-gray-200">
+            <div className="h-2 w-2 rounded-full bg-green-500"></div>
+            <span className="text-sm font-medium text-gray-800">Session</span>
+            <ChevronDown className="h-4 w-4 text-gray-600" />
+          </div>
+        </div>
+
+        {/* Right: Profile Image and Icons */}
         <div className="flex items-center gap-3">
           <button
             onClick={() => navigate("/cashier/return")}
@@ -1442,13 +1598,6 @@ export default function CashierTerminal() {
             title="View Orders"
           >
             <ShoppingBag className="h-5 w-5" />
-          </button>
-          <button
-            onClick={() => navigate("/cashier/profile")}
-            className="p-2 rounded-lg text-gray-600 hover:text-blue-600 hover:bg-blue-50 transition-colors"
-            title="Profile"
-          >
-            <User className="h-5 w-5" />
           </button>
           <button
             onClick={handleUnpairTerminal}
@@ -1608,25 +1757,73 @@ export default function CashierTerminal() {
                 <button
                   key={product.id}
                   onClick={() => addToCart(product)}
-                  className="w-full text-left p-3 rounded-lg border border-gray-200 hover:border-blue-500 hover:bg-blue-50 transition-colors"
+                  className="w-full text-left p-3 rounded-lg border border-gray-200 hover:border-blue-500 hover:bg-blue-50 transition-colors flex items-center gap-3"
                 >
+                  {(() => {
+                    const productName = product.name.toLowerCase();
+                    const allowedProducts = ['katchap', 'saneora', 'tea', 'zatar', 'tona'];
+                    const hasImage = allowedProducts.some(name => productName.includes(name));
+                    
+                    if (hasImage && product.image?.url) {
+                      return (
+                        <img
+                          src={`${window.location.origin}${product.image.url}`}
+                          alt={product.image.altText ?? product.name}
+                          className="w-12 h-12 object-cover rounded border border-gray-200 flex-shrink-0"
+                          onError={(e) => {
+                            (e.target as HTMLImageElement).style.display = 'none';
+                          }}
+                        />
+                      );
+                    }
+                    return null;
+                  })()}
+                  <div className="flex-1 min-w-0">
                     <div className="font-medium text-gray-900">
                       {product.name}
                     </div>
-                  {product.sku && (
-                      <div className="text-xs text-gray-500 mt-1">
-                        SKU: {product.sku}
-                      </div>
-                  )}
-                  <div className="text-sm font-semibold text-blue-600 mt-1">
-                    {fmtMoney(product.price)}
+                    {product.sku && (
+                        <div className="text-xs text-gray-500 mt-1">
+                          SKU: {product.sku}
+                        </div>
+                    )}
+                    <div className="text-sm font-semibold text-blue-600 mt-1">
+                      {fmtMoney(product.price)}
+                    </div>
                   </div>
                 </button>
               ))}
-              {(filteredProducts ?? []).length === 0 && (
+              {(filteredProducts ?? []).length === 0 && !loadingProducts && (
                   <p className="text-center text-gray-500 py-8">
                     No products found
                   </p>
+              )}
+              
+              {/* Pagination Controls */}
+              {productsTotalPages > 1 && (
+                <div className="flex items-center justify-between mt-4 pt-4 border-t border-gray-200">
+                  <button
+                    onClick={() => setProductsPage(prev => Math.max(0, prev - 1))}
+                    disabled={productsPage === 0 || loadingProducts}
+                    className="flex items-center gap-1 px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                    Previous
+                  </button>
+                  
+                  <span className="text-sm text-gray-700">
+                    Page {productsPage + 1} of {productsTotalPages} ({productsTotalElements} products)
+                  </span>
+                  
+                  <button
+                    onClick={() => setProductsPage(prev => Math.min(productsTotalPages - 1, prev + 1))}
+                    disabled={productsPage >= productsTotalPages - 1 || loadingProducts}
+                    className="flex items-center gap-1 px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Next
+                    <ChevronRight className="h-4 w-4" />
+                  </button>
+                </div>
               )}
             </div>
             )}
@@ -1641,47 +1838,103 @@ export default function CashierTerminal() {
             </h2>
           </div>
           <div className="flex-1 overflow-y-auto p-6">
-            {(!currentOrder || (currentOrder.items ?? []).length === 0) &&
-            (cart ?? []).length === 0 ? (
-              <div className="flex items-center justify-center h-full">
-                <p className="text-gray-400">No items in order</p>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {((currentOrder?.items ?? []).length ? (currentOrder?.items ?? []) : (cart ?? [])).map(
-                  (item, index) => {
-                  const orderItem = (currentOrder?.items ?? [])[index];
-                  const cartItem = (cart ?? [])[index] as CartItem | undefined;
-                  const product = orderItem 
-                      ? products.find((p) => p.id === orderItem.productId) || {
-                          id: orderItem.productId,
-                          name: `Product ${orderItem.productId}`,
-                          price: orderItem.unitPrice,
-                        }
-                      : cartItem?.product || (item as CartItem).product;
-                    const quantity =
-                      orderItem?.quantity ||
-                      cartItem?.quantity ||
-                      (item as CartItem).quantity;
-                    const discount =
-                      orderItem?.discountAmount ||
-                      cartItem?.discountAmount ||
-                      0;
-                    const lineTotal =
-                      orderItem?.lineTotal ||
-                      product.price * quantity - discount;
+            {(() => {
+              const itemsToShow = (currentOrder?.items && currentOrder.items.length > 0)
+                ? currentOrder.items 
+                : (cart && cart.length > 0) ? cart : null;
+
+              if (!itemsToShow?.length) {
+                return (
+                  <div className="flex items-center justify-center h-full">
+                    <p className="text-gray-400">No items in order</p>
+                  </div>
+                );
+              }
+
+              return (
+                <div className="space-y-3">
+                  {itemsToShow.map((item) => {
+                  // Determine if item is OrderItem or CartItem
+                  const isOrderItem = 'productId' in item && 'unitPrice' in item;
+                  const orderItem = isOrderItem ? (item as any) : null;
+                  const cartItem = !isOrderItem ? (item as CartItem) : null;
+                  
+                  // Extract product directly from item
+                  console.log('🔍 Item:', item);
+                  console.log('🔍 Item keys:', Object.keys(item));
+                  
+                  let resolvedProduct: Product;
+                  if (orderItem) {
+                    // OrderItem
+                    console.log('📦 orderItem:', orderItem);
+                    console.log('📦 orderItem.product:', orderItem.product);
+                    console.log('📦 orderItem.product?.image:', orderItem.product?.image);
+                    console.log('📦 orderItem.product?.image?.url:', orderItem.product?.image?.url);
+                    
+                    if (orderItem.product) {
+                      console.log('✅ Using orderItem.product:', orderItem.product);
+                      console.log('✅ orderItem.product.image:', orderItem.product.image);
+                      resolvedProduct = {
+                        id: orderItem.product.id,
+                        name: orderItem.product.name,
+                        price: orderItem.unitPrice,
+                        image: orderItem.product.image || null,
+                      };
+                    } else {
+                      console.log('⚠️ orderItem.product is null, searching in products...');
+                      const foundProduct = products.find((p) => p.id === orderItem.productId);
+                      console.log('🔍 Found product:', foundProduct);
+                      resolvedProduct = foundProduct || {
+                        id: orderItem.productId,
+                        name: `Product ${orderItem.productId}`,
+                        price: orderItem.unitPrice,
+                        image: null,
+                      };
+                    }
+                  } else {
+                    // CartItem
+                    console.log('✅ Using cartItem.product:', cartItem!.product);
+                    resolvedProduct = cartItem!.product;
+                  }
+                  
+                  console.log('🎨 Resolved product:', resolvedProduct);
+                  console.log('🖼️ Resolved product.image:', resolvedProduct.image);
+                  console.log('🖼️ Resolved product.image?.url:', resolvedProduct.image?.url);
+                    
+                    const quantity = orderItem?.quantity || cartItem?.quantity || 0;
+                    const discount = orderItem?.discountAmount || cartItem?.discountAmount || 0;
+                    const lineTotal = orderItem?.lineTotal || (resolvedProduct.price * quantity - discount);  
                   
                   return (
                     <div
-                      key={orderItem?.id || `cart-${product.id}-${index}`}
+                      key={orderItem?.id || `cart-${resolvedProduct.id}`}
                       className="flex items-center justify-between p-4 border border-gray-200 rounded-lg"
                     >
-                      <div className="flex-1">
+                      <div className="flex items-center gap-3 flex-1 min-w-0">
+                        {/* Product image - only for specific products */}
+                        {(() => {
+                          const productName = resolvedProduct.name.toLowerCase();
+                          const allowedProducts = ['katchap', 'saneora', 'tea', 'zatar', 'tona'];
+                          const hasImage = allowedProducts.some(name => productName.includes(name));
+                          
+                          if (hasImage && resolvedProduct?.image?.url) {
+                            return (
+                              <img
+                                src={`${window.location.origin}${resolvedProduct.image.url}`}
+                                alt={resolvedProduct.image.altText ?? resolvedProduct.name}
+                                className="w-12 h-12 shrink-0 object-cover rounded"
+                                onError={(e) => (e.currentTarget.style.display = 'none')}
+                              />
+                            );
+                          }
+                          return null;
+                        })()}
+                        <div className="flex-1 min-w-0">
                           <div className="font-medium text-gray-900">
-                            {product.name}
+                            {resolvedProduct.name}
                           </div>
                         <div className="text-sm text-gray-500">
-                          {fmtMoney(orderItem?.unitPrice || product.price)} × {quantity}
+                          {fmtMoney(orderItem?.unitPrice || resolvedProduct.price)} × {quantity}
                           {/* عرض السعر الأصلي إذا كان هناك خصم */}
                           {orderItem?.originalLineTotal && orderItem.originalLineTotal > lineTotal && (
                             <span className="text-gray-400 line-through ml-1">
@@ -1695,28 +1948,63 @@ export default function CashierTerminal() {
                           )}
                         </div>
                         {/* عرض معلومات الـ offer إذا كان موجوداً */}
-                        {orderItem?.offerId && orderItem.offerTitle && (
-                          <div className="text-xs text-blue-600 mt-1 flex items-center gap-1">
-                            <span>🎁</span>
-                            <span>{orderItem.offerTitle}</span>
-                            {orderItem.originalLineTotal && orderItem.originalLineTotal > lineTotal && (
-                              <span className="text-green-600">
-                                ({Math.round(((orderItem.originalLineTotal - lineTotal) / orderItem.originalLineTotal) * 100)}% off)
-                              </span>
-                            )}
-                          </div>
-                        )}
-                        {/* عرض نسبة الخصم فقط إذا لم يكن هناك offerTitle */}
-                        {/* Bundle Offer يتم تطبيقه تلقائياً من الـ backend عند إضافة المنتجات */}
-                        {orderItem?.offerId && !orderItem.offerTitle && orderItem.originalLineTotal && orderItem.originalLineTotal > lineTotal && (
-                          <div className="text-xs text-blue-600 mt-1 flex items-center gap-1">
-                            <span>🎁</span>
-                            <span className="text-blue-600">Bundle Offer</span>
-                            <span className="text-green-600">
-                              ({Math.round(((orderItem.originalLineTotal - lineTotal) / orderItem.originalLineTotal) * 100)}% off)
-                            </span>
-                          </div>
-                        )}
+                        {orderItem?.offerId && (() => {
+                          // Get offer type name
+                          const getOfferTypeName = (offerType?: string | null): string | null => {
+                            if (!offerType) return null;
+                            switch (offerType.toUpperCase()) {
+                              case "BUNDLE":
+                                return "Bundle Offer";
+                              case "PRODUCT":
+                                return "Product Offer";
+                              case "CATEGORY":
+                                return "Category Offer";
+                              case "ORDER":
+                                return "Order Offer";
+                              default:
+                                return null;
+                            }
+                          };
+
+                          // Try to extract offer type from offerTitle if offerType is not available
+                          const extractOfferTypeFromTitle = (title?: string | null): string | null => {
+                            if (!title) return null;
+                            const titleLower = title.toLowerCase();
+                            if (titleLower.includes("bundle")) return "Bundle Offer";
+                            if (titleLower.includes("product")) return "Product Offer";
+                            if (titleLower.includes("category")) return "Category Offer";
+                            if (titleLower.includes("order")) return "Order Offer";
+                            return null;
+                          };
+
+                          // Priority: offerType > extract from offerTitle > offerTitle as-is > "Offer"
+                          let offerTypeName: string;
+                          if (orderItem.offerType) {
+                            // Use offerType directly from backend
+                            const typeName = getOfferTypeName(orderItem.offerType);
+                            offerTypeName = typeName || "Offer";
+                          } else if (orderItem.offerTitle) {
+                            // Try to extract type from offerTitle if offerType is not available
+                            const extractedType = extractOfferTypeFromTitle(orderItem.offerTitle);
+                            offerTypeName = extractedType || orderItem.offerTitle;
+                          } else {
+                            // Fallback to generic "Offer" if neither is available
+                            offerTypeName = "Offer";
+                          }
+
+                          return (
+                            <div className="text-xs text-blue-600 mt-1 flex items-center gap-1">
+                              <span>🎁</span>
+                              <span>{offerTypeName}</span>
+                              {orderItem.originalLineTotal && orderItem.originalLineTotal > lineTotal && (
+                                <span className="text-green-600">
+                                  ({Math.round(((orderItem.originalLineTotal - lineTotal) / orderItem.originalLineTotal) * 100)}% off)
+                                </span>
+                              )}
+                            </div>
+                          );
+                        })()}
+                        </div>
                       </div>
                       <div className="flex items-center gap-3">
                         <div className="font-semibold text-gray-900">
@@ -1724,7 +2012,7 @@ export default function CashierTerminal() {
                         </div>
                         <div className="flex items-center gap-1">
                           <button
-                            onClick={() => updateQuantity(product.id, -1)}
+                            onClick={() => updateQuantity(resolvedProduct.id, -1)}
                             disabled={processing}
                             className="w-8 h-8 flex items-center justify-center rounded border border-gray-300 hover:bg-gray-50 disabled:opacity-50"
                           >
@@ -1734,7 +2022,7 @@ export default function CashierTerminal() {
                               {quantity}
                             </span>
                           <button
-                            onClick={() => updateQuantity(product.id, 1)}
+                            onClick={() => updateQuantity(resolvedProduct.id, 1)}
                             disabled={processing}
                             className="w-8 h-8 flex items-center justify-center rounded border border-gray-300 hover:bg-gray-50 disabled:opacity-50"
                           >
@@ -1742,7 +2030,7 @@ export default function CashierTerminal() {
                           </button>
                         </div>
                         <button
-                          onClick={() => removeFromCart(product.id)}
+                          onClick={() => removeFromCart(resolvedProduct.id)}
                           disabled={processing}
                           className="text-red-600 hover:text-red-700 px-2 disabled:opacity-50"
                         >
@@ -1751,10 +2039,10 @@ export default function CashierTerminal() {
                       </div>
                     </div>
                   );
-                  }
-                )}
-              </div>
-            )}
+                  })}
+                </div>
+              );
+            })()}
           </div>
         </div>
 
@@ -1831,20 +2119,62 @@ export default function CashierTerminal() {
                 <span className="text-gray-600">Subtotal:</span>
                 <span className="text-gray-900">{fmtMoney(subtotal)}</span>
               </div>
-              {/* عرض خصم الـ offers على مستوى الـ items (Category/Product Offers) إذا كان موجوداً */}
-              {currentOrder && currentOrder.items.some(item => item.discountAmount > 0 || (item.originalLineTotal && item.originalLineTotal > item.lineTotal)) && (
-                <div className="text-xs text-gray-500 italic mb-1">
-                  Item discounts (Category/Product Offers): {fmtMoney(
-                    currentOrder.items.reduce((sum, item) => {
-                      const itemDiscount = item.discountAmount || 
-                        (item.originalLineTotal && item.originalLineTotal > item.lineTotal 
-                          ? item.originalLineTotal - item.lineTotal 
-                          : 0);
-                      return sum + itemDiscount;
-                    }, 0)
-                  )}
-                </div>
-              )}
+              {/* عرض خصم الـ offers على مستوى الـ items */}
+              {currentOrder && currentOrder.items.some(item => item.discountAmount > 0 || (item.originalLineTotal && item.originalLineTotal > item.lineTotal)) && (() => {
+                // Get unique offer types from items
+                const offerTypes = new Set<string>();
+                currentOrder.items.forEach(item => {
+                  if (item.offerId) {
+                    if (item.offerType) {
+                      const typeName = item.offerType.toUpperCase();
+                      switch (typeName) {
+                        case "BUNDLE":
+                          offerTypes.add("Bundle");
+                          break;
+                        case "PRODUCT":
+                          offerTypes.add("Product");
+                          break;
+                        case "CATEGORY":
+                          offerTypes.add("Category");
+                          break;
+                        case "ORDER":
+                          offerTypes.add("Order");
+                          break;
+                      }
+                    } else if (item.offerTitle) {
+                      // Try to extract type from offerTitle
+                      const titleLower = item.offerTitle.toLowerCase();
+                      if (titleLower.includes("bundle")) {
+                        offerTypes.add("Bundle");
+                      } else if (titleLower.includes("product")) {
+                        offerTypes.add("Product");
+                      } else if (titleLower.includes("category")) {
+                        offerTypes.add("Category");
+                      } else if (titleLower.includes("order")) {
+                        offerTypes.add("Order");
+                      }
+                    }
+                  }
+                });
+
+                const offerTypesText = offerTypes.size > 0 
+                  ? Array.from(offerTypes).join("/") + " Offer" + (offerTypes.size > 1 ? "s" : "")
+                  : "Item discounts";
+
+                return (
+                  <div className="text-xs text-gray-500 italic mb-1">
+                    Item discounts ({offerTypesText}): {fmtMoney(
+                      currentOrder.items.reduce((sum, item) => {
+                        const itemDiscount = item.discountAmount || 
+                          (item.originalLineTotal && item.originalLineTotal > item.lineTotal 
+                            ? item.originalLineTotal - item.lineTotal 
+                            : 0);
+                        return sum + itemDiscount;
+                      }, 0)
+                    )}
+                  </div>
+                );
+              })()}
               {discount > 0 && (
                 <div className="flex justify-between text-sm">
                   <span className="text-gray-600">Order Discount (Offer):</span>
@@ -1882,7 +2212,7 @@ export default function CashierTerminal() {
                 disabled={
                   processing || !currentOrder || (currentOrder.items ?? []).length === 0
                 }
-                className="w-full flex items-center justify-center gap-2 py-4 px-4 bg-blue-50 text-blue-600 rounded-lg font-medium hover:bg-blue-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                className="w-full flex items-center justify-center gap-2 py-4 px-4 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {processing ? (
                   <Loader2 className="h-5 w-5 animate-spin" />
@@ -1898,7 +2228,7 @@ export default function CashierTerminal() {
                 disabled={
                   processing || !currentOrder || (currentOrder.items ?? []).length === 0
                 }
-                className="w-full flex items-center justify-center gap-2 py-4 px-4 bg-blue-50 text-blue-600 rounded-lg font-medium hover:bg-blue-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                className="w-full flex items-center justify-center gap-2 py-4 px-4 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {processing ? (
                   <Loader2 className="h-5 w-5 animate-spin" />
@@ -1914,7 +2244,7 @@ export default function CashierTerminal() {
                 disabled={
                   processing || !currentOrder || (currentOrder.items ?? []).length === 0
                 }
-                className="w-full flex items-center justify-center gap-2 py-4 px-4 bg-blue-50 text-blue-600 rounded-lg font-medium hover:bg-blue-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                className="w-full flex items-center justify-center gap-2 py-4 px-4 bg-purple-600 text-white rounded-lg font-medium hover:bg-purple-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {processing ? (
                   <Loader2 className="h-5 w-5 animate-spin" />
@@ -1926,6 +2256,24 @@ export default function CashierTerminal() {
                 )}
               </button>
             </div>
+
+            {/* Print Receipt Button - Show when order is PAID */}
+            {paidOrderId && paidOrderNumber && (
+              <button
+                onClick={handlePrintReceipt}
+                disabled={printingReceipt}
+                className="w-full flex items-center justify-center gap-2 py-3 px-4 bg-indigo-600 text-white rounded-lg font-medium hover:bg-indigo-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed mt-3"
+              >
+                {printingReceipt ? (
+                  <Loader2 className="h-5 w-5 animate-spin" />
+                ) : (
+                  <>
+                    <Printer className="h-5 w-5" />
+                    Print Receipt
+                  </>
+                )}
+              </button>
+            )}
           </div>
         </div>
         </div>
@@ -2411,18 +2759,40 @@ export default function CashierTerminal() {
                       <h4 className="font-semibold text-gray-800 mb-3">Items</h4>
                       <div className="space-y-2">
                         {selectedOrder.items.map((item) => {
-                          const product = products.find(
+                          // Use item.product if available, otherwise fallback to products list
+                          const productName = item.product?.name || products.find(
                             (p) => p.id === item.productId
-                          );
+                          )?.name || `Product #${item.productId}`;
                           return (
                             <div
                               key={item.id}
                               className="p-3 bg-gray-50 rounded-lg border border-gray-200"
                             >
                               <div className="flex justify-between items-start mb-1">
-                                <span className="font-medium text-gray-900">
-                                  {product?.name || `Product #${item.productId}`}
-                                </span>
+                                <div className="flex items-center gap-2">
+                                  {(() => {
+                                    const productNameLower = productName.toLowerCase();
+                                    const allowedProducts = ['katchap', 'saneora', 'tea', 'zatar', 'tona'];
+                                    const hasImage = allowedProducts.some(name => productNameLower.includes(name));
+                                    
+                                    if (hasImage && item.product?.image?.url) {
+                                      return (
+                                        <img
+                                          src={`${window.location.origin}${item.product.image.url}`}
+                                          alt={item.product.image.altText || productName}
+                                          className="w-10 h-10 object-cover rounded border border-gray-200 flex-shrink-0"
+                                          onError={(e) => {
+                                            (e.target as HTMLImageElement).style.display = 'none';
+                                          }}
+                                        />
+                                      );
+                                    }
+                                    return null;
+                                  })()}
+                                  <span className="font-medium text-gray-900">
+                                    {productName}
+                                  </span>
+                                </div>
                                 <span className="font-semibold text-gray-900">
                                   {fmtMoney(item.lineTotal)}
                                 </span>

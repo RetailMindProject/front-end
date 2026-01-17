@@ -10,28 +10,25 @@ export default function Sidebar({ open, onToggle, links }: {
   const { pathname } = useLocation();
   
   return (
-    <aside className={`${open ? "w-64" : "w-16"} sticky top-0 h-screen bg-gradient-to-br from-indigo-50 via-blue-50 to-purple-50 border-r border-indigo-200/50 transition-all duration-300 ease-in-out shadow-lg relative flex flex-col`}>
-      {/* Decorative background pattern */}
-      <div className="pointer-events-none absolute inset-0 opacity-5 bg-[radial-gradient(circle_at_2px_2px,_indigo_500_1px,_transparent_0)] bg-[length:40px_40px]"></div>
-      
-      {/* Header */}
-      <div className="relative flex items-center justify-between px-3 py-4 border-b border-indigo-200/30">
+    <aside className={`${open ? "w-64" : "w-16"} sticky top-0 h-screen bg-gradient-to-b from-blue-50 via-blue-100 to-blue-50 border-r border-gray-300 transition-all duration-300 ease-in-out relative flex flex-col`}>
+      {/* Header - Dark Background */}
+      <div className="flex items-center justify-between px-3 py-4 bg-slate-900">
         <div className="flex items-center gap-3">
-          <div className="grid h-10 w-10 place-items-center rounded-xl bg-gradient-to-br from-indigo-500 to-blue-600 shadow-lg ring-2 ring-white/20 transition-transform duration-200 hover:scale-105">
+          <div className="h-10 w-10 rounded-full bg-blue-600 flex items-center justify-center ring-2 ring-blue-400/30">
             <img 
               src="/picture/retalmind%20(3).jpeg" 
               alt="RetailMind" 
-              className="h-9 w-9 rounded-lg"
+              className="h-9 w-9 rounded-full object-cover"
             />
           </div>
-          <span className={`font-bold text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-blue-600 transition-opacity duration-300 ${open ? "opacity-100 block" : "opacity-0 hidden"}`}>RetailMind</span>
+          <span className={`font-bold text-white transition-opacity duration-300 ${open ? "opacity-100 block" : "opacity-0 hidden"}`}>RetailMind</span>
         </div>
         <button 
           onClick={onToggle} 
-          className="rounded-lg p-2 hover:bg-indigo-100/50 hover:scale-105 active:scale-95 transition-all duration-200 ease-in-out" 
+          className="rounded-lg p-2 hover:bg-slate-800 transition-colors" 
           aria-label="Toggle Sidebar"
         >
-          <Menu className="h-5 w-5 text-indigo-600 transition-transform duration-200" />
+          <Menu className="h-5 w-5 text-white" />
         </button>
       </div>
 
@@ -63,19 +60,15 @@ export default function Sidebar({ open, onToggle, links }: {
           
           return (
             <Link key={link.to} to={link.to} className="block mb-1">
-              <div className={`relative flex items-center gap-3 rounded-lg px-3 py-2.5 transition-all duration-200 ease-in-out group ${
+              <div className={`relative flex items-center gap-3 rounded-lg px-3 py-2.5 transition-all duration-200 ease-in-out ${
                 isActive 
-                  ? 'bg-gradient-to-r from-blue-500 to-blue-400 text-white shadow-md shadow-blue-500/30' 
-                  : 'hover:bg-indigo-100/60 text-slate-700 hover:shadow-sm'
-              } focus-within:ring-2 focus-within:ring-blue-400 focus-within:ring-offset-2`}>
-                {/* Active left accent */}
-                {isActive && (
-                  <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-8 rounded-r-full bg-white/40 transition-all duration-200"></div>
-                )}
-                <span className={`h-4 w-4 flex-shrink-0 transition-all duration-200 ${isActive ? 'text-white scale-110' : 'text-slate-700 group-hover:scale-110 group-hover:text-[#0066FF] group-hover:rotate-3'}`}>
+                  ? 'bg-gray-600 text-white' 
+                  : 'hover:bg-gray-200 text-gray-700'
+              }`}>
+                <span className={`h-4 w-4 flex-shrink-0 ${isActive ? 'text-white' : 'text-gray-700'}`}>
                   {link.icon}
                 </span>
-                <span className={`truncate transition-all duration-300 ${isActive ? 'font-semibold text-white' : 'group-hover:text-indigo-700 group-hover:translate-x-0.5'} ${open ? 'opacity-100' : 'opacity-0 hidden'}`}>
+                <span className={`truncate ${isActive ? 'font-semibold text-white' : 'text-gray-700'} ${open ? 'opacity-100' : 'opacity-0 hidden'}`}>
                   {link.label}
                 </span>
               </div>
@@ -85,13 +78,13 @@ export default function Sidebar({ open, onToggle, links }: {
       </nav>
 
       {/* Footer section with version */}
-      <div className="relative border-t border-indigo-200/30 px-3 py-4 mt-auto">
+      <div className="border-t border-gray-300 px-3 py-4 mt-auto">
         <div className={`transition-opacity duration-300 ${open ? 'opacity-100' : 'opacity-0'}`}>
-          <p className="text-xs text-slate-500 text-center">
+          <p className="text-xs text-gray-600 text-center">
             RetailMind POS
           </p>
-          <p className="text-[10px] text-slate-400 text-center mt-1">
-            v1.0.0 © 2025
+          <p className="text-[10px] text-gray-500 text-center mt-1">
+            v1.0.0 © 2023
           </p>
         </div>
       </div>

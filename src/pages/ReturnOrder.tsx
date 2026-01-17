@@ -478,10 +478,12 @@ export default function ReturnOrder() {
                   <p className="text-sm text-gray-600">Paid At</p>
                   <p className="font-medium">{new Date(order.paidAt).toLocaleString()}</p>
                 </div>
-                {order.customer && (
+                {(order.customerName || order.customer) && (
                   <div>
                     <p className="text-sm text-gray-600">Customer</p>
-                    <p className="font-medium">{order.customer.name} ({order.customer.phone})</p>
+                    <p className="font-medium">
+                      {order.customerName || (order.customer ? `${order.customer.name} (${order.customer.phone})` : "N/A")}
+                    </p>
                   </div>
                 )}
               </div>

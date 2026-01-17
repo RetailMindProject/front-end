@@ -54,6 +54,7 @@ export interface ReturnOrderDetails {
   originalOrderId: number;
   originalOrderNumber: string;
   customerId?: number | null;
+  customerName: string; // Always present (from original order if return doesn't have customerId)
   sessionId?: number;
   status: "COMPLETED" | "CANCELLED";
   totalRefund: number;
@@ -243,15 +244,7 @@ export interface ReturnOrderSummary {
   orderId: number;
   orderNumber: string;
   orderDate: string;
-  customerName?: string | null; // May not be present
-  customer?: {
-    id: number;
-    firstName?: string;
-    lastName?: string;
-    name?: string;
-    fullName?: string;
-    phone?: string;
-  } | null; // Customer object may be present instead
+  customerName: string; // Always present (calculated from customers, never NULL)
   totalPaid: number;
   returnCount: number;
   totalReturned: number;
