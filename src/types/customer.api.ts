@@ -27,16 +27,16 @@ export interface RegisterRequest {
 }
 
 export interface RegisterResponse {
-  id: number; // user id
+  id?: number; // user id (may not exist for pending registration)
   firstName: string;
   lastName: string;
   email: string;
   phone: string;
   address: string;
   role: "CUSTOMER"; // always CUSTOMER
-  isActive: boolean;
-  createdAt: string; // ISO datetime
-  token: string; // JWT
+  isActive?: boolean; // may not exist for pending registration
+  createdAt?: string; // ISO datetime (may not exist for pending registration)
+  token?: string | null; // JWT - NULL for new system (pending registration), only returned after verification
   message: string | null; // optional
 }
 
@@ -47,11 +47,78 @@ export interface AuthIntrospectResponse {
   email: string;
 }
 
+// Email Verification Types
+export interface VerifyEmailRequest {
+  token: string;
+}
+
+export interface VerifyEmailResponse {
+  message: string;
+  success: boolean;
+}
+
+export interface ResendVerificationResponse {
+  message: string;
+  success: boolean;
+  retryAfter?: number; // seconds until next allowed request (optional)
+}
+
+// Password Reset Types
+export interface ForgotPasswordRequest {
+  email: string;
+}
+
+export interface ForgotPasswordResponse {
+  message: string;
+  success: boolean;
+  errors?: {
+    email?: string;
+  };
+}
+
+export interface ValidateResetTokenResponse {
+  valid: boolean;
+  message: string;
+}
+
+export interface ResetPasswordRequest {
+  token: string;
+  newPassword: string;
+  confirmPassword: string;
+}
+
+export interface ResetPasswordResponse {
+  message: string;
+  success: boolean;
+  errors?: {
+    newPassword?: string;
+  };
+}
+
+// Registration Verification Types (NEW - Two-step registration)
+export interface VerifyRegistrationRequest {
+  token: string; // From email link ?token=...
+}
+
+export interface VerifyRegistrationResponse {
+  message: string;
+  success: boolean;
+  token?: string; // JWT - Only returned after successful verification
+  user?: {
+    id: number;
+    email: string;
+    firstName: string;
+    lastName: string;
+    role: "CUSTOMER";
+  };
+}
+
 export interface UserProfileResponse {
   id: number;
   email: string;
   name: string;
   role: string;
+  emailVerified?: boolean; // Optional - true if email is verified
 }
 
 // Product Types

@@ -8,6 +8,7 @@ import RecommendationsControls from "../components/customer/RecommendationsContr
 import ChatPanel from "../components/customer/ChatPanel";
 import OrderHistorySection from "../components/customer/OrderHistorySection";
 import MessageManagerForm from "../components/customer/MessageManagerForm";
+import UnverifiedEmailBanner from "../components/customer/UnverifiedEmailBanner";
 
 export default function CustomerMyPage() {
   const { user, loading: authLoading, logout } = useAuth();
@@ -95,6 +96,11 @@ export default function CustomerMyPage() {
 
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Unverified Email Banner */}
+        {user && !user.emailVerified && (
+          <UnverifiedEmailBanner userEmail={user.email} />
+        )}
+
         <div className="space-y-12">
           {/* Recommendations Section */}
           <section>

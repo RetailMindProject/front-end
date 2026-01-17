@@ -14,6 +14,11 @@ import CustomerMyPage from './pages/CustomerMyPage'
 import SelectTerminal from './pages/SelectTerminal'
 import ReturnOrder from './pages/ReturnOrder'
 import ReturnOrdersHistory from './pages/ReturnOrdersHistory'
+import VerifyEmailPage from './pages/VerifyEmailPage'
+import VerifyRegistrationPage from './pages/VerifyRegistrationPage'
+import CheckEmailPage from './pages/CheckEmailPage'
+import ForgotPasswordPage from './pages/ForgotPasswordPage'
+import ResetPasswordPage from './pages/ResetPasswordPage'
 
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
@@ -23,6 +28,11 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
         <Route path="/" element={<Login />} />
         <Route path="/register" element={<Register />} />
         <Route path="/login" element={<Login />} />
+        <Route path="/check-email" element={<CheckEmailPage />} />
+        <Route path="/verify-email" element={<VerifyEmailPage />} />
+        <Route path="/verify-registration" element={<VerifyRegistrationPage />} />
+        <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+        <Route path="/reset-password" element={<ResetPasswordPage />} />
         <Route path="/ceo/*" element={<CEODashboard />} />
         <Route path="/store-manager/*" element={<StoreManager />} />
         <Route path="/inventory-manager/*" element={<InventoryManagerDashboard />} />

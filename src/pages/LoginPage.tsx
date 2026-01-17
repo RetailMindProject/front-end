@@ -63,6 +63,26 @@ export default function Login() {
       // First try regular login for all roles (STORE_MANAGER, CEO, INVENTORY_MANAGER, etc.)
       const result = await login(email, password);
       
+      // Check for error first
+      if (result.error) {
+        const errorMessage = result.error.message || "Login failed. Please check your credentials.";
+        console.error('[LoginPage] Login error:', result.error);
+        
+        // Provide specific error messages based on status
+        if (result.error.status === 401) {
+          setError("Invalid email or password. Please try again.");
+        } else if (result.error.status === 403) {
+          setError("Access denied. Please contact your administrator.");
+        } else if (result.error.status === 429) {
+          setError("Too many login attempts. Please try again later.");
+        } else {
+          setError(errorMessage);
+        }
+        setLoading(false);
+        return;
+      }
+
+      // Check for success
       if (result.data) {
         // Login successful - check role to determine next step
         const role = result.data.role;
@@ -136,13 +156,8 @@ export default function Login() {
         }
       } else {
         // Unexpected response shape - no data and no error
-        console.error("Unexpected login response: no data and no error");
+        console.error("Unexpected login response: no data and no error", result);
         setError("Unexpected response from server. Please try again.");
-        setLoading(false);
-      }
-
-      if (result.error) {
-        setError(result.error.message || "Login failed. Please check your credentials.");
         setLoading(false);
         return;
       }
@@ -334,12 +349,12 @@ export default function Login() {
                 </div>
                 <span className="text-sm text-slate-700 group-hover:text-slate-900 transition-colors">Remember me</span>
               </label>
-              <a 
-                href="#" 
+              <Link 
+                to="/forgot-password"
                 className="text-sm text-[#0066FF] hover:text-[#0044CC] font-medium transition-colors duration-200 hover:underline"
               >
                 Forgot password?
-              </a>
+              </Link>
             </div>
 
             {/* Sign In Button */}

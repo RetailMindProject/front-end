@@ -39,7 +39,7 @@ export default function InventoryManagerDashboard() {
             }
           />
           <Route path="operations" element={<div className="flex-1 p-4 md:p-6"><InventoryOperations /></div>} />
-          <Route path="forecasting" element={<div className="flex-1 p-4 md:p-6"><Forecasting /></div>} />
+          <Route path="forecasting/*" element={<div className="flex-1 p-4 md:p-6"><Forecasting /></div>} />
           <Route
             path="upload-report"
             element={
