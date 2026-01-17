@@ -3,6 +3,7 @@ import { Filter } from 'lucide-react';
 import ProductList from '../components/Operations/ProductList';
 import CreateProduct from '../components/Operations/CreateProduct';
 import EditProduct from '../components/Operations/EditProduct';
+import RestockModal from '../components/Operations/RestockModal';
 import { productsApi, type ProductDTO, type ProductCreateDTO } from '../services/products.api';
 
 type UIProduct = Omit<ProductDTO, 'category'> & { 
@@ -11,6 +12,7 @@ type UIProduct = Omit<ProductDTO, 'category'> & {
   imageUrl?: string | null; // Ensure imageUrl is available for display
   warehouseQuantity?: number;
   storeQuantity?: number;
+  sales?: number;
 };
 
 export default function InventoryOperations() {
@@ -26,19 +28,30 @@ export default function InventoryOperations() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [filters, setFilters] = useState(initialFilters);
+  const [currentPage, setCurrentPage] = useState(0);
+  const [itemsPerPage, setItemsPerPage] = useState(10);
+  const [totalPages, setTotalPages] = useState(0);
+  const [totalElements, setTotalElements] = useState(0);
 
   const [currentView, setCurrentView] = useState<'list' | 'create' | 'edit'>('list');
   const [editingProductId, setEditingProductId] = useState<string | number | null>(null);
   const [showFilters, setShowFilters] = useState(false);
+  const [restockModal, setRestockModal] = useState<{ isOpen: boolean; productId: string | number | null; productName: string }>({
+    isOpen: false,
+    productId: null,
+    productName: ''
+  });
 
-  const fetchProducts = async (filterOverrides?: typeof initialFilters) => {
+  const fetchProducts = async (filterOverrides?: typeof initialFilters, pageOverride?: number, sizeOverride?: number) => {
     const activeFilters = filterOverrides ?? filters;
+    const page = pageOverride !== undefined ? pageOverride : currentPage;
+    const size = sizeOverride !== undefined ? sizeOverride : itemsPerPage;
     try {
       setLoading(true);
       setError(null);
       const res = await productsApi.filter({
-        page: 0,
-        size: 50,
+        page: page,
+        size: size,
         brand: activeFilters.brand || undefined,
         sku: activeFilters.sku || undefined,
         minPrice: activeFilters.minPrice ? Number(activeFilters.minPrice) : undefined,
@@ -46,9 +59,30 @@ export default function InventoryOperations() {
         isActive: activeFilters.isActive === '' ? undefined : activeFilters.isActive === 'true'
       });
       if (res.data) {
-        let content = Array.isArray((res.data as unknown as ProductDTO[]))
-          ? (res.data as unknown as ProductDTO[])
-          : res.data.content || [];
+        // Handle paginated response
+        let content: ProductDTO[] = [];
+        let totalPagesValue = 0;
+        let totalElementsValue = 0;
+        
+        if (typeof res.data === 'object' && 'content' in res.data) {
+          // Paginated response
+          const pageData = res.data as { content: ProductDTO[]; totalPages: number; totalElements: number; number: number; size: number };
+          content = pageData.content || [];
+          totalPagesValue = pageData.totalPages || 0;
+          totalElementsValue = pageData.totalElements || 0;
+        } else if (Array.isArray(res.data)) {
+          // Array response (fallback)
+          content = res.data as ProductDTO[];
+          totalPagesValue = 1;
+          totalElementsValue = content.length;
+        } else {
+          content = (res.data as any).content || [];
+          totalPagesValue = (res.data as any).totalPages || 0;
+          totalElementsValue = (res.data as any).totalElements || 0;
+        }
+        
+        setTotalPages(totalPagesValue);
+        setTotalElements(totalElementsValue);
         // Fetch categories and quantities for all products in parallel
         const { storeProductsApi } = await import('../services/store-products.api');
         const normalized: UIProduct[] = await Promise.all(
@@ -148,13 +182,13 @@ export default function InventoryOperations() {
     }
   };
 
-  type AddProductInput = ProductCreateDTO & { imageFile?: File | null; imageFiles?: File[]; imageMimeType?: string; imageTitle?: string; categoryId?: string | number; quantity?: number };
+  type AddProductInput = ProductCreateDTO & { imageFile?: File | null; imageFiles?: File[]; imageMimeType?: string; imageTitle?: string; categoryId?: string | number; quantity?: number; expirationDate?: string | null };
 
   const addProduct = async (product: AddProductInput) => {
     setLoading(true);
     setError(null);
     try {
-      const { imageFile, imageFiles, imageUrl: imageToUpload, imageMimeType, imageTitle, quantity, ...payload } = product;
+      const { imageFile, imageFiles, imageUrl: imageToUpload, imageMimeType, imageTitle, quantity, expirationDate, ...payload } = product;
       console.log('Sending product creation request with payload:', JSON.stringify(payload, null, 2));
       console.log('Add product - image files:', { 
         hasImageFile: !!imageFile, 
@@ -329,29 +363,49 @@ export default function InventoryOperations() {
           imageUrl = productsApi.normalizeImageUrl(created.imageUrl, created.id);
         }
         
-        const normalized: UIProduct = { 
-          ...created, 
-          category: categoryName || payload.category,
-          price: created.price ?? created.defaultPrice ?? payload.price ?? 0,
-          imageUrl: imageUrl || null
-        };
-        setProducts((prev) => [...prev, normalized]);
+        // Add quantity to warehouse if provided, then fetch store product details
+        let warehouseQuantity = 0;
+        let storeQuantity = 0;
+        let sales = 0;
         
-        // Add quantity to warehouse if provided
         if (quantity && quantity > 0 && created.id) {
           try {
             const { storeProductsApi } = await import('../services/store-products.api');
             await storeProductsApi.addToInventory({
               productId: typeof created.id === 'string' ? parseInt(created.id) : created.id,
               quantity: quantity,
-              notes: `Initial stock quantity added when product was created`
+              notes: `Initial stock quantity added when product was created`,
+              expirationDate: expirationDate || null
             });
             console.log(`Added ${quantity} units to warehouse for product ${created.id}`);
+            
+            // Fetch store product details to get actual quantities and sales
+            const productId = typeof created.id === 'string' ? parseInt(created.id) : created.id;
+            const stockRes = await storeProductsApi.getByProductId(productId);
+            if (stockRes.data) {
+              warehouseQuantity = (stockRes.data as any).warehouseQty || (stockRes.data as any).warehouseQuantity || 0;
+              storeQuantity = (stockRes.data as any).storeQty || (stockRes.data as any).storeQuantity || 0;
+              sales = (stockRes.data as any).sales || 0;
+            }
           } catch (err) {
             console.error('Failed to add quantity to warehouse:', err);
             // Don't fail the whole operation if quantity add fails, but log it
           }
         }
+        
+        const normalized: UIProduct = { 
+          ...created, 
+          category: categoryName || payload.category,
+          price: created.price ?? created.defaultPrice ?? payload.price ?? 0,
+          imageUrl: imageUrl || null,
+          warehouseQuantity,
+          storeQuantity,
+          sales
+        };
+        
+        // Refresh the list to show the new product (go to page 0 to see it)
+        setCurrentPage(0);
+        fetchProducts(undefined, 0, undefined);
       } else {
         throw new Error(res.error || 'Unable to create product');
       }
@@ -528,19 +582,6 @@ export default function InventoryOperations() {
         imageUrl = productsApi.normalizeImageUrl(savedAsDTO.imageUrl, savedAsDTO.id);
       }
       
-      const normalized: UIProduct = { 
-        ...saved,
-        id: ('id' in saved ? saved.id : originalId) as number | string,
-        category: categoryName || (typeof saved.category === 'string' ? saved.category : undefined),
-        price: saved.price ?? saved.defaultPrice ?? ('price' in updatedProduct ? updatedProduct.price : undefined) ?? 0,
-        imageUrl: imageUrl || null
-      };
-      setProducts((prev) =>
-        prev.map((product) =>
-          String(product.id) === String(originalId) ? { ...product, ...normalized } : product
-        )
-      );
-      
       // Update warehouse quantity if provided
       if (newQuantity !== undefined && newQuantity !== null && 'id' in saved && saved.id) {
         try {
@@ -579,6 +620,8 @@ export default function InventoryOperations() {
         }
       }
       
+      // Refresh the current page to show updated product
+      fetchProducts(undefined, currentPage, undefined);
     setCurrentView('list');
     setEditingProductId(null);
     } catch (err) {
@@ -593,7 +636,16 @@ export default function InventoryOperations() {
     setError(null);
     try {
       await productsApi.remove(id);
-      setProducts((prev) => prev.filter((product) => String(product.id) !== String(id)));
+      // Refresh current page after deletion
+      // If current page would be empty, go to previous page
+      const currentProductsCount = products.length;
+      if (currentProductsCount === 1 && currentPage > 0) {
+        const newPage = currentPage - 1;
+        setCurrentPage(newPage);
+        fetchProducts(undefined, newPage, undefined);
+      } else {
+        fetchProducts(undefined, currentPage, undefined);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to delete product');
     } finally {
@@ -613,6 +665,27 @@ export default function InventoryOperations() {
   const handleCancel = () => {
     setCurrentView('list');
     setEditingProductId(null);
+  };
+
+  const handleRestock = (id: string | number, name: string) => {
+    setRestockModal({
+      isOpen: true,
+      productId: id,
+      productName: name
+    });
+  };
+
+  const handleRestockSuccess = () => {
+    // Refresh products list after successful restock
+    fetchProducts(undefined, currentPage, undefined);
+  };
+
+  const handleCloseRestockModal = () => {
+    setRestockModal({
+      isOpen: false,
+      productId: null,
+      productName: ''
+    });
   };
 
   // Load products from API on mount
@@ -707,7 +780,10 @@ export default function InventoryOperations() {
               </div>
               <div className="flex gap-2 mt-3">
                 <button
-                  onClick={() => fetchProducts()}
+                  onClick={() => {
+                    setCurrentPage(0);
+                    fetchProducts(undefined, 0, undefined);
+                  }}
                   className="px-3 py-1.5 text-sm font-medium bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors focus:outline-none focus:ring-1 focus:ring-blue-500"
                 >
                   Apply
@@ -716,7 +792,8 @@ export default function InventoryOperations() {
                   onClick={() => {
                     const cleared = { ...initialFilters };
                     setFilters(cleared);
-                    fetchProducts(cleared);
+                    setCurrentPage(0);
+                    fetchProducts(cleared, 0, undefined);
                   }}
                   className="px-3 py-1.5 text-sm font-medium border border-slate-300 rounded-md hover:bg-slate-50 transition-colors focus:outline-none focus:ring-1 focus:ring-slate-400"
                 >
@@ -733,7 +810,21 @@ export default function InventoryOperations() {
             onDelete={deleteProduct}
             onEdit={handleEdit}
             onCreate={handleCreate}
+            onRestock={handleRestock}
             loading={loading}
+            currentPage={currentPage}
+            totalPages={totalPages}
+            itemsPerPage={itemsPerPage}
+            totalElements={totalElements}
+            onPageChange={(page: number) => {
+              setCurrentPage(page);
+              fetchProducts(undefined, page, undefined);
+            }}
+            onItemsPerPageChange={(size: number) => {
+              setItemsPerPage(size);
+              setCurrentPage(0);
+              fetchProducts(undefined, 0, size);
+            }}
           />
         )}
         {currentView === 'create' && (
@@ -753,6 +844,15 @@ export default function InventoryOperations() {
           />
         )}
       </div>
+
+      {/* Restock Modal - Outside main container for proper z-index */}
+      <RestockModal
+        isOpen={restockModal.isOpen}
+        onClose={handleCloseRestockModal}
+        productId={restockModal.productId || ''}
+        productName={restockModal.productName}
+        onRestockSuccess={handleRestockSuccess}
+      />
     </div>
   );
 }

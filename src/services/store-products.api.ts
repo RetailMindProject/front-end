@@ -23,6 +23,7 @@ export interface StoreTransferRequestDTO {
   productId: number;
   quantity: number;
   notes?: string;
+  expirationDate?: string | null; // Optional expiration date for batch tracking
 }
 
 export interface AdjustQuantityDTO {
@@ -46,6 +47,41 @@ export interface StoreProductSearchParams {
   q?: string;
   page?: number;
   size?: number;
+}
+
+export interface WasteRequestDTO {
+  productId: number;
+  quantity: number;
+  batchId?: number | null;
+  note: string; // Required - waste reason (formatted as "Waste Reason: REASON" or "Waste Reason: REASON. additional notes")
+}
+
+export interface WasteRecordDTO {
+  id: number;
+  productId: number;
+  productName: string;
+  productSku?: string;
+  quantity: number;
+  batchId?: number | null;
+  expirationDate?: string | null;
+  wasteReason: 'EXPIRED' | 'BROKEN' | 'DAMAGED' | 'OTHER';
+  notes?: string;
+  createdAt: string;
+  createdBy?: string;
+  movementId: number;
+}
+
+export interface ProductsForWasteParams {
+  page?: number;
+  size?: number;
+  q?: string; // Search by name, SKU, or ID
+  hasInventory?: boolean;
+}
+
+export interface ProductBatchDTO {
+  batchId: number;
+  expirationDate: string;
+  totalQuantity: number;
 }
 
 export const storeProductsApi = {
@@ -122,6 +158,67 @@ export const storeProductsApi = {
   // Get stock for a specific product
   async getByProductId(productId: number | string): Promise<ApiResponse<StoreProductResponseDTO>> {
     return apiClient.get<StoreProductResponseDTO>(`/api/store-products/${productId}`);
+  },
+
+  // Get products with existing inventory (for re-stocking window)
+  async getProductsWithInventory(params?: StoreProductSearchParams): Promise<ApiResponse<{ content: StoreProductResponseDTO[]; totalElements: number; totalPages: number; number: number; size: number }>> {
+    const queryParams = new URLSearchParams();
+    if (params?.q) queryParams.append('q', params.q);
+    if (params?.page !== undefined) queryParams.append('page', params.page.toString());
+    if (params?.size !== undefined) queryParams.append('size', params.size.toString());
+    
+    const queryString = queryParams.toString();
+    return apiClient.get<{ content: StoreProductResponseDTO[]; totalElements: number; totalPages: number; number: number; size: number }>(
+      `/api/store-products/with-inventory${queryString ? `?${queryString}` : ''}`
+    );
+  },
+
+  // Re-stock an existing product
+  async restock(dto: StoreTransferRequestDTO): Promise<ApiResponse<StoreProductResponseDTO>> {
+    return apiClient.post<StoreProductResponseDTO>("/api/store-products/restock", dto);
+  },
+
+  // Get batches (expiration dates) for a product
+  async getBatchesForProduct(productId: number | string): Promise<ApiResponse<ProductBatchDTO[]>> {
+    return apiClient.get<ProductBatchDTO[]>(`/api/store-products/${productId}/batches`);
+  },
+
+  // Get products available for waste (with pagination and search)
+  async getProductsForWaste(params?: ProductsForWasteParams): Promise<ApiResponse<{ content: StoreProductResponseDTO[]; totalElements: number; totalPages: number; number: number; size: number }>> {
+    const queryParams = new URLSearchParams();
+    if (params?.page !== undefined) queryParams.append('page', params.page.toString());
+    if (params?.size !== undefined) queryParams.append('size', params.size.toString());
+    if (params?.q) queryParams.append('q', params.q);
+    if (params?.hasInventory !== undefined) queryParams.append('hasInventory', params.hasInventory.toString());
+    
+    const queryString = queryParams.toString();
+    return apiClient.get<{ content: StoreProductResponseDTO[]; totalElements: number; totalPages: number; number: number; size: number }>(
+      `/api/store-products/waste/products${queryString ? `?${queryString}` : ''}`
+    );
+  },
+
+  // Record waste
+  async recordWaste(dto: WasteRequestDTO): Promise<ApiResponse<StoreProductResponseDTO>> {
+    return apiClient.post<StoreProductResponseDTO>("/api/store-products/waste", dto);
+  },
+
+  // Get waste history
+  async getWasteHistory(params?: { 
+    page?: number;
+    size?: number;
+    reason?: string;
+    productId?: number;
+  }): Promise<ApiResponse<{ content: WasteRecordDTO[]; totalElements: number; totalPages: number; number: number; size: number }>> {
+    const queryParams = new URLSearchParams();
+    if (params?.page !== undefined) queryParams.append('page', params.page.toString());
+    if (params?.size !== undefined) queryParams.append('size', params.size.toString());
+    if (params?.reason) queryParams.append('reason', params.reason);
+    if (params?.productId) queryParams.append('productId', params.productId.toString());
+    
+    const queryString = queryParams.toString();
+    return apiClient.get<{ content: WasteRecordDTO[]; totalElements: number; totalPages: number; number: number; size: number }>(
+      `/api/store-products/waste-history${queryString ? `?${queryString}` : ''}`
+    );
   },
 };
 
