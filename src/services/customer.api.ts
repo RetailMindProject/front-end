@@ -17,6 +17,16 @@ import type {
   UnreadCountResponse,
   SendMessageRequest,
   SendMessageResponse,
+  VerifyEmailRequest,
+  VerifyEmailResponse,
+  ResendVerificationResponse,
+  ForgotPasswordRequest,
+  ForgotPasswordResponse,
+  ValidateResetTokenResponse,
+  ResetPasswordRequest,
+  ResetPasswordResponse,
+  VerifyRegistrationRequest,
+  VerifyRegistrationResponse,
 } from "../types/customer.api";
 
 /**
@@ -31,7 +41,7 @@ export const customerApi = {
    * POST /api/auth/login
    * Note: Login doesn't require token, so we use fetch directly
    */
-  async login(request: LoginRequest): Promise<{ data?: LoginResponse; error?: string }> {
+  async login(request: LoginRequest): Promise<{ data?: LoginResponse; error?: { message: string; status?: number } }> {
     try {
       const API_BASE_URL = import.meta.env.VITE_POS_BASE_URL || "http://localhost:8081";
       const response = await fetch(`${API_BASE_URL}/api/auth/login`, {
@@ -42,15 +52,46 @@ export const customerApi = {
         body: JSON.stringify(request),
       });
 
+      const contentType = response.headers.get("content-type");
+      let errorData: any = null;
+
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ message: "Login failed" }));
-        return { error: errorData.message || `HTTP error! status: ${response.status}` };
+        // Try to parse error response
+        if (contentType && contentType.includes("application/json")) {
+          try {
+            errorData = await response.json();
+          } catch (e) {
+            // If JSON parsing fails, use default message
+            errorData = { message: "Login failed" };
+          }
+        } else {
+          const text = await response.text().catch(() => "");
+          errorData = { message: text || "Login failed" };
+        }
+
+        return { 
+          error: { 
+            message: errorData.message || errorData.error || `HTTP error! status: ${response.status}`,
+            status: response.status
+          } 
+        };
       }
 
-      const data = await response.json();
+      // Success - parse response
+      const data = await response.json().catch(() => null);
+      if (!data) {
+        return { error: { message: "Invalid response from server", status: response.status } };
+      }
+
       return { data };
     } catch (error) {
-      return { error: error instanceof Error ? error.message : "Network error occurred" };
+      console.error('[customerApi.login] Network error:', error);
+      return { 
+        error: { 
+          message: error instanceof Error ? error.message : "Network error occurred",
+          status: 0
+        } 
+      };
     }
   },
 
@@ -115,16 +156,21 @@ export const customerApi = {
       const contentType = response.headers.get("content-type");
       let data: any;
 
-      if (contentType && contentType.includes("application/json")) {
-        data = await response.json();
-      } else {
-        const text = await response.text();
-        data = { message: text || "Registration failed" };
+      try {
+        if (contentType && contentType.includes("application/json")) {
+          data = await response.json();
+        } else {
+          const text = await response.text();
+          data = { message: text || "Registration failed" };
+        }
+      } catch (parseError) {
+        console.error('[customerApi.register] Failed to parse response:', parseError);
+        data = { message: "Invalid response from server" };
       }
 
       if (!response.ok) {
         // Handle validation errors
-        let errorMessage = data.message || `HTTP error! status: ${response.status}`;
+        let errorMessage = data.message || data.error || `HTTP error! status: ${response.status}`;
         
         // Handle specific error cases
         if (response.status === 400) {
@@ -144,6 +190,12 @@ export const customerApi = {
           }
         }
 
+        console.error('[customerApi.register] Registration failed:', {
+          status: response.status,
+          message: errorMessage,
+          data: data,
+        });
+
         return {
           error: errorMessage,
           status: response.status,
@@ -151,36 +203,388 @@ export const customerApi = {
       }
 
       // Success - status 201 Created
+      // NEW SYSTEM: Registration creates pending account, no token returned
+      // Token will be returned after email verification via verifyRegistration endpoint
       const registerData: RegisterResponse = {
-        id: data.id,
+        id: data.id, // May be undefined for pending registration
         firstName: data.firstName,
         lastName: data.lastName || "",
         email: data.email,
         phone: data.phone || "",
         address: data.address || "",
         role: "CUSTOMER",
-        isActive: data.isActive,
-        createdAt: data.createdAt,
-        token: data.token,
+        isActive: data.isActive, // May be undefined for pending registration
+        createdAt: data.createdAt, // May be undefined for pending registration
+        token: data.token || null, // NULL in new system - token only after verification
         message: data.message || null,
       };
 
-      // Store token and user info automatically
-      if (registerData.token) {
-        setTokenForRole("CUSTOMER", registerData.token);
+      // DO NOT store token - new system requires email verification first
+      // Token will be saved after verifyRegistration succeeds
+
+      return { data: registerData, status: response.status };
+    } catch (error) {
+      return {
+        error: error instanceof Error ? error.message : "Network error occurred",
+        status: 0,
+      };
+    }
+  },
+
+  // ========== Registration Verification APIs (NEW - Two-step registration) ==========
+
+  /**
+   * POST /api/auth/verify-registration
+   * Verifies registration token and creates the account
+   * Public endpoint - no auth required
+   * Rate limit: 10 requests/min per IP
+   * Returns JWT token on success (account is now created)
+   */
+  async verifyRegistration(request: VerifyRegistrationRequest): Promise<{ data?: VerifyRegistrationResponse; error?: string; status?: number }> {
+    try {
+      const API_BASE_URL = import.meta.env.VITE_POS_BASE_URL || "http://localhost:8081";
+      const endpoint = `${API_BASE_URL}/api/auth/verify-registration`;
+      
+      const requestBody = { token: request.token };
+      
+      console.log('[customerApi.verifyRegistration] ===== VERIFICATION REQUEST =====');
+      console.log('[customerApi.verifyRegistration] Endpoint:', endpoint);
+      console.log('[customerApi.verifyRegistration] Method: POST');
+      console.log('[customerApi.verifyRegistration] Headers:', { "Content-Type": "application/json" });
+      console.log('[customerApi.verifyRegistration] Token length:', request.token ? request.token.length : 0);
+      // Never log tokens. Preview is safe for debugging matching issues.
+      console.log('[customerApi.verifyRegistration] Token preview:', request.token ? request.token.substring(0, 12) + '...' : 'NO TOKEN');
+      
+      const response = await fetch(endpoint, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(requestBody),
+      });
+
+      console.log('[customerApi.verifyRegistration] ===== VERIFICATION RESPONSE =====');
+      console.log('[customerApi.verifyRegistration] Status:', response.status);
+      console.log('[customerApi.verifyRegistration] Status Text:', response.statusText);
+      console.log('[customerApi.verifyRegistration] OK:', response.ok);
+      console.log('[customerApi.verifyRegistration] Headers:', Object.fromEntries(response.headers.entries()));
+
+      const contentType = response.headers.get("content-type");
+      let data: any;
+
+      if (contentType && contentType.includes("application/json")) {
+        data = await response.json();
+        // Don't log raw bodies that may contain secrets (JWT). Log shape only.
+        console.log('[customerApi.verifyRegistration] Response keys:', data && typeof data === 'object' ? Object.keys(data) : typeof data);
+        console.log('[customerApi.verifyRegistration] Response token present:', !!data?.token);
+      } else {
+        const text = await response.text();
+        console.log('[customerApi.verifyRegistration] Response body (Non-JSON) length:', text?.length ?? 0);
+        data = { message: text || "Verification failed", success: false };
+      }
+
+      // Check for success: 201 Created means account was created successfully
+      // According to backend docs: Success = 201 with user data + token
+      // CRITICAL: Only 201 Created is success, not 200 OK
+      if (response.status !== 201) {
+        console.log('[customerApi.verifyRegistration] ❌ Error response:', {
+          status: response.status,
+          ok: response.ok,
+          message: data.message || data.error,
+          fullData: data,
+        });
+        return {
+          error: data.message || data.error || `HTTP error! status: ${response.status}`,
+          status: response.status,
+        };
+      }
+
+      // Success (201 Created) - account created, token returned
+      // Backend returns: { id, firstName, lastName, email, phone, role, isActive, token, message, createdAt }
+      // Note: Backend does NOT return "success: true" in success response
+      const verifyData: VerifyRegistrationResponse = {
+        message: data.message || "Registration verified successfully",
+        success: true, // Always true if we reach here (201 status)
+        token: data.token, // JWT token from backend
+        user: {
+          id: data.id,
+          email: data.email,
+          firstName: data.firstName,
+          lastName: data.lastName || "",
+          role: (data.role || "CUSTOMER") as "CUSTOMER",
+        },
+      };
+
+      console.log('[customerApi.verifyRegistration] ✅ Success! Parsed data:', {
+        success: verifyData.success,
+        hasToken: !!verifyData.token,
+        hasUser: !!verifyData.user,
+        tokenPreview: verifyData.token ? verifyData.token.substring(0, 20) + '...' : 'NO TOKEN',
+        user: verifyData.user,
+      });
+
+      // Store token and user info automatically after successful verification
+      if (verifyData.token && verifyData.user) {
+        console.log('[customerApi.verifyRegistration] Saving token and user info...');
+        setTokenForRole("CUSTOMER", verifyData.token);
         setUserInfo({
-          id: registerData.id,
-          userId: registerData.id,
-          firstName: registerData.firstName,
-          lastName: registerData.lastName,
-          email: registerData.email,
-          phone: registerData.phone,
-          address: registerData.address,
+          id: verifyData.user.id,
+          userId: verifyData.user.id,
+          firstName: verifyData.user.firstName,
+          lastName: verifyData.user.lastName,
+          email: verifyData.user.email,
+          phone: "",
+          address: "",
           role: "CUSTOMER",
+        });
+        console.log('[customerApi.verifyRegistration] ✅ Token and user info saved!');
+      } else {
+        console.warn('[customerApi.verifyRegistration] ⚠️ Missing token or user data:', {
+          hasToken: !!verifyData.token,
+          hasUser: !!verifyData.user,
         });
       }
 
-      return { data: registerData, status: response.status };
+      return { data: verifyData, status: response.status };
+    } catch (error) {
+      console.error('[customerApi.verifyRegistration] Exception:', error);
+      return {
+        error: error instanceof Error ? error.message : "Network error occurred",
+        status: 0,
+      };
+    }
+  },
+
+  // ========== Email Verification APIs (for existing users) ==========
+
+  /**
+   * POST /api/auth/verify-email
+   * Public endpoint - no auth required
+   * Rate limit: 10 requests/min per IP
+   */
+  async verifyEmail(request: VerifyEmailRequest): Promise<{ data?: VerifyEmailResponse; error?: string; status?: number }> {
+    try {
+      const API_BASE_URL = import.meta.env.VITE_POS_BASE_URL || "http://localhost:8081";
+      
+      const response = await fetch(`${API_BASE_URL}/api/auth/verify-email`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ token: request.token }),
+      });
+
+      const contentType = response.headers.get("content-type");
+      let data: any;
+
+      if (contentType && contentType.includes("application/json")) {
+        data = await response.json();
+      } else {
+        const text = await response.text();
+        data = { message: text || "Verification failed", success: false };
+      }
+
+      if (!response.ok) {
+        return {
+          error: data.message || `HTTP error! status: ${response.status}`,
+          status: response.status,
+        };
+      }
+
+      return { data, status: response.status };
+    } catch (error) {
+      return {
+        error: error instanceof Error ? error.message : "Network error occurred",
+        status: 0,
+      };
+    }
+  },
+
+  /**
+   * POST /api/auth/resend-verification
+   * Requires JWT Bearer token
+   * Rate limit: 3 requests/hour per user
+   */
+  async resendVerification(): Promise<{ data?: ResendVerificationResponse; error?: string; status?: number }> {
+    try {
+      const API_BASE_URL = import.meta.env.VITE_POS_BASE_URL || "http://localhost:8081";
+      const token = localStorage.getItem('authToken_CUSTOMER');
+      
+      if (!token) {
+        return { error: "Authentication required", status: 401 };
+      }
+
+      const response = await fetch(`${API_BASE_URL}/api/auth/resend-verification`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`,
+        },
+      });
+
+      const contentType = response.headers.get("content-type");
+      let data: any;
+
+      if (contentType && contentType.includes("application/json")) {
+        data = await response.json();
+      } else {
+        const text = await response.text();
+        data = { message: text || "Failed to resend verification", success: false };
+      }
+
+      if (!response.ok) {
+        return {
+          error: data.message || `HTTP error! status: ${response.status}`,
+          status: response.status,
+        };
+      }
+
+      return { data, status: response.status };
+    } catch (error) {
+      return {
+        error: error instanceof Error ? error.message : "Network error occurred",
+        status: 0,
+      };
+    }
+  },
+
+  // ========== Password Reset APIs ==========
+
+  /**
+   * POST /api/auth/forgot-password
+   * Public endpoint - no auth required
+   * Rate limit: 5 requests/hour per email, 10/hour per IP
+   * Security: Always returns success to prevent email enumeration
+   */
+  async forgotPassword(request: ForgotPasswordRequest): Promise<{ data?: ForgotPasswordResponse; error?: string; status?: number }> {
+    try {
+      const API_BASE_URL = import.meta.env.VITE_POS_BASE_URL || "http://localhost:8081";
+      
+      const response = await fetch(`${API_BASE_URL}/api/auth/forgot-password`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ email: request.email }),
+      });
+
+      const contentType = response.headers.get("content-type");
+      let data: any;
+
+      if (contentType && contentType.includes("application/json")) {
+        data = await response.json();
+      } else {
+        const text = await response.text();
+        data = { message: text || "Failed to send reset link", success: false };
+      }
+
+      // Always show success for security (prevent email enumeration)
+      // Even if email doesn't exist, backend returns success
+      if (response.ok || response.status === 400) {
+        return { data, status: response.status };
+      }
+
+      if (response.status === 429) {
+        return {
+          error: data.message || "Too many requests. Please try again later.",
+          status: 429,
+        };
+      }
+
+      return {
+        error: data.message || `HTTP error! status: ${response.status}`,
+        status: response.status,
+      };
+    } catch (error) {
+      return {
+        error: error instanceof Error ? error.message : "Network error occurred",
+        status: 0,
+      };
+    }
+  },
+
+  /**
+   * GET /api/auth/validate-reset-token?token={token}
+   * Public endpoint - no auth required
+   * Rate limit: 20 requests/min per IP
+   * Optional: Pre-check token validity before showing reset form
+   */
+  async validateResetToken(token: string): Promise<{ data?: ValidateResetTokenResponse; error?: string; status?: number }> {
+    try {
+      const API_BASE_URL = import.meta.env.VITE_POS_BASE_URL || "http://localhost:8081";
+      
+      const response = await fetch(`${API_BASE_URL}/api/auth/validate-reset-token?token=${encodeURIComponent(token)}`, {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+        },
+      });
+
+      const contentType = response.headers.get("content-type");
+      let data: any;
+
+      if (contentType && contentType.includes("application/json")) {
+        data = await response.json();
+      } else {
+        const text = await response.text();
+        data = { valid: false, message: text || "Invalid token" };
+      }
+
+      if (!response.ok) {
+        return {
+          error: data.message || `HTTP error! status: ${response.status}`,
+          status: response.status,
+        };
+      }
+
+      return { data, status: response.status };
+    } catch (error) {
+      return {
+        error: error instanceof Error ? error.message : "Network error occurred",
+        status: 0,
+      };
+    }
+  },
+
+  /**
+   * POST /api/auth/reset-password
+   * Public endpoint - no auth required
+   * Rate limit: 10 requests/hour per IP
+   */
+  async resetPassword(request: ResetPasswordRequest): Promise<{ data?: ResetPasswordResponse; error?: string; status?: number }> {
+    try {
+      const API_BASE_URL = import.meta.env.VITE_POS_BASE_URL || "http://localhost:8081";
+      
+      const response = await fetch(`${API_BASE_URL}/api/auth/reset-password`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          token: request.token,
+          newPassword: request.newPassword,
+          confirmPassword: request.confirmPassword,
+        }),
+      });
+
+      const contentType = response.headers.get("content-type");
+      let data: any;
+
+      if (contentType && contentType.includes("application/json")) {
+        data = await response.json();
+      } else {
+        const text = await response.text();
+        data = { message: text || "Password reset failed", success: false };
+      }
+
+      if (!response.ok) {
+        return {
+          error: data.message || `HTTP error! status: ${response.status}`,
+          status: response.status,
+        };
+      }
+
+      return { data, status: response.status };
     } catch (error) {
       return {
         error: error instanceof Error ? error.message : "Network error occurred",
