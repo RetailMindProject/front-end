@@ -13,18 +13,18 @@ function RegisterShell({
 }) {
   return (
     <div className="min-h-screen bg-gradient-to-b from-blue-50 via-slate-50 to-white">
-      <div className="mx-auto w-full max-w-5xl px-4 sm:px-6 lg:px-8 py-10 sm:py-14">
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-10 items-start">
+      <div className="mx-auto w-full max-w-6xl px-4 sm:px-6 lg:px-8 py-4 sm:py-8">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8 items-start">
           {/* Form first on mobile */}
           <div className="lg:order-2 lg:col-span-7">
-            <div className="rounded-3xl bg-white/80 backdrop-blur shadow-xl ring-1 ring-slate-200/70 p-8 md:p-10">
+            <div className="rounded-3xl bg-white/80 backdrop-blur shadow-xl ring-1 ring-slate-200/70 p-7 md:p-8">
               {children}
             </div>
           </div>
 
           {/* Compact brand panel */}
           <div className="lg:order-1 lg:col-span-5">
-            <div className="rounded-3xl bg-white/60 backdrop-blur ring-1 ring-slate-200/70 p-7 shadow-sm">
+            <div className="rounded-3xl bg-white/60 backdrop-blur ring-1 ring-slate-200/70 p-6 shadow-sm">
               <div className="flex items-center gap-3">
                 <div className="h-11 w-11 rounded-2xl bg-gradient-to-br from-blue-600 to-indigo-600 shadow-sm ring-1 ring-blue-400/20 flex items-center justify-center overflow-hidden">
                   <img
@@ -39,20 +39,20 @@ function RegisterShell({
                 </div>
               </div>
 
-              <div className="mt-6">
+              <div className="mt-5">
                 <div className="text-lg font-bold text-slate-900">Why create an account?</div>
                 <div className="mt-2 text-sm text-slate-600 leading-relaxed">
                   Faster checkout, order tracking, and a secure experience—built to stay simple.
                 </div>
               </div>
 
-              <div className="mt-6 space-y-4">
+              <div className="mt-5 space-y-3.5">
                 <FeatureItem icon={<Zap className="h-5 w-5" />} text="Faster checkout" />
                 <FeatureItem icon={<CheckCircle2 className="h-5 w-5" />} text="Order tracking" />
                 <FeatureItem icon={<ShieldCheck className="h-5 w-5" />} text="Secure account" />
               </div>
 
-              <div className="mt-8 text-xs text-slate-500">
+              <div className="mt-6 text-xs text-slate-500">
                 © {new Date().getFullYear()} RetailMind POS
               </div>
             </div>
@@ -67,11 +67,11 @@ export default function Register() {
   const navigate = useNavigate();
   return (
     <RegisterShell>
-        <BackButton onClick={() => navigate(-1)} className="mb-6">
+        <BackButton onClick={() => navigate(-1)} className="mb-4">
           <ArrowLeft className="h-4 w-4" />
           Back
         </BackButton>
-        <div className="flex items-center gap-4 mb-8">
+        <div className="flex items-center gap-4 mb-6">
           <div className="w-12 h-12 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-2xl flex items-center justify-center shadow-sm ring-1 ring-blue-400/20">
             <span className="text-white font-bold text-xl">C</span>
           </div>
@@ -103,11 +103,11 @@ export function RegisterWithCreateAccountForm() {
 
   return (
     <RegisterShell>
-        <BackButton onClick={() => navigate(-1)} className="mb-6">
+        <BackButton onClick={() => navigate(-1)} className="mb-4">
           <ArrowLeft className="h-4 w-4" />
           Back
         </BackButton>
-        <div className="flex items-center gap-4 mb-8">
+        <div className="flex items-center gap-4 mb-6">
           <div className="w-12 h-12 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-2xl flex items-center justify-center shadow-sm ring-1 ring-blue-400/20">
             <span className="text-white font-bold text-xl">C</span>
           </div>

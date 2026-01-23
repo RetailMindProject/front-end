@@ -157,7 +157,7 @@ export default function RegisterForm() {
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-7">
+    <form onSubmit={handleSubmit} className="space-y-5">
       {/* Success Message */}
       {success && (
         <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 flex items-start gap-3">
@@ -183,9 +183,9 @@ export default function RegisterForm() {
       {/* Personal info */}
       <div>
         <div className="text-xs font-bold tracking-wider text-slate-500 uppercase">Personal info</div>
-        <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="mt-2.5 grid grid-cols-1 md:grid-cols-2 gap-3">
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-2">
+            <label className="block text-sm font-medium text-slate-700 mb-1.5">
               First name <span className="text-red-500">*</span>
             </label>
             <input
@@ -195,7 +195,7 @@ export default function RegisterForm() {
               onChange={handleChange}
               placeholder="Ahmad"
               maxLength={60}
-              className={`w-full h-12 px-4 border rounded-2xl bg-white/80 focus:outline-none focus:ring-2 focus:ring-blue-500/40 ${
+              className={`w-full h-10 px-4 border rounded-2xl bg-white/80 focus:outline-none focus:ring-2 focus:ring-blue-500/40 ${
                 validationErrors.firstName ? "border-red-300" : "border-slate-200"
               }`}
               required
@@ -206,7 +206,7 @@ export default function RegisterForm() {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-2">Last name</label>
+            <label className="block text-sm font-medium text-slate-700 mb-1.5">Last name</label>
             <input
               type="text"
               name="lastName"
@@ -214,7 +214,7 @@ export default function RegisterForm() {
               onChange={handleChange}
               placeholder="Ewidat"
               maxLength={60}
-              className={`w-full h-12 px-4 border rounded-2xl bg-white/80 focus:outline-none focus:ring-2 focus:ring-blue-500/40 ${
+              className={`w-full h-10 px-4 border rounded-2xl bg-white/80 focus:outline-none focus:ring-2 focus:ring-blue-500/40 ${
                 validationErrors.lastName ? "border-red-300" : "border-slate-200"
               }`}
             />
@@ -225,11 +225,11 @@ export default function RegisterForm() {
         </div>
       </div>
 
-      <div className="border-t border-slate-200/70 pt-7">
+      <div className="border-t border-slate-200/70 pt-5">
         <div className="text-xs font-bold tracking-wider text-slate-500 uppercase">Contact</div>
-        <div className="mt-4 space-y-4">
+        <div className="mt-2.5 space-y-3.5">
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-2">
+            <label className="block text-sm font-medium text-slate-700 mb-1.5">
               Email <span className="text-red-500">*</span>
             </label>
             <input
@@ -239,7 +239,7 @@ export default function RegisterForm() {
               onChange={handleChange}
               placeholder="you@company.com"
               maxLength={120}
-              className={`w-full h-12 px-4 border rounded-2xl bg-white/80 focus:outline-none focus:ring-2 focus:ring-blue-500/40 ${
+              className={`w-full h-10 px-4 border rounded-2xl bg-white/80 focus:outline-none focus:ring-2 focus:ring-blue-500/40 ${
                 validationErrors.email ? "border-red-300" : "border-slate-200"
               }`}
               required
@@ -249,9 +249,9 @@ export default function RegisterForm() {
             )}
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-2">Phone</label>
+              <label className="block text-sm font-medium text-slate-700 mb-1.5">Phone</label>
               <input
                 type="tel"
                 name="phone"
@@ -259,7 +259,7 @@ export default function RegisterForm() {
                 onChange={handleChange}
                 placeholder="+970 5x xxx xxxx"
                 maxLength={20}
-                className={`w-full h-12 px-4 border rounded-2xl bg-white/80 focus:outline-none focus:ring-2 focus:ring-blue-500/40 ${
+                className={`w-full h-10 px-4 border rounded-2xl bg-white/80 focus:outline-none focus:ring-2 focus:ring-blue-500/40 ${
                   validationErrors.phone ? "border-red-300" : "border-slate-200"
                 }`}
               />
@@ -269,25 +269,25 @@ export default function RegisterForm() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-2">Address</label>
+              <label className="block text-sm font-medium text-slate-700 mb-1.5">Address</label>
               <input
                 type="text"
                 name="address"
                 value={form.address}
                 onChange={handleChange}
                 placeholder="Your address"
-                className="w-full h-12 px-4 border border-slate-200 rounded-2xl bg-white/80 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+                className="w-full h-10 px-4 border border-slate-200 rounded-2xl bg-white/80 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
               />
             </div>
           </div>
         </div>
       </div>
 
-      <div className="border-t border-slate-200/70 pt-7">
+      <div className="border-t border-slate-200/70 pt-5">
         <div className="text-xs font-bold tracking-wider text-slate-500 uppercase">Security</div>
-        <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="mt-2.5 grid grid-cols-1 md:grid-cols-2 gap-3">
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-2">
+            <label className="block text-sm font-medium text-slate-700 mb-1.5">
               Password <span className="text-red-500">*</span>
             </label>
             <div className="relative">
@@ -297,7 +297,7 @@ export default function RegisterForm() {
                 value={form.password}
                 onChange={handleChange}
                 placeholder="••••••••"
-                className={`w-full h-12 pl-4 pr-12 border rounded-2xl bg-white/80 focus:outline-none focus:ring-2 focus:ring-blue-500/40 ${
+                className={`w-full h-10 pl-4 pr-12 border rounded-2xl bg-white/80 focus:outline-none focus:ring-2 focus:ring-blue-500/40 ${
                   validationErrors.password ? "border-red-300" : "border-slate-200"
                 }`}
                 required
@@ -314,13 +314,13 @@ export default function RegisterForm() {
             {validationErrors.password && (
               <p className="text-xs text-red-600 mt-1.5">{validationErrors.password}</p>
             )}
-            <p className="text-xs text-slate-500 mt-1.5">
+            <p className="text-xs text-slate-500 mt-1">
               At least 8 characters with: digit, lowercase, uppercase, and special character.
             </p>
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-2">
+            <label className="block text-sm font-medium text-slate-700 mb-1.5">
               Confirm password <span className="text-red-500">*</span>
             </label>
             <div className="relative">
@@ -330,7 +330,7 @@ export default function RegisterForm() {
                 value={form.confirmPassword}
                 onChange={handleChange}
                 placeholder="••••••••"
-                className={`w-full h-12 pl-4 pr-12 border rounded-2xl bg-white/80 focus:outline-none focus:ring-2 focus:ring-blue-500/40 ${
+                className={`w-full h-10 pl-4 pr-12 border rounded-2xl bg-white/80 focus:outline-none focus:ring-2 focus:ring-blue-500/40 ${
                   validationErrors.confirmPassword ? "border-red-300" : "border-slate-200"
                 }`}
                 required
@@ -352,7 +352,7 @@ export default function RegisterForm() {
       </div>
 
       {/* Terms */}
-      <div className={`rounded-2xl border p-4 bg-slate-50 ${validationErrors.agree ? "border-red-200" : "border-slate-200/70"}`}>
+      <div className={`rounded-2xl border p-3 bg-slate-50 ${validationErrors.agree ? "border-red-200" : "border-slate-200/70"}`}>
         <div className="flex items-start gap-3">
           <input
             id="terms"
@@ -384,7 +384,7 @@ export default function RegisterForm() {
       <button
         type="submit"
         disabled={loading || success}
-        className="w-full h-12 rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-semibold shadow-sm hover:shadow-md hover:shadow-blue-500/20 transition-all focus:outline-none focus:ring-4 focus:ring-blue-500/20 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+        className="w-full h-10 rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-semibold shadow-sm hover:shadow-md hover:shadow-blue-500/20 transition-all focus:outline-none focus:ring-4 focus:ring-blue-500/20 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
       >
         {loading ? (
           <>
