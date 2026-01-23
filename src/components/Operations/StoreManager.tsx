@@ -1,6 +1,6 @@
-import { useState, useRef, useEffect } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ChangeEvent } from 'react';
-import { Filter, MoreVertical, Eye, RotateCcw } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Filter, MoreVertical, Eye, RotateCcw } from 'lucide-react';
 import ProductViewModal from './ProductViewModal';
 import AddProductFromInventoryModal from './AddProductFromInventoryModal';
 import ConfirmDeleteModal from './ConfirmDeleteModal';
@@ -13,7 +13,7 @@ interface StoreManagerProps {
   storeProducts: (StoreProductResponseDTO & { imageUrl?: string | null })[];
   inventoryProducts: ProductDTO[];
   onDelete: (id: string | number) => void;
-  onAddFromInventory: (product: ProductDTO, quantity: number) => Promise<void>;
+  onAddFromInventory: (product: ProductDTO, quantity: number, expirationDate?: string | null) => Promise<void>;
   onAdjustQuantity?: (productId: number, quantity: number, isIncrease: boolean) => Promise<void>;
   loading?: boolean;
   filters?: {
@@ -325,12 +325,25 @@ const StoreManager = ({
     setIsAddModalOpen(false);
   };
 
-  const handleProductSelected = async (product: ProductDTO, quantity: number) => {
-    await onAddFromInventory(product, quantity);
+  const handleProductSelected = async (product: ProductDTO, quantity: number, expirationDate?: string | null) => {
+    await onAddFromInventory(product, quantity, expirationDate);
     closeAddModal();
   };
 
   const displayProducts = isSearching ? searchResults : storeProducts;
+  const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useState(10);
+
+  useEffect(() => {
+    setPage(0);
+  }, [isSearching, searchTerm]);
+
+  const totalPages = useMemo(() => Math.max(1, Math.ceil(displayProducts.length / pageSize)), [displayProducts.length, pageSize]);
+  const currentPage = Math.min(page, totalPages - 1);
+  const pagedProducts = useMemo(() => {
+    const start = currentPage * pageSize;
+    return displayProducts.slice(start, start + pageSize);
+  }, [currentPage, displayProducts, pageSize]);
 
   return (
     <div className="bg-white rounded-2xl shadow-sm border">
@@ -470,7 +483,7 @@ const StoreManager = ({
         </div>
       ) : displayProducts.length > 0 ? (
         <div className="divide-y divide-slate-200">
-          {displayProducts.map(product => (
+          {pagedProducts.map(product => (
             <div 
               key={product.productId} 
               className="flex items-center gap-4 px-6 py-4 hover:bg-blue-50/50 transition-all duration-200 ease-in-out border-b border-slate-100 last:border-b-0 group"
@@ -576,6 +589,59 @@ const StoreManager = ({
               </div>
             </div>
           ))}
+
+          {/* Pagination */}
+          <div className="px-6 py-4 border-t border-slate-200 bg-white">
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
+              <div className="text-sm text-slate-600">
+                Showing{" "}
+                <span className="font-semibold text-slate-900">
+                  {displayProducts.length === 0 ? 0 : currentPage * pageSize + 1}
+                </span>{" "}
+                to{" "}
+                <span className="font-semibold text-slate-900">
+                  {Math.min((currentPage + 1) * pageSize, displayProducts.length)}
+                </span>{" "}
+                of <span className="font-semibold text-slate-900">{displayProducts.length}</span>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <select
+                  value={pageSize}
+                  onChange={(e) => setPageSize(Number(e.target.value))}
+                  className="px-3 py-2 border border-slate-300 rounded-lg text-sm font-semibold text-slate-700 bg-white hover:bg-slate-50 transition-all"
+                >
+                  {[10, 20, 50].map((s) => (
+                    <option key={s} value={s}>
+                      {s} / page
+                    </option>
+                  ))}
+                </select>
+
+                <button
+                  onClick={() => setPage((p) => Math.max(0, p - 1))}
+                  disabled={currentPage === 0}
+                  className="inline-flex items-center gap-1 px-3 py-2 rounded-lg border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-all text-sm font-semibold"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                  Prev
+                </button>
+
+                <div className="px-3 py-2 text-sm font-semibold text-slate-700">
+                  Page {currentPage + 1} / {totalPages}
+                </div>
+
+                <button
+                  onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
+                  disabled={currentPage >= totalPages - 1}
+                  className="inline-flex items-center gap-1 px-3 py-2 rounded-lg border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-all text-sm font-semibold"
+                >
+                  Next
+                  <ChevronRight className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       ) : (
         <div className="px-6 py-16 text-center">

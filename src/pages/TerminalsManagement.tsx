@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect } from "react";
 import { Plus, Search, X } from "lucide-react";
 import { Card } from "../components";
+import PageHeader from "../components/PageHeader";
 import TerminalsTable from "../components/terminals/TerminalsTable";
 import TerminalModal from "../components/terminals/TerminalModal";
 import { terminalApi, type TerminalManagementResponse, type CreateTerminalRequest, type UpdateTerminalRequest } from "../services/terminal.api";
@@ -159,20 +160,19 @@ export default function TerminalsManagement() {
 
   return (
     <div className="p-6">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900">Terminals Management</h1>
-          <p className="text-gray-600 mt-1">View and manage all terminals</p>
-        </div>
-        <button
-          onClick={handleCreateClick}
-          className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 transition-colors"
-        >
-          <Plus className="h-4 w-4" />
-          Add New Terminal
-        </button>
-      </div>
+      <PageHeader
+        title="Terminals"
+        icon={<span className="text-2xl">🖥️</span>}
+        right={
+          <button
+            onClick={handleCreateClick}
+            className="inline-flex items-center gap-2 bg-indigo-600 text-white px-4 py-2.5 rounded-lg hover:bg-indigo-700 transition-all duration-200 text-sm font-semibold shadow-sm"
+          >
+            <Plus className="h-4 w-4" />
+            Add Terminal
+          </button>
+        }
+      />
 
       {/* Filters */}
       <div className="mb-6">

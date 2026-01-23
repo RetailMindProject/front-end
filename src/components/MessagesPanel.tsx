@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useNavigate, useLocation } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { MessageSquare, X } from "lucide-react";
 import type { Message } from "./messages/types";
 import MessageCard from "./messages/MessageCard";
@@ -9,13 +9,14 @@ interface MessagesPanelProps {
   isOpen: boolean;
   onClose: () => void;
   onMessagesChange?: (messages: Message[]) => void;
+  onOpenMessageBox?: () => void;
 }
 
-export default function MessagesPanel({ isOpen, onClose, onMessagesChange }: MessagesPanelProps) {
+export default function MessagesPanel({ isOpen, onClose, onMessagesChange, onOpenMessageBox }: MessagesPanelProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(true);
+  const [unreadCount, setUnreadCount] = useState(0);
   const navigate = useNavigate();
-  const { pathname } = useLocation();
 
   useEffect(() => {
     const loadMessages = async () => {
@@ -28,27 +29,17 @@ export default function MessagesPanel({ isOpen, onClose, onMessagesChange }: Mes
         setMessages(recentMessages);
         onMessagesChange?.(recentMessages);
       }
+      const countRes = await messagesApi.getUnreadCount();
+      if (countRes.data !== undefined) {
+        setUnreadCount(countRes.data);
+      }
       setLoading(false);
     };
 
     loadMessages();
   }, [isOpen, onMessagesChange]);
 
-  const unreadCount = messages.filter((m) => !m.read).length;
-
-  const getMessageRoute = (messageId: string) => {
-    if (pathname.startsWith("/ceo")) {
-      return `/ceo/message/${messageId}`;
-    }
-    if (pathname.startsWith("/store-manager")) {
-      return `/store-manager/message/${messageId}`;
-    }
-    if (pathname.startsWith("/inventory-manager")) {
-      return `/inventory-manager/message/${messageId}`;
-    }
-    // Default fallback
-    return `/store-manager/message/${messageId}`;
-  };
+  const getMessageRoute = (messageId: string) => `/dashboard/message/${messageId}`;
 
   const handleMessageClick = async (msg: Message) => {
     if (!msg.read) {
@@ -60,6 +51,7 @@ export default function MessagesPanel({ isOpen, onClose, onMessagesChange }: Mes
         }
         return updated;
       });
+      window.dispatchEvent(new CustomEvent("messages-updated"));
     }
     
     onClose();
@@ -128,9 +120,12 @@ export default function MessagesPanel({ isOpen, onClose, onMessagesChange }: Mes
           <div className="border-t border-slate-200 px-4 py-3">
             <button 
               onClick={() => {
-                const basePath = pathname.split("/").slice(0, 2).join("/");
                 onClose();
-                navigate(`${basePath}/outbox`);
+                if (onOpenMessageBox) {
+                  onOpenMessageBox();
+                  return;
+                }
+                navigate(`/dashboard/message-box`);
               }}
               className="w-full rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 transition-all duration-200 hover:shadow-lg hover:shadow-indigo-500/30 hover:scale-[1.02] active:scale-[0.98] focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
             >

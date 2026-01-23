@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { ArrowLeft, Loader2 } from "lucide-react";
 import { ordersApi, type OrderHistoryItem } from "../services/orders.api";
+import PageHeader from "../components/PageHeader";
 
 const fmt = new Intl.NumberFormat(undefined, {
   style: "currency",
@@ -56,18 +57,20 @@ export default function CashierOrders() {
 
   return (
     <div className="h-screen flex flex-col bg-white">
-      <header className="border-b border-gray-200 px-6 py-4 flex items-center gap-4">
-        <button
-          onClick={() => navigate("/cashier")}
-          className="p-2 rounded-lg text-gray-600 hover:text-gray-900 hover:bg-gray-50 transition-colors"
-        >
-          <ArrowLeft className="h-5 w-5" />
-        </button>
-        <h1 className="text-2xl font-semibold text-gray-800">Orders</h1>
-        {sessionIdParam && (
-          <span className="text-sm text-gray-500">Session ID: {sessionIdParam}</span>
-        )}
-      </header>
+      <PageHeader
+        title="Orders"
+        icon={<span className="text-2xl">🧾</span>}
+        right={
+          <button
+            onClick={() => navigate("/dashboard")}
+            className="inline-flex items-center gap-2 px-4 py-2.5 bg-white/70 text-slate-700 rounded-lg hover:bg-white transition-all duration-200 shadow-sm border border-slate-200"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            Back
+          </button>
+        }
+        className="mb-0"
+      />
 
       <div className="flex-1 overflow-y-auto p-6">
         {loading ? (

@@ -8,6 +8,8 @@ import ProfileBanner from "../components/profile/ProfileBanner";
 import type { ProfileFormData } from "../components/profile/types";
 import { getUserInfo, getCurrentRole, decodeJWT, getCurrentToken, setUserInfo } from "../services/tokens";
 import { getCurrentUserProfile } from "../services/auth.api";
+import PageHeader from "../components/PageHeader";
+import BackButton from "../components/BackButton";
 
 function useRoleAndName() {
   const userInfo = getUserInfo();
@@ -93,18 +95,8 @@ export default function Profile() {
   // Get dashboard route based on role
   const getDashboardRoute = (): string => {
     const role = getCurrentRole();
-    switch (role) {
-      case "CEO":
-        return "/ceo";
-      case "STORE_MANAGER":
-        return "/store-manager";
-      case "INVENTORY_MANAGER":
-        return "/inventory-manager";
-      case "CASHIER":
-        return "/cashier";
-      default:
-        return "/ceo"; // Default fallback
-    }
+    if (role) return "/dashboard";
+    return "/login";
   };
 
   useEffect(() => {
@@ -168,18 +160,15 @@ export default function Profile() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50">
       <div className="max-w-4xl mx-auto px-4 py-12">
-        {/* Header */}
-        <div className="mb-8">
-          <button
-            onClick={() => navigate(getDashboardRoute())}
-            className="flex items-center gap-2 text-slate-600 hover:text-slate-900 mb-4 transition-colors group"
-          >
-            <ArrowLeft className="h-5 w-5 group-hover:-translate-x-1 transition-transform" />
-            <span className="font-medium">Back to Dashboard</span>
-          </button>
-          <h1 className="text-4xl font-bold text-slate-900 mb-2">Profile Settings</h1>
-          <p className="text-slate-600">Manage your personal information and account details</p>
-        </div>
+        <BackButton onClick={() => navigate(getDashboardRoute())} className="mb-4">
+          <ArrowLeft className="h-4 w-4" />
+          Back
+        </BackButton>
+
+        <PageHeader
+          title="Profile"
+          icon={<User className="h-6 w-6 text-white" />}
+        />
 
         {/* Profile Card */}
         <div className="bg-white rounded-3xl shadow-xl border border-slate-200 overflow-hidden">

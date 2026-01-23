@@ -1,16 +1,16 @@
 import { useState } from "react";
-import { Topbar } from "../components";
-import CEOSidebar from "../components/CEOSidebar";
+import { Sidebar, Topbar } from "../components";
 import StoreDashboard from "./StoreDashboard";
 import InventoryDashboard from "./InventoryDashboard";
 import ManageAccounts from "./ManageAccounts";
 import CreateAccountPage from "./CreateAccountPage";
 import CEOReportsPage from "./reports/CEOReportsPage";
 import Forecasting from "./Forecasting";
-import Outbox from "./Outbox";
+import MessageBox from "./MessageBox";
 import MessageDetail from "./MessageDetail";
 import Compose from "./Compose";
-import { Routes, Route } from "react-router-dom";
+import { Routes, Route, Navigate } from "react-router-dom";
+import { FileText, LayoutDashboard, MessageSquare, TrendingUp, UsersRound } from "lucide-react";
 
 export default function CEODashboard() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -18,7 +18,17 @@ export default function CEODashboard() {
 
   return (
     <div className="flex h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 overflow-hidden">
-      <CEOSidebar open={sidebarOpen} onToggle={() => setSidebarOpen((s) => !s)} />
+      <Sidebar
+        open={sidebarOpen}
+        onToggle={() => setSidebarOpen((s) => !s)}
+        links={[
+          { to: "/dashboard", label: "Dashboard", icon: <LayoutDashboard className="h-4 w-4" />, section: "Analytics" },
+          { to: "/dashboard/reports", label: "Reports", icon: <FileText className="h-4 w-4" />, section: "Analytics" },
+          { to: "/dashboard/forecasting", label: "Forecasting", icon: <TrendingUp className="h-4 w-4" />, section: "Analytics" },
+          { to: "/dashboard/manage-accounts", label: "Manage Accounts", icon: <UsersRound className="h-4 w-4" />, section: "System" },
+          { to: "/dashboard/message-box", label: "Message Box", icon: <MessageSquare className="h-4 w-4" />, section: "System" },
+        ]}
+      />
       <div className="flex h-screen flex-1 flex-col">
         <Topbar />
 
@@ -56,8 +66,10 @@ export default function CEODashboard() {
           <Route path="manage-accounts" element={<div className="flex-1 overflow-auto"><ManageAccounts /></div>} />
           <Route path="create-account" element={<div className="flex-1 overflow-auto"><CreateAccountPage /></div>} />
           <Route path="reports" element={<div className="flex-1 overflow-auto"><CEOReportsPage /></div>} />
-          <Route path="forecasting" element={<div className="flex-1 overflow-auto"><Forecasting /></div>} />
-          <Route path="outbox" element={<div className="flex-1 overflow-auto"><Outbox /></div>} />
+          <Route path="forecasting/*" element={<div className="flex-1 overflow-auto"><Forecasting /></div>} />
+          <Route path="message-box" element={<div className="flex-1 overflow-auto"><MessageBox /></div>} />
+          <Route path="outbox" element={<Navigate to="../message-box" replace />} />
+          <Route path="inbox" element={<Navigate to="../message-box" replace />} />
           <Route path="compose" element={<div className="flex-1 overflow-auto"><Compose /></div>} />
           <Route path="message/:id" element={<div className="flex-1 overflow-auto"><MessageDetail /></div>} />
         </Routes>

@@ -1,11 +1,11 @@
 import { useState, useMemo, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
-import { Send } from "lucide-react";
+import { Send, Plus } from "lucide-react";
 import type { SentMessage } from "../components/messages/types";
-import OutboxHeader from "../components/messages/OutboxHeader";
 import OutboxFilters from "../components/messages/OutboxFilters";
 import OutboxMessageCard from "../components/messages/OutboxMessageCard";
 import { messagesApi } from "../services/messages.api";
+import PageHeader from "../components/PageHeader";
 
 export default function Outbox() {
   const navigate = useNavigate();
@@ -62,10 +62,21 @@ export default function Outbox() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50">
-      <div className="container mx-auto px-4 sm:px-6 py-6 max-w-7xl">
-        {/* Header */}
-        <OutboxHeader totalMessages={allMessages.length} onCompose={handleCompose} />
+      <PageHeader
+        title="Outbox"
+        icon={<Send className="h-6 w-6 text-white" />}
+        right={
+          <button
+            onClick={handleCompose}
+            className="inline-flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg transition-all duration-200 hover:shadow-lg hover:shadow-blue-500/30 active:scale-[0.98]"
+          >
+            <Plus className="h-4 w-4" />
+            Compose
+          </button>
+        }
+      />
 
+      <div className="container mx-auto px-4 sm:px-6 py-6 max-w-7xl">
         {/* Filters */}
         <OutboxFilters
           searchTerm={searchTerm}

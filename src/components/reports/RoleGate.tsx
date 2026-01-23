@@ -1,12 +1,12 @@
 import React from "react";
-import { useLocation, Navigate } from "react-router-dom";
+import { Navigate } from "react-router-dom";
+import { getCurrentRole } from "../../services/tokens";
 
-// Minimal role gate: allow only CEO (we infer CEO context by /ceo path since shared auth not available)
+// Minimal role gate: allow only CEO
 export default function RoleGate({ children }: { children: React.ReactNode }) {
-  const { pathname } = useLocation();
-  const isCeoContext = pathname.startsWith("/ceo");
-  if (!isCeoContext) {
-    return <Navigate to="/login" replace />;
+  const role = getCurrentRole();
+  if (role !== "CEO") {
+    return <Navigate to="/dashboard" replace />;
   }
   return <>{children}</>;
 }

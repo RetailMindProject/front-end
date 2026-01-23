@@ -1,6 +1,7 @@
 import { useMemo, useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Plus } from "lucide-react";
+import PageHeader from "../components/PageHeader";
 import SessionsFilters from "../components/sessions/SessionsFilters";
 import CashiersList from "../components/sessions/CashiersList";
 import { sessionsApi } from "../services/sessions.api";
@@ -165,7 +166,7 @@ export default function Sessions() {
     // Navigate using sessionId if available
     // Note: The API requires sessionId to fetch cashier details
     if (sessionId) {
-      navigate(`/store-manager/sessions/cashier/${sessionId}`);
+      navigate(`/dashboard/sessions/cashier/${sessionId}`);
     } else {
       // If no session, show error message
       setError(`No active session found for this cashier. Cannot view details.`);
@@ -174,19 +175,19 @@ export default function Sessions() {
 
   return (
     <div className="p-6 text-gray-800">
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="mb-2 text-2xl font-semibold tracking-tight">Sessions</h1>
-          <p className="text-slate-600">Manage cashier sessions and view active status</p>
-        </div>
-        <button
-          onClick={() => navigate("/store-manager/create-account")}
-          className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 transition-colors"
-        >
-          <Plus className="h-4 w-4" />
-          Add New Cashier
-        </button>
-      </div>
+      <PageHeader
+        title="Sessions"
+        icon={<span className="text-2xl">🧾</span>}
+        right={
+          <button
+            onClick={() => navigate("/dashboard/create-account")}
+            className="inline-flex items-center gap-2 bg-indigo-600 text-white px-4 py-2.5 rounded-lg hover:bg-indigo-700 transition-all duration-200 text-sm font-semibold shadow-sm"
+          >
+            <Plus className="h-4 w-4" />
+            Add New Cashier
+          </button>
+        }
+      />
 
       <SessionsFilters
         dateFilter={dateFilter}

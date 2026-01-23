@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { Search, ArrowLeft, Check, DollarSign, CreditCard, Loader2, RotateCcw } from "lucide-react";
 import { ordersApi, type OrderForReturn, type OrderItemForReturn } from "../services/orders.api";
 import { returnsApi, type ReturnItemRequest, type RefundRequest } from "../services/returns.api";
+import PageHeader from "../components/PageHeader";
 
 const fmt = new Intl.NumberFormat(undefined, {
   style: "currency",
@@ -358,13 +359,13 @@ export default function ReturnOrder() {
                 New Return
               </button>
               <button
-                onClick={() => navigate("/cashier/returns")}
+                onClick={() => navigate("/dashboard/returns")}
                 className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition"
               >
                 View Return History
               </button>
               <button
-                onClick={() => navigate("/cashier")}
+                onClick={() => navigate("/dashboard")}
                 className="px-6 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 transition"
               >
                 Back to Terminal
@@ -379,29 +380,27 @@ export default function ReturnOrder() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50">
       <div className="container mx-auto px-4 sm:px-6 py-6 max-w-6xl">
-        {/* Header */}
-        <div className="mb-6">
-          <button
-            onClick={() => navigate("/cashier")}
-            className="mb-4 inline-flex items-center gap-2 text-slate-600 hover:text-slate-800 transition"
-          >
-            <ArrowLeft size={20} />
-            <span>Back to Terminal</span>
-          </button>
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-3xl font-bold text-gray-800 mb-2">Return Order</h1>
-              <p className="text-gray-600">Search for an order by order number to process a return</p>
-            </div>
+        <button
+          onClick={() => navigate("/dashboard")}
+          className="mb-4 inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-white/70 border border-slate-200 text-slate-700 hover:bg-white hover:text-slate-900 transition-all duration-200 shadow-sm"
+        >
+          <ArrowLeft size={20} />
+          <span className="text-sm font-semibold">Back to Terminal</span>
+        </button>
+
+        <PageHeader
+          title="Return Order"
+          icon={<span className="text-2xl">↩️</span>}
+          right={
             <button
-              onClick={() => navigate("/cashier/returns")}
-              className="px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 transition flex items-center gap-2"
+              onClick={() => navigate("/dashboard/returns")}
+              className="inline-flex items-center gap-2 px-4 py-2.5 bg-white/70 text-slate-700 rounded-lg hover:bg-white transition-all duration-200 shadow-sm border border-slate-200"
             >
               <RotateCcw className="w-4 h-4" />
               View History
             </button>
-          </div>
-        </div>
+          }
+        />
 
         {/* Search Section */}
         <div className="bg-white rounded-lg shadow-md p-6 mb-6">

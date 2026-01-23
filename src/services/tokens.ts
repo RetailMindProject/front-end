@@ -3,6 +3,26 @@
 
 export type UserRole = 'STORE_MANAGER' | 'INVENTORY_MANAGER' | 'CEO' | 'CASHIER' | 'CUSTOMER';
 
+const ACTIVE_ROLE_KEY = "activeRole";
+
+export function setActiveRole(role: UserRole): void {
+  localStorage.setItem(ACTIVE_ROLE_KEY, role);
+}
+
+export function clearActiveRole(): void {
+  localStorage.removeItem(ACTIVE_ROLE_KEY);
+}
+
+export function getActiveRole(): UserRole | null {
+  const raw = localStorage.getItem(ACTIVE_ROLE_KEY);
+  if (!raw) return null;
+  const role = raw.toUpperCase();
+  if (role === 'STORE_MANAGER' || role === 'INVENTORY_MANAGER' || role === 'CEO' || role === 'CASHIER' || role === 'CUSTOMER') {
+    return role as UserRole;
+  }
+  return null;
+}
+
 /**
  * Decode JWT token to extract payload (without verification)
  * Note: This only decodes the token, it doesn't verify the signature
@@ -42,13 +62,16 @@ export function getRoleFromToken(token: string | null): UserRole | null {
 }
 
 /**
- * Get the current role based on the URL path
+ * Get the current role.
+ * Legacy: inferred from URL (/ceo, /customer, ...).
+ * Current: /dashboard is role-neutral, so we infer from activeRole/userInfo/tokens.
  */
 export function getCurrentRole(): UserRole | null {
   if (typeof window === 'undefined') return null;
   
   const pathname = window.location.pathname;
   
+  // Legacy role URLs (backwards compatibility)
   if (pathname.startsWith('/store-manager')) {
     return 'STORE_MANAGER';
   }
@@ -63,6 +86,35 @@ export function getCurrentRole(): UserRole | null {
   }
   if (pathname.startsWith('/customer')) {
     return 'CUSTOMER';
+  }
+
+  // Role-neutral dashboard URL
+  if (pathname.startsWith('/dashboard')) {
+    const active = getActiveRole();
+    if (active) return active;
+
+    // Avoid calling getUserInfo() here (it calls getCurrentRole() internally)
+    const rawUserInfo = localStorage.getItem('userInfo');
+    if (rawUserInfo) {
+      try {
+        const parsed = JSON.parse(rawUserInfo) as { role?: string } | null;
+        const role = parsed?.role?.toUpperCase();
+        if (role === 'STORE_MANAGER' || role === 'INVENTORY_MANAGER' || role === 'CEO' || role === 'CASHIER' || role === 'CUSTOMER') {
+          return role as UserRole;
+        }
+      } catch {
+        // ignore
+      }
+    }
+
+    // Fallback: pick any valid role token
+    const roles: UserRole[] = ['STORE_MANAGER', 'INVENTORY_MANAGER', 'CEO', 'CASHIER', 'CUSTOMER'];
+    for (const r of roles) {
+      const token = getTokenForRole(r);
+      if (!token) continue;
+      const tokenRole = getRoleFromToken(token);
+      if (tokenRole === r) return r;
+    }
   }
   
   return null;
@@ -80,6 +132,7 @@ export function getTokenForRole(role: UserRole): string | null {
  */
 export function setTokenForRole(role: UserRole, token: string): void {
   localStorage.setItem(`authToken_${role}`, token);
+  setActiveRole(role);
 }
 
 /**
@@ -124,7 +177,7 @@ export function getCurrentToken(): string | null {
   // PRIORITY 3: If no current role from URL, try to find any valid token
   // This is a fallback for pages that don't have role-specific routes
   if (!currentRole) {
-    const roles: UserRole[] = ['STORE_MANAGER', 'INVENTORY_MANAGER', 'CEO', 'CASHIER'];
+    const roles: UserRole[] = ['STORE_MANAGER', 'INVENTORY_MANAGER', 'CEO', 'CASHIER', 'CUSTOMER'];
     for (const role of roles) {
       const token = getTokenForRole(role);
       if (token) {
@@ -170,6 +223,10 @@ export function clearUserInfoForRole(role: UserRole): void {
 export function clearRoleData(role: UserRole): void {
   clearTokenForRole(role);
   clearUserInfoForRole(role);
+
+  if (getActiveRole() === role) {
+    clearActiveRole();
+  }
   
   // If clearing cashier data, also clear session-related data
   if (role === 'CASHIER') {
@@ -184,7 +241,7 @@ export function clearRoleData(role: UserRole): void {
  */
 export function clearAllTokens(): void {
   // Clear all role-specific tokens
-  const roles: UserRole[] = ['STORE_MANAGER', 'INVENTORY_MANAGER', 'CEO', 'CASHIER'];
+  const roles: UserRole[] = ['STORE_MANAGER', 'INVENTORY_MANAGER', 'CEO', 'CASHIER', 'CUSTOMER'];
   roles.forEach(role => {
     localStorage.removeItem(`authToken_${role}`);
     localStorage.removeItem(`userInfo_${role}`);
@@ -193,6 +250,8 @@ export function clearAllTokens(): void {
   localStorage.removeItem('authToken');
   // Clear generic user info
   localStorage.removeItem('userInfo');
+  // Clear active role
+  clearActiveRole();
   // Clear cached session id if exists
   localStorage.removeItem('currentSessionId');
   // Clear session storage
@@ -226,6 +285,7 @@ export function setUserInfo(userInfo: UserInfo): void {
   localStorage.setItem(`userInfo_${role}`, JSON.stringify(userInfo));
   // Also store in generic key for backward compatibility
   localStorage.setItem('userInfo', JSON.stringify(userInfo));
+  setActiveRole(role);
 }
 
 /**

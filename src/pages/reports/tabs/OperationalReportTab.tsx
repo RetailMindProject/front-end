@@ -178,7 +178,6 @@ export default function OperationalReportTab() {
     const records: TransferRecord[] = filtered.map(m => {
       // Determine transfer direction based on quantity change and location
       const isToStore = m.locationType === 'STORE' && m.quantityChange > 0;
-      const isToWarehouse = m.locationType === 'WAREHOUSE' && m.quantityChange > 0;
       
       return {
         date: m.date,

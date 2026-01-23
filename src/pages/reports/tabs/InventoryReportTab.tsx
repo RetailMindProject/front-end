@@ -33,9 +33,9 @@ type StockStatus = 'all' | 'in-stock' | 'low-stock' | 'out-of-stock';
 
 export default function InventoryReportTab() {
   const [loading, setLoading] = useState(false);
-  const [page, setPage] = useState(0);
-  const [pageSize, setPageSize] = useState(10);
-  const [totalPages, setTotalPages] = useState(0);
+  // Note: legacy pagination state (unused). Summary tables have their own paging below.
+  // Keeping as placeholders for future server-side pagination support.
+  const [, setPage] = useState(0);
   
   // Pagination for summary tables
   const [valueReportPage, setValueReportPage] = useState(0);

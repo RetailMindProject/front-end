@@ -1,4 +1,5 @@
 import React from "react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 
 export type DataTableProps<T> = {
   columns: Array<{ key: keyof T | string; header: string; width?: string; render?: (row: T)=>React.ReactNode }>;
