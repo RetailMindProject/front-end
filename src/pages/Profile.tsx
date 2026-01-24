@@ -160,15 +160,30 @@ export default function Profile() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50">
       <div className="max-w-4xl mx-auto px-4 py-12">
-        <BackButton onClick={() => navigate(getDashboardRoute())} className="mb-4">
-          <ArrowLeft className="h-4 w-4" />
-          Back
-        </BackButton>
-
-        <PageHeader
-          title="Profile"
-          icon={<User className="h-6 w-6 text-white" />}
-        />
+        {/* Header */}
+        <div className="mb-8">
+          {getCurrentRole() === "CASHIER" ? (
+            <button
+              onClick={() => navigate("/cashier")}
+              className="relative inline-flex items-center gap-2 px-4 py-2 rounded-lg text-slate-700 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 shadow-sm hover:shadow-md hover:border-blue-300 transition-all duration-200 ease-in-out group overflow-hidden mb-4"
+            >
+              <div className="absolute inset-0 bg-gradient-to-r from-blue-500/10 to-indigo-500/10 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity duration-200"></div>
+              <ArrowLeft size={18} className="relative z-10 group-hover:-translate-x-1 transition-transform duration-200" />
+              <span className="relative z-10 font-medium">Back to Terminal</span>
+            </button>
+          ) : (
+            <button
+              onClick={() => navigate(getDashboardRoute())}
+              className="relative inline-flex items-center gap-2 px-4 py-2 rounded-lg text-slate-700 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 shadow-sm hover:shadow-md hover:border-blue-300 transition-all duration-200 ease-in-out group overflow-hidden mb-4"
+            >
+              <div className="absolute inset-0 bg-gradient-to-r from-blue-500/10 to-indigo-500/10 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity duration-200"></div>
+              <ArrowLeft size={18} className="relative z-10 group-hover:-translate-x-1 transition-transform duration-200" />
+              <span className="relative z-10 font-medium">Back to Dashboard</span>
+            </button>
+          )}
+          <h1 className="text-4xl font-bold text-slate-900 mb-2">Profile</h1>
+          <p className="text-slate-600">Manage your personal information and account details</p>
+        </div>
 
         {/* Profile Card */}
         <div className="bg-white rounded-3xl shadow-xl border border-slate-200 overflow-hidden">

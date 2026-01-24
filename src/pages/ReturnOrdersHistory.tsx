@@ -126,18 +126,21 @@ export default function ReturnOrdersHistory() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50">
       <div className="container mx-auto px-4 sm:px-6 py-6 max-w-7xl">
-        <button
-          onClick={() => navigate("/dashboard")}
-          className="mb-4 inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-white/70 border border-slate-200 text-slate-700 hover:bg-white hover:text-slate-900 transition-all duration-200 shadow-sm"
-        >
-          <ArrowLeft size={20} />
-          <span className="text-sm font-semibold">Back to Terminal</span>
-        </button>
-
-        <PageHeader
-          title="Return Orders History"
-          icon={<span className="text-2xl">🧾</span>}
-          right={
+        {/* Header */}
+        <div className="mb-6">
+          <button
+            onClick={() => navigate("/cashier")}
+            className="mb-6 group relative inline-flex items-center gap-3 px-4 py-2.5 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-xl text-blue-700 hover:from-blue-100 hover:to-indigo-100 hover:border-blue-300 hover:shadow-md transition-all duration-200"
+          >
+            <div className="absolute inset-0 bg-gradient-to-r from-blue-500/10 to-indigo-500/10 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity duration-200"></div>
+            <ArrowLeft size={18} className="relative z-10 group-hover:-translate-x-1 transition-transform duration-200" />
+            <span className="relative z-10 font-medium">Back to Terminal</span>
+          </button>
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-3xl font-bold text-gray-800 mb-2">Return Orders History</h1>
+              <p className="text-gray-600">View orders with returns</p>
+            </div>
             <button
               onClick={() => navigate("/dashboard/return")}
               className="inline-flex items-center gap-2 px-4 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-all duration-200 shadow-sm"
@@ -232,93 +235,83 @@ export default function ReturnOrdersHistory() {
           </div>
         ) : (
           <>
-            <div className="bg-white rounded-lg shadow-md overflow-hidden">
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead className="bg-gray-50 border-b border-gray-200">
-                    <tr>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Order Number
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Order Date
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Customer
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Total Paid
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Returns
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Total Returned
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Last Return
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Actions
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="bg-white divide-y divide-gray-200">
-                    {orders.map((order) => (
-                      <tr key={order.orderId} className="hover:bg-gray-50">
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <span className="text-sm font-medium text-gray-900">
-                            {order.orderNumber}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <span className="text-sm text-gray-900">
-                            {new Date(order.orderDate).toLocaleDateString()}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <span className="text-sm text-gray-900">
-                            {order.customerName || "N/A"}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <span className="text-sm font-semibold text-gray-900">
-                            {fmtMoney(order.totalPaid)}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <span className="text-sm text-gray-900">
-                            {order.returnCount} return(s)
-                          </span>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <span className="text-sm font-semibold text-red-600">
-                            {fmtMoney(order.totalReturned)}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <span className="text-sm text-gray-500">
-                            {new Date(order.lastReturnAt).toLocaleDateString()}
-                          </span>
-                          <br />
-                          <span className="text-xs text-gray-400">
-                            {new Date(order.lastReturnAt).toLocaleTimeString()}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <button
-                            onClick={() => handleViewOrderReturns(order)}
-                            className="text-blue-600 hover:text-blue-800 transition flex items-center gap-1 text-sm"
-                          >
-                            <Eye className="w-4 h-4" />
-                            View Returns
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {orders.map((order) => (
+                <div
+                  key={order.orderId}
+                  className="bg-white rounded-xl shadow-md hover:shadow-lg transition-shadow duration-200 border border-gray-100 overflow-hidden"
+                >
+                  {/* Card Header */}
+                  <div className="bg-gradient-to-r from-blue-50 to-indigo-50 px-6 py-4 border-b border-gray-200">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h3 className="text-lg font-bold text-gray-900">{order.orderNumber}</h3>
+                        <p className="text-sm text-gray-600 mt-1">
+                          {new Date(order.orderDate).toLocaleDateString()}
+                        </p>
+                      </div>
+                      <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center">
+                        <RotateCcw className="w-6 h-6 text-blue-600" />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Card Body */}
+                  <div className="p-6 space-y-4">
+                    {/* Customer */}
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 bg-gray-100 rounded-full flex items-center justify-center">
+                        <span className="text-gray-600 font-semibold text-sm">
+                          {(order.customerName || "N/A").charAt(0).toUpperCase()}
+                        </span>
+                      </div>
+                      <div>
+                        <p className="text-xs text-gray-500">Customer</p>
+                        <p className="text-sm font-medium text-gray-900">{order.customerName || "N/A"}</p>
+                      </div>
+                    </div>
+
+                    {/* Financial Info */}
+                    <div className="grid grid-cols-2 gap-4 pt-4 border-t border-gray-100">
+                      <div>
+                        <p className="text-xs text-gray-500 mb-1">Total Paid</p>
+                        <p className="text-base font-semibold text-gray-900">{fmtMoney(order.totalPaid)}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-gray-500 mb-1">Total Returned</p>
+                        <p className="text-base font-semibold text-red-600">{fmtMoney(order.totalReturned)}</p>
+                      </div>
+                    </div>
+
+                    {/* Returns Info */}
+                    <div className="flex items-center justify-between pt-4 border-t border-gray-100">
+                      <div>
+                        <p className="text-xs text-gray-500 mb-1">Returns</p>
+                        <p className="text-sm font-medium text-gray-900">
+                          {order.returnCount} return{order.returnCount !== 1 ? 's' : ''}
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-xs text-gray-500 mb-1">Last Return</p>
+                        <p className="text-sm font-medium text-gray-900">
+                          {new Date(order.lastReturnAt).toLocaleDateString()}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Card Footer */}
+                  <div className="px-6 py-4 bg-gray-50 border-t border-gray-100">
+                    <button
+                      onClick={() => handleViewOrderReturns(order)}
+                      className="w-full px-4 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center gap-2 font-medium"
+                    >
+                      <Eye className="w-4 h-4" />
+                      View Returns
+                    </button>
+                  </div>
+                </div>
+              ))}
             </div>
 
             {/* Pagination */}

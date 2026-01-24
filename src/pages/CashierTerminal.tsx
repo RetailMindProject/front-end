@@ -18,6 +18,8 @@ import {
   RotateCcw,
   Store,
   Printer,
+  History,
+  CheckCircle,
 } from "lucide-react";
 import { getUserDisplayName, setSessionId, clearSessionId } from "../services/tokens";
 import { logoutForRole } from "../services/auth.api";
@@ -94,6 +96,15 @@ export default function CashierTerminal() {
   const [paidOrderId, setPaidOrderId] = useState<number | null>(null);
   const [paidOrderNumber, setPaidOrderNumber] = useState<string | null>(null);
   const [printingReceipt, setPrintingReceipt] = useState(false);
+  const [showUnpairConfirm, setShowUnpairConfirm] = useState(false);
+  const [showUnpairSuccess, setShowUnpairSuccess] = useState(false);
+  const [showHoldSuccess, setShowHoldSuccess] = useState(false);
+  const [showSessionClosedSuccess, setShowSessionClosedSuccess] = useState(false);
+  // Payment confirmation modal state
+  const [showPaymentConfirm, setShowPaymentConfirm] = useState(false);
+  const [showPaymentSuccess, setShowPaymentSuccess] = useState(false);
+  const [paymentMethod, setPaymentMethod] = useState<"cash" | "card" | "both" | null>(null);
+  const [paymentAmount, setPaymentAmount] = useState<number | null>(null);
   // Pagination state
   const [productsPage, setProductsPage] = useState(0);
   const [productsPageSize] = useState(20); // Products per page
@@ -1038,21 +1049,23 @@ export default function CashierTerminal() {
       return;
     }
 
-    // تأكيد قبل الدفع للـ Cash أو Card
-    const methodName = method === "cash" ? "Cash" : "Card";
-    const confirmMessage = `Confirm ${methodName} payment of ${fmtMoney(total)}?`;
-    
-    if (!window.confirm(confirmMessage)) {
-      return; // المستخدم ألغى العملية
-    }
+    // Show payment confirmation modal
+    setPaymentMethod(method);
+    setPaymentAmount(total);
+    setShowPaymentConfirm(true);
+  };
 
+  const handleConfirmPayment = async () => {
+    if (!currentOrder || !paymentMethod || !paymentAmount) return;
+
+    setShowPaymentConfirm(false);
     setProcessing(true);
     try {
       // Process single payment method
       const result = await ordersApi.processPayment({
         orderId: currentOrder.id,
-        paymentMethod: method.toUpperCase() as "CASH" | "CARD",
-        amount: total,
+        paymentMethod: paymentMethod.toUpperCase() as "CASH" | "CARD",
+        amount: paymentAmount,
       });
 
       if (result.error) {
@@ -1065,7 +1078,8 @@ export default function CashierTerminal() {
         // Clear cart and reset order
         setCart([]);
         setCurrentOrder(null);
-        alert("Payment successful!");
+        // Show success modal
+        setShowPaymentSuccess(true);
       }
     } catch (error) {
       console.error("Error processing payment:", error);
@@ -1100,13 +1114,19 @@ export default function CashierTerminal() {
       return;
     }
 
-    // تأكيد قبل الدفع
-    const confirmMessage = `Confirm split payment?\nCash: ${fmtMoney(cashAmount)}\nCard: ${fmtMoney(cardAmount)}\nTotal: ${fmtMoney(total)}`;
-    
-    if (!window.confirm(confirmMessage)) {
-      return; // المستخدم ألغى العملية
-    }
+    // Show payment confirmation modal for split payment
+    setPaymentMethod("both");
+    setPaymentAmount(total);
+    setShowPaymentConfirm(true);
+  };
 
+  const handleConfirmSplitPayment = async () => {
+    if (!currentOrder) return;
+
+    const cashAmount = parseFloat(splitCashAmount);
+    const cardAmount = parseFloat(splitCardAmount);
+
+    setShowPaymentConfirm(false);
     setProcessing(true);
     try {
       const result = await ordersApi.processPayment({
@@ -1127,7 +1147,8 @@ export default function CashierTerminal() {
         // Clear cart and reset order
         setCart([]);
         setCurrentOrder(null);
-        alert("Payment successful!");
+        // Show success modal
+        setShowPaymentSuccess(true);
       }
     } catch (error) {
       console.error("Error processing split payment:", error);
@@ -1322,11 +1343,11 @@ export default function CashierTerminal() {
 
     try {
       await finalizeSessionBeforeExit();
+      // Show success modal before logout
+      setShowSessionClosedSuccess(true);
     } finally {
       setLoadingStats(false);
     }
-
-    logoutForRole('CASHIER');
   };
 
   const handleCancelLogout = () => {
@@ -1368,11 +1389,11 @@ export default function CashierTerminal() {
           alert("Warning: Failed to close the session. Please contact a supervisor.");
         } else if (closeResult.data) {
           console.log("Session closed successfully", closeResult.data);
-          alert(closeResult.data.message || "Session closed successfully");
           setCurrentSessionId(null);
           clearSessionId();
           setSessionStats(null);
           setHeldOrders([]);
+          // Show success modal (will be handled by handleConfirmLogout)
         }
       } catch (error) {
         console.error("Error closing session:", error);
@@ -1385,14 +1406,11 @@ export default function CashierTerminal() {
       return;
     }
 
-    const confirmed = window.confirm(
-      "Unpair this browser from the terminal? You will need a new pairing code to continue working."
-    );
+    setShowUnpairConfirm(true);
+  };
 
-    if (!confirmed) {
-      return;
-    }
-
+  const confirmUnpair = async () => {
+    setShowUnpairConfirm(false);
     setUnpairing(true);
 
     try {
@@ -1401,6 +1419,7 @@ export default function CashierTerminal() {
       const result = await terminalApi.unpairTerminal();
       if (result.error) {
         alert(result.error);
+        setUnpairing(false);
         return;
       }
 
@@ -1410,11 +1429,13 @@ export default function CashierTerminal() {
       setCurrentOrder(null);
       setHeldOrders([]);
 
-      alert(result.data?.message || "This browser has been disconnected. You will be redirected to sign in again.");
-      logoutForRole('CASHIER');
+      setShowUnpairSuccess(true);
+      // Auto logout after showing success
+      setTimeout(() => {
+        logoutForRole('CASHIER');
+      }, 2000);
     } catch (error) {
       alert(error instanceof Error ? error.message : "Failed to unpair terminal");
-    } finally {
       setUnpairing(false);
     }
   };
@@ -1501,7 +1522,7 @@ export default function CashierTerminal() {
         if (currentSessionId) {
           await loadHeldOrders(currentSessionId);
         }
-        alert("Order held successfully");
+        setShowHoldSuccess(true);
       }
     } catch (error) {
       console.error("Error holding order:", error);
@@ -1592,7 +1613,7 @@ export default function CashierTerminal() {
             className="p-2 rounded-lg text-gray-600 hover:text-purple-600 hover:bg-purple-50 transition-colors"
             title="Return Orders History"
           >
-            <RotateCcw className="h-5 w-5" />
+            <History className="h-5 w-5" />
           </button>
           <button
             onClick={handleViewOrders}
@@ -1628,7 +1649,7 @@ export default function CashierTerminal() {
         {/* Left Sidebar - Products */}
         <div className="w-80 border-r border-gray-200 flex flex-col">
           {/* Search */}
-          <div className="p-4 border-b border-gray-200">
+          <div className="p-4 border-b border-gray-200 flex-shrink-0">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
               <input
@@ -1663,92 +1684,96 @@ export default function CashierTerminal() {
             tabIndex={-1}
           />
 
-          {/* Categories */}
-          <div className="p-4 border-b border-gray-200">
-            <h2 className="text-sm font-semibold text-gray-700 mb-3">
-              Categories
-            </h2>
-            <div className="space-y-1">
-              <button
-                onClick={() => {
-                  setSelectedCategory(null);
-                  setSelectedSubCategory(null);
-                  setExpandedCategory(null);
-                }}
-                className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm transition-colors ${
-                  selectedCategory === null && selectedSubCategory === null
-                    ? "bg-blue-50 text-blue-600"
-                    : "text-gray-700 hover:bg-gray-50"
-                }`}
-              >
-                <span>All</span>
-                <ChevronRight className="h-4 w-4" />
-              </button>
-              {categories.map((category) => (
-                <div key={category.id}>
+          {/* Categories - Scrollable */}
+          <div className="flex-shrink-0 border-b border-gray-200">
+            <div className="p-4 border-b border-gray-100">
+              <h2 className="text-sm font-semibold text-gray-700">
+                Categories
+              </h2>
+            </div>
+            <div className="overflow-y-auto" style={{ maxHeight: '200px' }}>
+              <div className="p-4 pt-2 space-y-1">
                 <button
-                    onClick={() => {
-                      if (expandedCategory === category.id) {
-                        setExpandedCategory(null);
-                        setSelectedCategory(null);
-                        setSelectedSubCategory(null);
-                      } else {
-                        setExpandedCategory(category.id);
-                        setSelectedCategory(category.id);
-                        setSelectedSubCategory(null);
-                      }
-                    }}
+                  onClick={() => {
+                    setSelectedCategory(null);
+                    setSelectedSubCategory(null);
+                    setExpandedCategory(null);
+                  }}
                   className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm transition-colors ${
-                      selectedCategory === category.id && selectedSubCategory === null
+                    selectedCategory === null && selectedSubCategory === null
                       ? "bg-blue-50 text-blue-600"
                       : "text-gray-700 hover:bg-gray-50"
                   }`}
                 >
-                  <span>{category.name}</span>
-                    <ChevronRight
-                      className={`h-4 w-4 transition-transform ${
-                        expandedCategory === category.id ? "rotate-90" : ""
-                      }`}
-                    />
-                  </button>
-                  {expandedCategory === category.id &&
-                    category.subCategories &&
-                    (category.subCategories ?? []).length > 0 && (
-                      <div className="ml-4 mt-1 space-y-1">
-                        {category.subCategories
-                          .filter((sc) => sc != null)
-                          .map((subCategory) => (
-                          <button
-                            key={subCategory.id}
-                            onClick={() => {
-                              setSelectedSubCategory(subCategory.id);
-                              setSelectedCategory(category.id);
-                            }}
-                            className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs transition-colors ${
-                              selectedSubCategory === subCategory.id
-                                ? "bg-blue-100 text-blue-700"
-                                : "text-gray-600 hover:bg-gray-50"
-                            }`}
-                          >
-                            <span>
-                              {subCategory.name}
-                              {subCategory.productCount !== undefined && (
-                                <span className="ml-2 text-gray-500">
-                                  ({subCategory.productCount})
-                                </span>
-                              )}
-                            </span>
+                  <span>All</span>
+                  <ChevronRight className="h-4 w-4" />
                 </button>
-                        ))}
-                      </div>
-                    )}
-                </div>
-              ))}
+                {categories.map((category) => (
+                  <div key={category.id}>
+                  <button
+                      onClick={() => {
+                        if (expandedCategory === category.id) {
+                          setExpandedCategory(null);
+                          setSelectedCategory(null);
+                          setSelectedSubCategory(null);
+                        } else {
+                          setExpandedCategory(category.id);
+                          setSelectedCategory(category.id);
+                          setSelectedSubCategory(null);
+                        }
+                      }}
+                    className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm transition-colors ${
+                        selectedCategory === category.id && selectedSubCategory === null
+                        ? "bg-blue-50 text-blue-600"
+                        : "text-gray-700 hover:bg-gray-50"
+                    }`}
+                  >
+                    <span>{category.name}</span>
+                      <ChevronRight
+                        className={`h-4 w-4 transition-transform ${
+                          expandedCategory === category.id ? "rotate-90" : ""
+                        }`}
+                      />
+                    </button>
+                    {expandedCategory === category.id &&
+                      category.subCategories &&
+                      (category.subCategories ?? []).length > 0 && (
+                        <div className="ml-4 mt-1 space-y-1">
+                          {category.subCategories
+                            .filter((sc) => sc != null)
+                            .map((subCategory) => (
+                            <button
+                              key={subCategory.id}
+                              onClick={() => {
+                                setSelectedSubCategory(subCategory.id);
+                                setSelectedCategory(category.id);
+                              }}
+                              className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs transition-colors ${
+                                selectedSubCategory === subCategory.id
+                                  ? "bg-blue-100 text-blue-700"
+                                  : "text-gray-600 hover:bg-gray-50"
+                              }`}
+                            >
+                              <span>
+                                {subCategory.name}
+                                {subCategory.productCount !== undefined && (
+                                  <span className="ml-2 text-gray-500">
+                                    ({subCategory.productCount})
+                                  </span>
+                                )}
+                              </span>
+                  </button>
+                          ))}
+                        </div>
+                      )}
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
 
-          {/* Products List */}
-          <div className="flex-1 overflow-y-auto p-4">
+          {/* Products List - Scrollable */}
+          <div className="flex-1 overflow-y-auto p-4 min-h-0">
             {loadingProducts ? (
               <div className="flex items-center justify-center py-8">
                 <Loader2 className="h-6 w-6 animate-spin text-blue-600" />
@@ -2911,6 +2936,218 @@ export default function CashierTerminal() {
                   </div>
                 )}
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Payment Confirmation Modal */}
+      {showPaymentConfirm && paymentMethod && paymentAmount && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-md mx-4">
+            <div className="p-6">
+              <h2 className="text-xl font-semibold text-gray-800 mb-4">
+                Confirm Payment
+              </h2>
+              <div className="mb-6">
+                <p className="text-gray-600 mb-2">
+                  Payment Method: <span className="font-semibold text-gray-900">
+                    {paymentMethod === "cash" ? "Cash" : paymentMethod === "card" ? "Card" : "Cash & Card"}
+                  </span>
+                </p>
+                {paymentMethod === "both" && (
+                  <div className="mt-3 space-y-2 text-sm text-gray-600">
+                    <p>Cash: <span className="font-semibold text-gray-900">{fmtMoney(parseFloat(splitCashAmount))}</span></p>
+                    <p>Card: <span className="font-semibold text-gray-900">{fmtMoney(parseFloat(splitCardAmount))}</span></p>
+                  </div>
+                )}
+                <p className="text-lg font-semibold text-gray-900 mt-4">
+                  Total Amount: {fmtMoney(paymentAmount)}
+                </p>
+              </div>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => {
+                    setShowPaymentConfirm(false);
+                    setPaymentMethod(null);
+                    setPaymentAmount(null);
+                  }}
+                  className="flex-1 py-2 px-4 bg-gray-200 text-gray-800 rounded-lg font-medium hover:bg-gray-300 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => {
+                    if (paymentMethod === "both") {
+                      handleConfirmSplitPayment();
+                    } else {
+                      handleConfirmPayment();
+                    }
+                  }}
+                  className="flex-1 py-2 px-4 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors"
+                >
+                  Confirm Payment
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Payment Success Modal */}
+      {showPaymentSuccess && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-md mx-4">
+            <div className="p-8 text-center">
+              <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <CheckCircle className="w-10 h-10 text-green-600" />
+              </div>
+              <h2 className="text-2xl font-bold text-gray-800 mb-2">
+                Payment Successful!
+              </h2>
+              <p className="text-gray-600 mb-6">
+                Order #{paidOrderNumber} has been paid successfully.
+              </p>
+              <button
+                onClick={() => {
+                  setShowPaymentSuccess(false);
+                  setPaymentMethod(null);
+                  setPaymentAmount(null);
+                }}
+                className="w-full py-3 px-4 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors"
+              >
+                OK
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Unpair Confirmation Modal */}
+      {showUnpairConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md mx-4 overflow-hidden">
+            <div className="p-6">
+              <div className="flex items-center justify-center mb-4">
+                <div className="w-16 h-16 bg-orange-100 rounded-full flex items-center justify-center">
+                  <span className="text-3xl">🔌</span>
+                </div>
+              </div>
+              <h2 className="text-2xl font-bold text-gray-900 mb-3 text-center">
+                Unpair Terminal?
+              </h2>
+              <p className="text-gray-600 mb-6 text-center">
+                This browser will be disconnected from the terminal. You will need a new pairing code to continue working.
+              </p>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setShowUnpairConfirm(false)}
+                  className="flex-1 py-3 px-4 border-2 border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors font-semibold"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={confirmUnpair}
+                  disabled={unpairing}
+                  className="flex-1 py-3 px-4 bg-gradient-to-r from-orange-500 to-orange-600 text-white rounded-lg font-semibold hover:from-orange-600 hover:to-orange-700 transition-all shadow-lg hover:shadow-xl disabled:opacity-70 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                >
+                  {unpairing ? (
+                    <>
+                      <Loader2 className="h-5 w-5 animate-spin" />
+                      Unpairing...
+                    </>
+                  ) : (
+                    "Confirm Unpair"
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Unpair Success Modal */}
+      {showUnpairSuccess && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+          <div className="bg-gradient-to-br from-gray-800 to-gray-900 rounded-xl shadow-2xl w-full max-w-md mx-4 overflow-hidden border border-gray-700">
+            <div className="p-8 text-center">
+              <div className="flex items-center justify-center mb-4">
+                <div className="w-20 h-20 bg-green-500/20 rounded-full flex items-center justify-center">
+                  <CheckCircle className="w-12 h-12 text-green-400" />
+                </div>
+              </div>
+              <h2 className="text-2xl font-bold text-white mb-3">
+                Terminal Unpaired Successfully
+              </h2>
+              <p className="text-gray-300 mb-6">
+                This browser has been disconnected. You will be redirected to sign in again.
+              </p>
+              <button
+                onClick={() => {
+                  setShowUnpairSuccess(false);
+                  logoutForRole('CASHIER');
+                }}
+                className="w-full py-3 px-6 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 transition-colors shadow-lg"
+              >
+                OK
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Hold Order Success Modal (Dark Theme) */}
+      {showHoldSuccess && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+          <div className="bg-gradient-to-br from-gray-800 to-gray-900 rounded-xl shadow-2xl w-full max-w-md mx-4 overflow-hidden border border-gray-700">
+            <div className="p-8 text-center">
+              <div className="flex items-center justify-center mb-4">
+                <div className="w-20 h-20 bg-green-500/20 rounded-full flex items-center justify-center">
+                  <CheckCircle className="w-12 h-12 text-green-400" />
+                </div>
+              </div>
+              <h2 className="text-2xl font-bold text-white mb-3">
+                Order held successfully
+              </h2>
+              <p className="text-gray-300 mb-6">
+                The order has been saved and can be retrieved later.
+              </p>
+              <button
+                onClick={() => setShowHoldSuccess(false)}
+                className="w-full py-3 px-6 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 transition-colors shadow-lg"
+              >
+                OK
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Session Closed Success Modal (Dark Theme) */}
+      {showSessionClosedSuccess && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+          <div className="bg-gradient-to-br from-gray-800 to-gray-900 rounded-xl shadow-2xl w-full max-w-md mx-4 overflow-hidden border border-gray-700">
+            <div className="p-8 text-center">
+              <div className="flex items-center justify-center mb-4">
+                <div className="w-20 h-20 bg-green-500/20 rounded-full flex items-center justify-center">
+                  <CheckCircle className="w-12 h-12 text-green-400" />
+                </div>
+              </div>
+              <h2 className="text-2xl font-bold text-white mb-3">
+                Session closed successfully
+              </h2>
+              <p className="text-gray-300 mb-6">
+                Your cashier session has been closed and all transactions have been saved.
+              </p>
+              <button
+                onClick={() => {
+                  setShowSessionClosedSuccess(false);
+                  logoutForRole('CASHIER');
+                }}
+                className="w-full py-3 px-6 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 transition-colors shadow-lg"
+              >
+                OK
+              </button>
             </div>
           </div>
         </div>

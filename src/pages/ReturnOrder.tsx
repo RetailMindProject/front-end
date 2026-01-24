@@ -365,10 +365,12 @@ export default function ReturnOrder() {
                 View Return History
               </button>
               <button
-                onClick={() => navigate("/dashboard")}
-                className="px-6 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 transition"
+                onClick={() => navigate("/cashier")}
+                className="group relative inline-flex items-center gap-3 px-6 py-2.5 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-xl text-blue-700 hover:from-blue-100 hover:to-indigo-100 hover:border-blue-300 hover:shadow-md transition-all duration-200"
               >
-                Back to Terminal
+                <div className="absolute inset-0 bg-gradient-to-r from-blue-500/10 to-indigo-500/10 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity duration-200"></div>
+                <ArrowLeft size={18} className="relative z-10 group-hover:-translate-x-1 transition-transform duration-200" />
+                <span className="relative z-10 font-medium">Back to Terminal</span>
               </button>
             </div>
           </div>
@@ -380,18 +382,21 @@ export default function ReturnOrder() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50">
       <div className="container mx-auto px-4 sm:px-6 py-6 max-w-6xl">
-        <button
-          onClick={() => navigate("/dashboard")}
-          className="mb-4 inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-white/70 border border-slate-200 text-slate-700 hover:bg-white hover:text-slate-900 transition-all duration-200 shadow-sm"
-        >
-          <ArrowLeft size={20} />
-          <span className="text-sm font-semibold">Back to Terminal</span>
-        </button>
-
-        <PageHeader
-          title="Return Order"
-          icon={<span className="text-2xl">↩️</span>}
-          right={
+        {/* Header */}
+        <div className="mb-6">
+          <button
+            onClick={() => navigate("/cashier")}
+            className="mb-6 group relative inline-flex items-center gap-3 px-4 py-2.5 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-xl text-blue-700 hover:from-blue-100 hover:to-indigo-100 hover:border-blue-300 hover:shadow-md transition-all duration-200"
+          >
+            <div className="absolute inset-0 bg-gradient-to-r from-blue-500/10 to-indigo-500/10 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity duration-200"></div>
+            <ArrowLeft size={18} className="relative z-10 group-hover:-translate-x-1 transition-transform duration-200" />
+            <span className="relative z-10 font-medium">Back to Terminal</span>
+          </button>
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-3xl font-bold text-gray-800 mb-2">Return Order</h1>
+              <p className="text-gray-600">Search for an order by order number to process a return</p>
+            </div>
             <button
               onClick={() => navigate("/dashboard/returns")}
               className="inline-flex items-center gap-2 px-4 py-2.5 bg-white/70 text-slate-700 rounded-lg hover:bg-white transition-all duration-200 shadow-sm border border-slate-200"
