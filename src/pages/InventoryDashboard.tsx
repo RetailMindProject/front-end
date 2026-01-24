@@ -1,6 +1,7 @@
 import { useMemo, useState, useEffect } from "react";
 import { Card, CardTitle, CardValue, CardHint, SalesLineChart, CategoryPieChart, BarChart } from "../components";
 import { dashboardApi, type InventorySummary, type RecentMovement, type CategoryMovement, type CategorySales, type TopProductMovement, type WeeklyTrend } from "../services/dashboard.api";
+import PageHeader from "../components/PageHeader";
 
 // Mock data
 const weeklyCategoryMovement = [
@@ -205,13 +206,11 @@ export default function InventoryDashboard() {
 
   return (
     <>
-      <div className="mb-6">
-        <h1 className="text-2xl md:text-3xl font-semibold tracking-tight">Inventory Dashboard</h1>
-        {loading && <p className="text-slate-600">Loading inventory data...</p>}
-        {error && <p className="text-red-600">Error: {error}</p>}
-        {!loading && !error && inventoryData && <p className="text-slate-600">Connected to backend API</p>}
-        {!loading && !error && !inventoryData && <p className="text-slate-600">Weekly category movement and sales overview</p>}
-      </div>
+      <PageHeader
+        title="Inventory Dashboard"
+        icon={<span className="text-2xl">📦</span>}
+      />
+      {error && <p className="mt-4 text-red-600">Error: {error}</p>}
 
       {loading && (
         <div className="flex items-center justify-center py-12">

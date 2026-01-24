@@ -5,6 +5,7 @@ import CreateProduct from '../components/Operations/CreateProduct';
 import EditProduct from '../components/Operations/EditProduct';
 import RestockModal from '../components/Operations/RestockModal';
 import { productsApi, type ProductDTO, type ProductCreateDTO } from '../services/products.api';
+import PageHeader from "../components/PageHeader";
 
 type UIProduct = Omit<ProductDTO, 'category'> & { 
   category?: string;
@@ -402,6 +403,8 @@ export default function InventoryOperations() {
           storeQuantity,
           sales
         };
+        // NOTE: normalized is prepared for future UI insert; current flow refreshes list from API.
+        void normalized;
         
         // Refresh the list to show the new product (go to page 0 to see it)
         setCurrentPage(0);
@@ -695,23 +698,10 @@ export default function InventoryOperations() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50">
-      {/* Header Section */}
-      <header className="border-b border-indigo-200/50 bg-white/80 backdrop-blur-md shadow-sm">
-        <div className="h-0.5 bg-gradient-to-r from-indigo-500 via-blue-500 to-indigo-500"></div>
-        <div className="px-6 py-6">
-          <div className="flex items-center gap-4">
-            <div className="grid h-12 w-12 place-items-center rounded-xl bg-gradient-to-br from-indigo-500 to-blue-600 shadow-lg ring-2 ring-white/20">
-              <span className="text-2xl">📦</span>
-            </div>
-            <div>
-              <h1 className="text-3xl font-bold bg-gradient-to-r from-indigo-600 via-blue-600 to-purple-600 bg-clip-text text-transparent">
-                Inventory Operations
-              </h1>
-              <p className="text-sm text-slate-600 mt-1">Manage your product inventory</p>
-            </div>
-          </div>
-        </div>
-      </header>
+      <PageHeader
+        title="Inventory Operations"
+        icon={<span className="text-2xl">📦</span>}
+      />
 
       {/* Main Content */}
       <div className="container mx-auto px-4 sm:px-6 py-6 max-w-7xl">

@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { Card } from "../components";
 import { terminalApi, type PairingRequestResponse } from "../services/terminal.api";
 import { Check, X, Clock } from "lucide-react";
+import PageHeader from "../components/PageHeader";
 
 export default function PairingRequests() {
   const [requests, setRequests] = useState<PairingRequestResponse[]>([]);
@@ -92,10 +93,10 @@ export default function PairingRequests() {
 
   return (
     <div className="p-6">
-      <div className="mb-6">
-        <h1 className="text-3xl font-bold text-gray-900">Pairing Requests</h1>
-        <p className="text-gray-600 mt-1">Review and approve terminal pairing requests from cashiers</p>
-      </div>
+      <PageHeader
+        title="Pairing Requests"
+        icon={<span className="text-2xl">🔗</span>}
+      />
 
       {error && (
         <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg text-sm">

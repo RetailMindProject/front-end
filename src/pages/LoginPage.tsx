@@ -3,19 +3,16 @@ import { useNavigate, Link } from "react-router-dom";
 import { 
   Mail, 
   Lock, 
+  Briefcase,
   Eye, 
   EyeOff, 
   Check, 
   Brain,
-  CreditCard,
-  Package,
-  FileText,
+  Zap,
   Loader2,
   AlertCircle
 } from "lucide-react";
 import AuthCard from "../components/AuthCard";
-import Logo from "../components/Logo";
-import FeatureItem from "../components/FeatureItem";
 import { login, cashierLogin } from "../services/auth.api";
 import { terminalApi } from "../services/terminal.api";
 import { setTokenForRole, setUserInfo } from "../services/tokens";
@@ -33,15 +30,15 @@ export default function Login() {
   const getRoleRoute = (role: UserRole): string => {
     switch (role) {
       case "CEO":
-        return "/ceo";
+        return "/dashboard";
       case "STORE_MANAGER":
-        return "/store-manager";
+        return "/dashboard";
       case "INVENTORY_MANAGER":
-        return "/inventory-manager";
+        return "/dashboard";
       case "CASHIER":
-        return "/cashier";
+        return "/dashboard";
       case "CUSTOMER":
-        return "/customer";
+        return "/dashboard";
       default:
         return "/login";
     }
@@ -116,9 +113,9 @@ export default function Login() {
             const pairingStatus = await terminalApi.checkPairingStatus();
             
             if (pairingStatus.data?.isPaired) {
-              navigate("/cashier", { replace: true });
+              navigate("/dashboard", { replace: true });
             } else {
-              navigate("/select-terminal", {
+              navigate("/dashboard/select-terminal", {
                 replace: true,
                 state: {
                   message: "This browser is not paired with a terminal yet. Please pair to continue.",
@@ -185,69 +182,57 @@ export default function Login() {
       <div className="absolute bottom-0 left-0 w-96 h-96 bg-gradient-to-tr from-blue-300/10 to-cyan-300/10 rounded-full blur-3xl pointer-events-none hidden lg:block" />
 
       {/* Left Panel - Welcome Section */}
-      <div className="flex-1 relative bg-gradient-to-br from-blue-50 via-indigo-50/50 to-white p-6 sm:p-8 md:p-12 lg:p-16 flex flex-col overflow-hidden min-h-[50vh] lg:min-h-screen">
-        {/* Logo */}
-        <div className="relative z-10">
-          <Logo />
-        </div>
+      <div className="flex-1 lg:flex-[0.85] relative bg-gradient-to-br from-blue-50 via-indigo-50/50 to-white p-6 sm:p-8 md:p-12 lg:p-16 flex flex-col overflow-hidden min-h-[50vh] lg:min-h-screen">
 
-        {/* RetailMind Logo Card with Glow */}
-        <div className="mt-8 md:mt-12 flex justify-center md:justify-start relative z-10">
-          <div className="relative group">
-            <div className="absolute inset-0 bg-gradient-to-br from-[#0066FF] to-[#0044CC] rounded-2xl blur-xl opacity-30 group-hover:opacity-50 transition-opacity duration-500" />
-            <div className="relative bg-gradient-to-br from-slate-800 via-slate-900 to-slate-800 rounded-2xl p-6 shadow-2xl border border-slate-700/50 group-hover:shadow-[0_20px_50px_rgba(0,102,255,0.3)] transition-all duration-500 hover:scale-[1.02]">
-              <div className="flex items-center gap-4">
-                <div className="relative">
-                  <div className="absolute inset-0 bg-gradient-to-br from-[#0066FF] to-[#0044CC] rounded-xl blur-md opacity-50" />
-                  <div className="relative p-3 bg-gradient-to-br from-[#0066FF] to-[#0044CC] rounded-xl">
-                    <Brain className="h-8 w-8 text-white" />
-                  </div>
+        <div className="relative z-10 flex flex-col h-full -translate-y-6 sm:-translate-y-8">
+          {/* Center content */}
+          <div className="flex-1 flex flex-col items-center justify-center text-center pt-8">
+            {/* Top icon tile */}
+            <div className="h-28 w-28 rounded-3xl bg-white/80 border border-slate-200/70 shadow-[0_22px_60px_rgba(15,23,42,0.14)] backdrop-blur-sm grid place-items-center">
+              <Brain className="h-12 w-12 text-[#0066FF]" aria-hidden="true" />
+            </div>
+
+            <h1 className="mt-8 text-5xl sm:text-6xl font-extrabold tracking-tight text-slate-900">
+              Welcome Back
+            </h1>
+
+            <p className="mt-4 text-slate-600 text-base sm:text-lg leading-relaxed max-w-md">
+              Access your account to continue your experience
+              <br />
+              with RetailMind
+            </p>
+          </div>
+
+          {/* Bottom feature tiles */}
+          <div className="pb-6 sm:pb-8">
+            <div className="grid grid-cols-3 gap-3 sm:gap-4">
+              <div className="rounded-2xl bg-white/80 border border-slate-200/70 shadow-sm backdrop-blur-sm px-3 py-4 text-center">
+                <div className="mx-auto h-11 w-11 rounded-full bg-white/80 border border-slate-200/70 grid place-items-center">
+                  <Lock className="h-5 w-5 text-[#0066FF]" aria-hidden="true" />
                 </div>
-                <img
-                  src="/picture/retalmind%20(3).jpeg"
-                  alt="RetailMind"
-                  className="h-16 w-auto rounded-lg shadow-lg"
-                />
+                <div className="mt-3 text-sm font-semibold text-slate-800">Secure</div>
+              </div>
+              <div className="rounded-2xl bg-white/80 border border-slate-200/70 shadow-sm backdrop-blur-sm px-3 py-4 text-center">
+                <div className="mx-auto h-11 w-11 rounded-full bg-white/80 border border-slate-200/70 grid place-items-center">
+                  <Zap className="h-5 w-5 text-[#0066FF]" aria-hidden="true" />
+                </div>
+                <div className="mt-3 text-sm font-semibold text-slate-800">Fast</div>
+              </div>
+              <div className="rounded-2xl bg-white/80 border border-slate-200/70 shadow-sm backdrop-blur-sm px-3 py-4 text-center">
+                <div className="mx-auto h-11 w-11 rounded-full bg-white/80 border border-slate-200/70 grid place-items-center">
+                  <Briefcase className="h-5 w-5 text-[#0066FF]" aria-hidden="true" />
+                </div>
+                <div className="mt-3 text-sm font-semibold text-slate-800">Professional</div>
               </div>
             </div>
           </div>
         </div>
-
-        {/* Welcome Content */}
-        <div className="mt-12 md:mt-16 max-w-lg relative z-10">
-          <h1 className="text-4xl md:text-5xl lg:text-6xl font-extrabold mb-6 bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 bg-clip-text text-transparent leading-tight">
-            Welcome to POS
-          </h1>
-          <p className="text-slate-600 text-lg md:text-xl mb-10 leading-relaxed">
-            Sign in to manage sales, inventory, and sessions. Fast, secure, and built for multi-terminal stores.
-          </p>
-
-          {/* Feature List */}
-          <div className="space-y-5">
-            <FeatureItem 
-              icon={<CreditCard className="h-5 w-5" />} 
-              text="Integrated cash & card sessions" 
-            />
-            <FeatureItem 
-              icon={<Package className="h-5 w-5" />} 
-              text="Real-time inventory tracking" 
-            />
-            <FeatureItem 
-              icon={<FileText className="h-5 w-5" />} 
-              text="Receipt printing ready" 
-            />
-          </div>
-        </div>
-
-        {/* Footer */}
-        <div className="mt-auto relative z-10">
-          <p className="text-sm text-slate-500">© 2025 RetailMind POS - All rights reserved</p>
-        </div>
       </div>
 
       {/* Right Panel - Sign In Form */}
-      <div className="w-full lg:w-[600px] xl:w-[650px] flex items-center justify-center p-6 sm:p-8 md:p-12 lg:p-16 relative z-10 bg-white/30 lg:bg-transparent">
-        <AuthCard>
+      <div className="w-full lg:flex-[1.15] xl:flex-[1.2] flex items-center justify-center p-6 sm:p-8 md:p-12 lg:p-0 relative z-10 bg-white/30 lg:bg-transparent">
+        <div className="w-full lg:max-w-[600px] xl:max-w-[650px] mx-auto">
+          <AuthCard>
           {/* Header */}
           <div className="flex items-center gap-4 mb-8">
             <div className="relative group">
@@ -400,7 +385,8 @@ export default function Login() {
               </Link>
             </div>
           </form>
-        </AuthCard>
+          </AuthCard>
+        </div>
       </div>
 
     </div>

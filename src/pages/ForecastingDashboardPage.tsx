@@ -12,6 +12,7 @@ import {
 import { productsApi, type ProductDTO } from "../services/products.api";
 import { forecastingApi } from "../services/forecasting.api";
 import type { ProductStockForecastSummary } from "../types/forecasting.dto";
+import PageHeader from "../components/PageHeader";
 
 type Urgency = "critical" | "high" | "medium" | "low" | "unknown";
 
@@ -253,17 +254,11 @@ export default function ForecastingDashboardPage() {
 
   return (
     <div className="min-h-full w-full bg-gradient-to-br from-slate-50 via-indigo-50/30 to-indigo-50/20">
-      <div className="px-6 sm:px-8 py-6">
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-slate-900">
-              Forecasting
-            </h1>
-            <p className="text-sm text-slate-600 mt-1">
-              Browse products, review stock health, and open detailed forecasts.
-            </p>
-          </div>
-          <div className="flex items-center gap-3">
+      <PageHeader
+        title="Forecasting"
+        icon={<span className="text-2xl">📈</span>}
+        right={
+          <>
             <select
               value={batchHorizonDays}
               onChange={(e) => setBatchHorizonDays(Number(e.target.value))}
@@ -283,7 +278,7 @@ export default function ForecastingDashboardPage() {
             <button
               onClick={handleRunBatchForecast}
               disabled={batchRunning}
-              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 transition disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
+              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
             >
               {batchRunning ? (
                 <>
@@ -297,8 +292,11 @@ export default function ForecastingDashboardPage() {
                 </>
               )}
             </button>
-          </div>
-        </div>
+          </>
+        }
+      />
+
+      <div className="px-6 sm:px-8 py-6">
 
         {batchMessage && (
           <div className="mt-4 p-4 bg-emerald-50 border border-emerald-200 rounded-xl text-sm text-emerald-800 flex items-start gap-3">

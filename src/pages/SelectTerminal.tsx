@@ -57,7 +57,7 @@ export default function SelectTerminal() {
 
   const handleEnterPos = () => {
     clearRedirectTimer();
-    window.location.href = "/cashier";
+    window.location.href = "/dashboard";
   };
 
   const scheduleAutoRedirect = () => {

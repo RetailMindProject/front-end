@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { Search, ArrowLeft, Check, DollarSign, CreditCard, Loader2, RotateCcw } from "lucide-react";
 import { ordersApi, type OrderForReturn, type OrderItemForReturn } from "../services/orders.api";
 import { returnsApi, type ReturnItemRequest, type RefundRequest } from "../services/returns.api";
+import PageHeader from "../components/PageHeader";
 
 const fmt = new Intl.NumberFormat(undefined, {
   style: "currency",
@@ -358,7 +359,7 @@ export default function ReturnOrder() {
                 New Return
               </button>
               <button
-                onClick={() => navigate("/cashier/returns")}
+                onClick={() => navigate("/dashboard/returns")}
                 className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition"
               >
                 View Return History
@@ -397,14 +398,14 @@ export default function ReturnOrder() {
               <p className="text-gray-600">Search for an order by order number to process a return</p>
             </div>
             <button
-              onClick={() => navigate("/cashier/returns")}
-              className="px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 transition flex items-center gap-2"
+              onClick={() => navigate("/dashboard/returns")}
+              className="inline-flex items-center gap-2 px-4 py-2.5 bg-white/70 text-slate-700 rounded-lg hover:bg-white transition-all duration-200 shadow-sm border border-slate-200"
             >
               <RotateCcw className="w-4 h-4" />
               View History
             </button>
-          </div>
-        </div>
+          }
+        />
 
         {/* Search Section */}
         <div className="bg-white rounded-lg shadow-md p-6 mb-6">

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Settings } from "lucide-react";
+import { SlidersHorizontal } from "lucide-react";
 
 interface RecommendationsControlsProps {
   topK: number;
@@ -25,10 +25,10 @@ export default function RecommendationsControls({
       <button
         onClick={() => setIsOpen(!isOpen)}
         className="flex items-center gap-2 px-3 py-2 text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
-        aria-label="Recommendation settings"
+        aria-label="Recommendation controls"
       >
-        <Settings className="h-4 w-4" />
-        <span>Settings</span>
+        <SlidersHorizontal className="h-4 w-4" />
+        <span>Controls</span>
       </button>
 
       {isOpen && (
@@ -41,7 +41,7 @@ export default function RecommendationsControls({
           
           {/* Dropdown */}
           <div className="absolute right-0 mt-2 w-64 bg-white rounded-lg shadow-lg border border-gray-200 z-20 p-4">
-            <h3 className="text-sm font-semibold text-gray-900 mb-3">Recommendation Settings</h3>
+            <h3 className="text-sm font-semibold text-gray-900 mb-3">Recommendations</h3>
             
             <div className="space-y-4">
               {/* TopK Selector */}
@@ -78,7 +78,7 @@ export default function RecommendationsControls({
               {/* Candidate Limit (Advanced - Hidden by default, can be shown) */}
               <details className="text-xs">
                 <summary className="cursor-pointer text-gray-600 hover:text-gray-900 font-medium mb-2">
-                  Advanced Settings
+                  Advanced
                 </summary>
                 <div className="mt-2">
                   <label className="block text-xs font-medium text-gray-700 mb-1">

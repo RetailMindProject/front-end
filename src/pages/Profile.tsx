@@ -8,6 +8,8 @@ import ProfileBanner from "../components/profile/ProfileBanner";
 import type { ProfileFormData } from "../components/profile/types";
 import { getUserInfo, getCurrentRole, decodeJWT, getCurrentToken, setUserInfo } from "../services/tokens";
 import { getCurrentUserProfile } from "../services/auth.api";
+import PageHeader from "../components/PageHeader";
+import BackButton from "../components/BackButton";
 
 function useRoleAndName() {
   const userInfo = getUserInfo();
@@ -93,18 +95,8 @@ export default function Profile() {
   // Get dashboard route based on role
   const getDashboardRoute = (): string => {
     const role = getCurrentRole();
-    switch (role) {
-      case "CEO":
-        return "/ceo";
-      case "STORE_MANAGER":
-        return "/store-manager";
-      case "INVENTORY_MANAGER":
-        return "/inventory-manager";
-      case "CASHIER":
-        return "/cashier";
-      default:
-        return "/ceo"; // Default fallback
-    }
+    if (role) return "/dashboard";
+    return "/login";
   };
 
   useEffect(() => {

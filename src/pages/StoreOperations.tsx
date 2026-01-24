@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import StoreManager from '../components/Operations/StoreManager';
 import { storeProductsApi, type StoreProductResponseDTO, type StoreTransferRequestDTO } from '../services/store-products.api';
 import { productsApi, type ProductDTO } from '../services/products.api';
+import PageHeader from "../components/PageHeader";
 
 type UIStoreProduct = StoreProductResponseDTO & {
   imageUrl?: string | null;
@@ -439,23 +440,10 @@ export default function StoreOperations() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50">
-      {/* Header Section */}
-      <header className="border-b border-indigo-200/50 bg-white/80 backdrop-blur-md shadow-sm">
-        <div className="h-0.5 bg-gradient-to-r from-indigo-500 via-blue-500 to-indigo-500"></div>
-        <div className="px-6 py-6">
-          <div className="flex items-center gap-4">
-            <div className="grid h-12 w-12 place-items-center rounded-xl bg-gradient-to-br from-indigo-500 to-blue-600 shadow-lg ring-2 ring-white/20">
-              <span className="text-2xl">🏪</span>
-            </div>
-            <div>
-              <h1 className="text-3xl font-bold bg-gradient-to-r from-indigo-600 via-blue-600 to-purple-600 bg-clip-text text-transparent">
-                Store Operations
-              </h1>
-              <p className="text-sm text-slate-600 mt-1">Manage products available in the store</p>
-            </div>
-          </div>
-        </div>
-      </header>
+      <PageHeader
+        title="Store Operations"
+        icon={<span className="text-2xl">🏪</span>}
+      />
 
       {/* Main Content */}
       <div className="container mx-auto px-4 sm:px-6 py-6 max-w-7xl">

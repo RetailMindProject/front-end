@@ -9,6 +9,7 @@ import {
   ProductsList,
   RecentDailyTable,
 } from "../components";
+import PageHeader from "../components/PageHeader";
 
 // -------- Mock Data --------
 const salesTrend = [
@@ -51,10 +52,10 @@ export default function StoreDashboard() {
 
   return (
     <>
-      <div className="mb-6">
-        <h1 className="text-2xl md:text-3xl font-semibold tracking-tight">Store Dashboard</h1>
-        <p className="text-slate-600">Mock view – UI only (no backend data)</p>
-      </div>
+      <PageHeader
+        title="Store Dashboard"
+        icon={<span className="text-2xl">🏪</span>}
+      />
 
       {/* KPI Row */}
       <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
