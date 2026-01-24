@@ -1,32 +1,35 @@
-import { useState } from "react";
-import { useNavigate, useLocation } from "react-router-dom";
+import { useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { Card } from "../components";
 import CreateAccountForm from "../components/CreateAccountForm";
 import type { CreateAccountFormData, UserRole } from "../types/user";
 import { createAccount } from "../services/auth.api";
+import PageHeader from "../components/PageHeader";
+import { ArrowLeft } from "lucide-react";
+import { getCurrentRole } from "../services/tokens";
 
 export default function CreateAccountPage() {
   const navigate = useNavigate();
-  const location = useLocation();
   const [error, setError] = useState<string | null>(null);
 
-  // Determine allowed roles and back path based on current route
-  const isStoreManager = location.pathname.includes("/store-manager");
-  const allowedRoles: UserRole[] = isStoreManager 
-    ? ['CASHIER'] 
-    : ['STORE_MANAGER', 'INVENTORY_MANAGER', 'CASHIER'];
-  
-  const backPath = isStoreManager 
-    ? "/store-manager" 
-    : "/ceo/manage-accounts";
-  
-  const pageTitle = isStoreManager 
-    ? "Create New Cashier Account" 
-    : "Create New Account";
-  
-  const pageDescription = isStoreManager
-    ? "Add a new cashier account to the system"
-    : "Add a new user account to the system";
+  const currentRole = getCurrentRole();
+  const isStoreManager = currentRole === "STORE_MANAGER";
+
+  const { allowedRoles, backPath, pageTitle } = useMemo(() => {
+    if (currentRole === "STORE_MANAGER") {
+      return {
+        allowedRoles: ["CASHIER"] as UserRole[],
+        backPath: "/dashboard",
+        pageTitle: "Create New Cashier Account",
+      };
+    }
+
+    return {
+      allowedRoles: ["STORE_MANAGER", "INVENTORY_MANAGER", "CASHIER"] as UserRole[],
+      backPath: "/dashboard/manage-accounts",
+      pageTitle: "Create New Account",
+    };
+  }, [currentRole]);
 
   const handleSubmit = async (data: CreateAccountFormData) => {
     setError(null);
@@ -95,17 +98,18 @@ export default function CreateAccountPage() {
   return (
     <div className="p-6">
       <div className="max-w-2xl mx-auto">
-        {/* Header */}
-        <div className="mb-6">
-          <button
-            onClick={() => navigate(backPath)}
-            className="text-gray-600 hover:text-gray-900 mb-4 flex items-center gap-2"
-          >
-            <span>←</span> {isStoreManager ? "Back to Sessions" : "Back to Manage Accounts"}
-          </button>
-          <h1 className="text-3xl font-bold text-gray-900">{pageTitle}</h1>
-          <p className="text-gray-600 mt-1">{pageDescription}</p>
-        </div>
+        <button
+          onClick={() => navigate(backPath)}
+          className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-white/70 border border-slate-200 text-slate-700 hover:bg-white hover:text-slate-900 transition-all duration-200 shadow-sm mb-4"
+        >
+          <ArrowLeft className="h-4 w-4" />
+          <span className="text-sm font-semibold">{isStoreManager ? "Back to Sessions" : "Back to Manage Accounts"}</span>
+        </button>
+
+        <PageHeader
+          title={pageTitle}
+          icon={<span className="text-2xl">➕</span>}
+        />
 
         {/* Error Message */}
         {error && (

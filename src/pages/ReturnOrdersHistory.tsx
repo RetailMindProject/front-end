@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { ArrowLeft, RotateCcw, Eye, Loader2, DollarSign, CreditCard, Search, ChevronLeft, ChevronRight, X } from "lucide-react";
 import { returnsApi, type ReturnOrderSummary, type OrderReturnSummary, type ReturnOrderDetails } from "../services/returns.api";
+import PageHeader from "../components/PageHeader";
 
 const fmt = new Intl.NumberFormat(undefined, {
   style: "currency",
@@ -125,29 +126,27 @@ export default function ReturnOrdersHistory() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50">
       <div className="container mx-auto px-4 sm:px-6 py-6 max-w-7xl">
-        {/* Header */}
-        <div className="mb-6">
-          <button
-            onClick={() => navigate("/cashier")}
-            className="mb-4 inline-flex items-center gap-2 text-slate-600 hover:text-slate-800 transition"
-          >
-            <ArrowLeft size={20} />
-            <span>Back to Terminal</span>
-          </button>
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-3xl font-bold text-gray-800 mb-2">Return Orders History</h1>
-              <p className="text-gray-600">View orders with returns</p>
-            </div>
+        <button
+          onClick={() => navigate("/dashboard")}
+          className="mb-4 inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-white/70 border border-slate-200 text-slate-700 hover:bg-white hover:text-slate-900 transition-all duration-200 shadow-sm"
+        >
+          <ArrowLeft size={20} />
+          <span className="text-sm font-semibold">Back to Terminal</span>
+        </button>
+
+        <PageHeader
+          title="Return Orders History"
+          icon={<span className="text-2xl">🧾</span>}
+          right={
             <button
-              onClick={() => navigate("/cashier/return")}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition flex items-center gap-2"
+              onClick={() => navigate("/dashboard/return")}
+              className="inline-flex items-center gap-2 px-4 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-all duration-200 shadow-sm"
             >
               <RotateCcw className="w-4 h-4" />
               New Return
             </button>
-          </div>
-        </div>
+          }
+        />
 
         {/* Filters */}
         <div className="bg-white rounded-lg shadow-md p-6 mb-6">
@@ -225,7 +224,7 @@ export default function ReturnOrdersHistory() {
             <h3 className="text-xl font-semibold text-gray-800 mb-2">No Return Orders Found</h3>
             <p className="text-gray-600 mb-6">No orders with returns match your search criteria.</p>
             <button
-              onClick={() => navigate("/cashier/return")}
+              onClick={() => navigate("/dashboard/return")}
               className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
             >
               Create New Return

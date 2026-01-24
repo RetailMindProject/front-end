@@ -40,7 +40,7 @@ export default function VerifyRegistrationPage() {
       return () => clearTimeout(timer);
     } else if (status === "success" && countdown === 0) {
       // Redirect to customer dashboard after successful verification
-      navigate("/customer");
+      navigate("/dashboard");
     }
   }, [status, countdown, navigate]);
 
@@ -120,7 +120,7 @@ export default function VerifyRegistrationPage() {
               </div>
 
               <button
-                onClick={() => navigate("/customer")}
+                onClick={() => navigate("/dashboard")}
                 className="w-full bg-blue-600 text-white py-3 rounded-lg font-semibold hover:bg-blue-700 transition-colors flex items-center justify-center gap-2 mb-3"
               >
                 Go to Dashboard

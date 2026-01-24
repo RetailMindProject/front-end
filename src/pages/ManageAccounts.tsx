@@ -1,7 +1,8 @@
-import { useState, useMemo, useEffect } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Plus } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
 import { Card } from "../components";
+import PageHeader from "../components/PageHeader";
 import AccountsTable from "../components/accounts/AccountsTable";
 import AccountsFilters from "../components/accounts/AccountsFilters";
 import AccountModal from "../components/accounts/AccountModal";
@@ -19,6 +20,8 @@ export default function ManageAccounts() {
   const [searchTerm, setSearchTerm] = useState('');
   const [roleFilter, setRoleFilter] = useState<UserRole | 'ALL'>('ALL');
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'ACTIVE' | 'INACTIVE'>('ALL');
+  const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useState(10);
 
   useEffect(() => {
     let isMounted = true;
@@ -66,6 +69,22 @@ export default function ManageAccounts() {
       return matchesSearch && matchesRole && matchesStatus;
     });
   }, [accounts, searchTerm, roleFilter, statusFilter]);
+
+  useEffect(() => {
+    setPage(0);
+  }, [searchTerm, roleFilter, statusFilter, pageSize]);
+
+  const totalPages = useMemo(() => {
+    return Math.max(1, Math.ceil(filteredAccounts.length / pageSize));
+  }, [filteredAccounts.length, pageSize]);
+
+  const currentPage = Math.min(page, totalPages - 1);
+
+  const pagedAccounts = useMemo(() => {
+    const start = currentPage * pageSize;
+    const end = start + pageSize;
+    return filteredAccounts.slice(start, end);
+  }, [filteredAccounts, currentPage, pageSize]);
 
   const handleEdit = async (data: EditAccountFormData) => {
     if (!editingAccount) {
@@ -213,20 +232,19 @@ export default function ManageAccounts() {
 
   return (
     <div className="p-6">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900">Manage Accounts</h1>
-          <p className="text-gray-600 mt-1">View and manage all user accounts</p>
-        </div>
-        <button
-          onClick={() => navigate("/ceo/create-account")}
-          className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 transition-colors"
-        >
-          <Plus className="h-4 w-4" />
-          Add New Account
-        </button>
-      </div>
+      <PageHeader
+        title="Manage Accounts"
+        icon={<span className="text-2xl">👥</span>}
+        right={
+          <button
+            onClick={() => navigate("/dashboard/create-account")}
+            className="inline-flex items-center gap-2 bg-indigo-600 text-white px-4 py-2.5 rounded-lg hover:bg-indigo-700 transition-all duration-200 text-sm font-semibold shadow-sm"
+          >
+            <Plus className="h-4 w-4" />
+            Add New Account
+          </button>
+        }
+      />
 
       {/* Filters */}
       <div className="mb-6">
@@ -254,11 +272,64 @@ export default function ManageAccounts() {
             Loading accounts...
           </div>
         ) : (
-          <AccountsTable
-            accounts={filteredAccounts}
-            onEdit={handleEditClick}
-            onToggleStatus={handleToggleStatus}
-          />
+          <>
+            <AccountsTable
+              accounts={pagedAccounts}
+              onEdit={handleEditClick}
+              onToggleStatus={handleToggleStatus}
+            />
+
+            <div className="mt-4 flex flex-col sm:flex-row items-center justify-between gap-3 border-t border-slate-200 pt-4">
+              <div className="text-sm text-slate-600">
+                Showing{" "}
+                <span className="font-semibold text-slate-900">
+                  {filteredAccounts.length === 0 ? 0 : currentPage * pageSize + 1}
+                </span>
+                {" "}to{" "}
+                <span className="font-semibold text-slate-900">
+                  {Math.min((currentPage + 1) * pageSize, filteredAccounts.length)}
+                </span>
+                {" "}of{" "}
+                <span className="font-semibold text-slate-900">{filteredAccounts.length}</span>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <select
+                  value={pageSize}
+                  onChange={(e) => setPageSize(Number(e.target.value))}
+                  className="px-3 py-2 border border-slate-300 rounded-lg text-sm font-semibold text-slate-700 bg-white hover:bg-slate-50 transition-all"
+                >
+                  {[10, 20, 50].map((s) => (
+                    <option key={s} value={s}>
+                      {s} / page
+                    </option>
+                  ))}
+                </select>
+
+                <button
+                  onClick={() => setPage((p) => Math.max(0, p - 1))}
+                  disabled={currentPage === 0}
+                  className="inline-flex items-center gap-1 px-3 py-2 rounded-lg border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-all text-sm font-semibold"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                  Prev
+                </button>
+
+                <div className="px-3 py-2 text-sm font-semibold text-slate-700">
+                  Page {currentPage + 1} / {totalPages}
+                </div>
+
+                <button
+                  onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
+                  disabled={currentPage >= totalPages - 1}
+                  className="inline-flex items-center gap-1 px-3 py-2 rounded-lg border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-all text-sm font-semibold"
+                >
+                  Next
+                  <ChevronRight className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+          </>
         )}
       </Card>
 

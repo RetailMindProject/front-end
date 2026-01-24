@@ -1,8 +1,9 @@
+import PageHeader from "../components/PageHeader";
+
 export default function Cashiers() {
   return (
     <div className="p-6">
-      <h1 className="text-2xl font-semibold">Cashiers</h1>
-      <p className="text-slate-600">Coming soon...</p>
+      <PageHeader title="Cashiers" icon={<span className="text-2xl">🧑‍💼</span>} />
     </div>
   );
 }

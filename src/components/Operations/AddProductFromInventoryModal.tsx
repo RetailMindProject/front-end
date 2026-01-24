@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useMemo, useState, useEffect, useRef } from 'react';
 import type { ChangeEvent } from 'react';
 import type { ProductDTO } from '../../services/products.api';
 import { storeProductsApi } from '../../services/store-products.api';
@@ -57,6 +57,16 @@ const AddProductFromInventoryModal = ({
   const [expirationDates, setExpirationDates] = useState<Map<number | string, string>>(new Map());
   // Track whether expiration date is enabled for each product (productId -> boolean)
   const [hasExpirationDate, setHasExpirationDate] = useState<Map<number | string, boolean>>(new Map());
+  const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useState(10);
+
+  const displayProducts = isSearching ? searchResults : availableProducts;
+  const totalPages = useMemo(() => Math.max(1, Math.ceil(displayProducts.length / pageSize)), [displayProducts.length, pageSize]);
+  const currentPage = Math.min(page, totalPages - 1);
+  const pagedProducts = useMemo(() => {
+    const start = currentPage * pageSize;
+    return displayProducts.slice(start, start + pageSize);
+  }, [currentPage, displayProducts, pageSize]);
 
   useEffect(() => {
     if (isOpen) {
@@ -68,6 +78,10 @@ const AddProductFromInventoryModal = ({
       setHasExpirationDate(new Map());
     }
   }, [isOpen, inventoryProducts]);
+
+  useEffect(() => {
+    setPage(0);
+  }, [isSearching, searchTerm, pageSize]);
 
   const loadAvailableProducts = async (preserveScroll = false) => {
     // Save scroll position before loading
@@ -288,8 +302,6 @@ const AddProductFromInventoryModal = ({
   };
 
 
-  const displayProducts = isSearching ? searchResults : availableProducts;
-
   return (
     <div 
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
@@ -484,8 +496,9 @@ const AddProductFromInventoryModal = ({
                   <p className="text-slate-600">Loading available products...</p>
                 </div>
               ) : displayProducts.length > 0 ? (
-                <div ref={scrollContainerRef} className="flex-1 overflow-y-auto space-y-3 pr-2">
-                  {displayProducts.map(product => {
+                <div className="flex-1 flex flex-col overflow-hidden">
+                  <div ref={scrollContainerRef} className="flex-1 overflow-y-auto space-y-3 pr-2">
+                    {pagedProducts.map(product => {
                     const imageUrl = product.imageUrl || product.primaryImageUrl || 
                       (product.images && product.images.length > 0 ? product.images[0].url : null);
                     const warehouseQty = product.warehouseQuantity || 0;
@@ -645,7 +658,56 @@ const AddProductFromInventoryModal = ({
                 </div>
                     );
                   })}
-            </div>
+                  </div>
+
+                  <div className="pt-3 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-3">
+                    <div className="text-sm text-slate-600">
+                      Showing{" "}
+                      <span className="font-semibold text-slate-900">
+                        {displayProducts.length === 0 ? 0 : currentPage * pageSize + 1}
+                      </span>{" "}
+                      to{" "}
+                      <span className="font-semibold text-slate-900">
+                        {Math.min((currentPage + 1) * pageSize, displayProducts.length)}
+                      </span>{" "}
+                      of <span className="font-semibold text-slate-900">{displayProducts.length}</span>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <select
+                        value={pageSize}
+                        onChange={(e) => setPageSize(Number(e.target.value))}
+                        className="px-3 py-2 border border-slate-300 rounded-lg text-sm font-semibold text-slate-700 bg-white hover:bg-slate-50 transition-all"
+                      >
+                        {[10, 20, 50].map((s) => (
+                          <option key={s} value={s}>
+                            {s} / page
+                          </option>
+                        ))}
+                      </select>
+
+                      <button
+                        onClick={() => setPage((p) => Math.max(0, p - 1))}
+                        disabled={currentPage === 0}
+                        className="inline-flex items-center gap-1 px-3 py-2 rounded-lg border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-all text-sm font-semibold"
+                      >
+                        Prev
+                      </button>
+
+                      <div className="px-3 py-2 text-sm font-semibold text-slate-700">
+                        Page {currentPage + 1} / {totalPages}
+                      </div>
+
+                      <button
+                        onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
+                        disabled={currentPage >= totalPages - 1}
+                        className="inline-flex items-center gap-1 px-3 py-2 rounded-lg border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-all text-sm font-semibold"
+                      >
+                        Next
+                      </button>
+                    </div>
+                  </div>
+                </div>
           ) : (
             <div className="text-center py-12">
               <p className="text-slate-600 mb-2">No products available to add.</p>

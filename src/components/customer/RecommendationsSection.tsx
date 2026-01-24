@@ -1,6 +1,6 @@
-import { ShoppingCart, AlertCircle, TrendingUp, Clock } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { AlertCircle, Clock, Flame, Percent, ShoppingCart, Sparkles, TrendingUp } from "lucide-react";
 import type { RecommendationItem, RecommendationMeta } from "../../types/customer.api";
+import SectionHeader from "./SectionHeader";
 
 interface RecommendationsSectionProps {
   forYou: RecommendationItem[];
@@ -21,8 +21,6 @@ export default function RecommendationsSection({
   error,
   status,
 }: RecommendationsSectionProps) {
-  const navigate = useNavigate();
-  
   // Determine section titles based on meta
   const forYouTitle = meta?.isColdStart ? "Popular near you" : "Recommended for you";
   const popularTitle = "Popular right now";
@@ -63,6 +61,11 @@ export default function RecommendationsSection({
               {product.offer.discountPercent}% OFF
             </div>
           )}
+          {!isAvailable && (
+            <div className="absolute top-3 left-3 bg-gray-900/80 text-white text-xs font-semibold px-2.5 py-1 rounded-full shadow-sm">
+              Out of Stock
+            </div>
+          )}
         </div>
         <div className="p-4">
           <div className="mb-3">
@@ -72,42 +75,41 @@ export default function RecommendationsSection({
           {displayPrice > 0 && (
             <p className="text-lg font-semibold text-gray-900 mb-3">${displayPrice.toFixed(2)}</p>
           )}
-          {isAvailable ? (
-            <button
-              className="w-full bg-blue-600 text-white text-sm font-medium py-2.5 rounded-lg hover:bg-blue-700 active:bg-blue-800 transition-colors duration-150 flex items-center justify-center gap-2 shadow-sm"
-              onClick={() => navigate(`/products/${product.productId}`)}
-            >
-              <ShoppingCart className="h-4 w-4" />
-              Add to Cart
-            </button>
-          ) : (
-            <button
-              className="w-full bg-gray-100 text-gray-500 text-sm font-medium py-2.5 rounded-lg cursor-not-allowed"
-              disabled
-            >
-              Out of Stock
-            </button>
-          )}
         </div>
       </div>
     );
   };
 
-  const ProductRow = ({ title, products, showColdStartBadge = false, showEmptyMessage = false }: { title: string; products: RecommendationItem[]; showColdStartBadge?: boolean; showEmptyMessage?: boolean }) => {
+  const ProductRow = ({
+    title,
+    products,
+    icon,
+    showColdStartBadge = false,
+    showEmptyMessage = false,
+  }: {
+    title: string;
+    products: RecommendationItem[];
+    icon: React.ReactNode;
+    showColdStartBadge?: boolean;
+    showEmptyMessage?: boolean;
+  }) => {
     return (
-      <div className="mb-10">
-        <div className="flex items-center gap-3 mb-5">
-          <h3 className="text-lg font-semibold text-gray-900">{title}</h3>
-          {showColdStartBadge && (
-            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-blue-50 text-blue-700 text-xs font-medium rounded-full border border-blue-100">
-              <TrendingUp className="h-3 w-3" />
-              New user picks
-            </span>
-          )}
-        </div>
+      <div className="mb-8">
+        <SectionHeader
+          title={title}
+          icon={icon}
+          right={
+            showColdStartBadge ? (
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-blue-50 text-blue-700 text-xs font-semibold rounded-full border border-blue-100">
+                <TrendingUp className="h-3 w-3" />
+                New user picks
+              </span>
+            ) : null
+          }
+        />
         {products.length === 0 ? (
           showEmptyMessage ? (
-            <div className="bg-gray-50 border border-gray-200 rounded-xl p-8 text-center">
+            <div className="mt-4 bg-gray-50 border border-gray-200 rounded-xl p-7 text-center">
               <p className="text-gray-600 text-sm leading-relaxed">
                 {title === "Recommended for you" || title === "Popular near you" 
                   ? "We're still learning your preferences. Start shopping to see personalized recommendations!"
@@ -118,7 +120,7 @@ export default function RecommendationsSection({
             </div>
           ) : null
         ) : (
-          <div className="flex gap-5 overflow-x-auto pb-3 -mx-1 px-1 scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-transparent">
+          <div className="mt-4 flex gap-5 overflow-x-auto pb-3 -mx-1 px-1 scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-transparent">
             {products.map((product) => (
               <ProductCard key={product.productId} product={product} showDiscount={title === "Special Offers"} />
             ))}
@@ -156,19 +158,21 @@ export default function RecommendationsSection({
         </div>
         
         {/* Still show sections (even if empty) */}
-        <div className="space-y-8">
+        <div className="space-y-6">
           <ProductRow 
             title={forYouTitle} 
             products={forYou} 
+            icon={<Sparkles className="h-5 w-5 text-white" />}
             showColdStartBadge={isColdStart && forYou.length > 0}
             showEmptyMessage={forYou.length === 0}
           />
           {popular.length > 0 && (
-            <ProductRow title={popularTitle} products={popular} />
+            <ProductRow title={popularTitle} products={popular} icon={<Flame className="h-5 w-5 text-white" />} />
           )}
           <ProductRow 
             title={offersTitle} 
             products={offers}
+            icon={<Percent className="h-5 w-5 text-white" />}
             showEmptyMessage={offers.length === 0}
           />
         </div>
@@ -191,19 +195,21 @@ export default function RecommendationsSection({
         </div>
         
         {/* Still show sections (even if empty) */}
-        <div className="space-y-8">
+        <div className="space-y-6">
           <ProductRow 
             title={forYouTitle} 
             products={forYou} 
+            icon={<Sparkles className="h-5 w-5 text-white" />}
             showColdStartBadge={isColdStart && forYou.length > 0}
             showEmptyMessage={forYou.length === 0}
           />
           {popular.length > 0 && (
-            <ProductRow title={popularTitle} products={popular} />
+            <ProductRow title={popularTitle} products={popular} icon={<Flame className="h-5 w-5 text-white" />} />
           )}
           <ProductRow 
             title={offersTitle} 
             products={offers}
+            icon={<Percent className="h-5 w-5 text-white" />}
             showEmptyMessage={offers.length === 0}
           />
         </div>
@@ -269,22 +275,26 @@ export default function RecommendationsSection({
   const showPopular = popular.length > 0; // Only show Popular if it has items
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       {/* For You section - Always show */}
       <ProductRow 
         title={forYouTitle} 
         products={forYou} 
+        icon={<Sparkles className="h-5 w-5 text-white" />}
         showColdStartBadge={isColdStart && forYou.length > 0}
         showEmptyMessage={forYou.length === 0}
       />
       
       {/* Popular section - Only show if has items */}
-      {showPopular && <ProductRow title={popularTitle} products={popular} />}
+      {showPopular && (
+        <ProductRow title={popularTitle} products={popular} icon={<Flame className="h-5 w-5 text-white" />} />
+      )}
       
       {/* Offers section - Always show */}
       <ProductRow 
         title={offersTitle} 
         products={offers}
+        icon={<Percent className="h-5 w-5 text-white" />}
         showEmptyMessage={offers.length === 0}
       />
       

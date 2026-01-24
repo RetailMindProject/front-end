@@ -13,18 +13,18 @@ import {
 } from "../components";
 import Sessions from "./Sessions";
 import CashierDetail from "./CashierDetail";
-import { LineChart as LineChartIcon, LayoutDashboard, Package, Upload, Percent, Send, Monitor, UserCheck } from "lucide-react";
-import UploadReport from "./UploadReport";
+import { LineChart as LineChartIcon, LayoutDashboard, Package, Percent, Monitor, UserCheck, MessageSquare } from "lucide-react";
 import StoreOperations from "./StoreOperations";
 import StoreManagerOffersPage from "./StoreManagerOffersPage";
 import CreateAccountPage from "./CreateAccountPage";
 import MessageDetail from "./MessageDetail";
-import Outbox from "./Outbox";
+import MessageBox from "./MessageBox";
 import Compose from "./Compose";
 import TerminalsManagement from "./TerminalsManagement";
 import PairingRequests from "./PairingRequests";
-import { Routes, Route } from "react-router-dom";
+import { Routes, Route, Navigate } from "react-router-dom";
 import { dashboardApi, type DashboardSummary, type SalesTrendItem, type CategoryCount, type TopProduct, type RecentDaily } from "../services/dashboard.api";
+import PageHeader from "../components/PageHeader";
 
 // -------- Mock Data --------
 const salesTrend = [
@@ -161,14 +161,15 @@ export default function StoreManager() {
         open={sidebarOpen}
         onToggle={() => setSidebarOpen((s) => !s)}
         links={[
-          { to: "/store-manager", label: "Dashboard", icon: <LayoutDashboard className="h-4 w-4" /> },
-          { to: "/store-manager/sessions", label: "Sessions", icon: <LineChartIcon className="h-4 w-4" /> },
-          { to: "/store-manager/offers", label: "Offers", icon: <Percent className="h-4 w-4" /> },
-          { to: "/store-manager/operations", label: "Store Operations", icon: <Package className="h-4 w-4" /> },
-          { to: "/store-manager/terminals", label: "Terminals", icon: <Monitor className="h-4 w-4" /> },
-          { to: "/store-manager/pairing-requests", label: "Pairing Requests", icon: <UserCheck className="h-4 w-4" /> },
-          { to: "/store-manager/upload-report", label: "Upload Report", icon: <Upload className="h-4 w-4" /> },
-          { to: "/store-manager/outbox", label: "Outbox", icon: <Send className="h-4 w-4" /> },
+          { to: "/dashboard", label: "Dashboard", icon: <LayoutDashboard className="h-4 w-4" />, section: "Analytics" },
+          { to: "/dashboard/sessions", label: "Sessions", icon: <LineChartIcon className="h-4 w-4" />, section: "Analytics" },
+
+          { to: "/dashboard/offers", label: "Offers", icon: <Percent className="h-4 w-4" />, section: "Store Management" },
+          { to: "/dashboard/operations", label: "Store Operations", icon: <Package className="h-4 w-4" />, section: "Store Management" },
+
+          { to: "/dashboard/terminals", label: "Terminals", icon: <Monitor className="h-4 w-4" />, section: "System" },
+          { to: "/dashboard/pairing-requests", label: "Pairing Requests", icon: <UserCheck className="h-4 w-4" />, section: "System" },
+          { to: "/dashboard/message-box", label: "Message Box", icon: <MessageSquare className="h-4 w-4" />, section: "System" },
         ]}
       />
 
@@ -181,12 +182,11 @@ export default function StoreManager() {
             index
             element={
               <main className="p-4 md:p-6">
-                <div className="mb-6">
-                  <h1 className="text-2xl md:text-3xl font-semibold tracking-tight">Store Manager Dashboard</h1>
-                  {loading && <p className="text-slate-600">Loading dashboard data...</p>}
-                  {error && <p className="text-red-600">Error: {error}</p>}
-                  {!loading && !error && dashboardData && <p className="text-slate-600">Connected to backend API</p>}
-                </div>
+                <PageHeader
+                  title="Store Manager Dashboard"
+                  icon={<span className="text-2xl">📊</span>}
+                />
+                {error && <p className="mt-4 text-red-600">Error: {error}</p>}
 
                 {loading && (
                   <div className="flex items-center justify-center py-12">
@@ -263,8 +263,9 @@ export default function StoreManager() {
           <Route path="operations" element={<div className="flex-1 p-4 md:p-6"><StoreOperations /></div>} />
           <Route path="terminals" element={<div className="flex-1 overflow-auto"><TerminalsManagement /></div>} />
           <Route path="pairing-requests" element={<div className="flex-1 overflow-auto"><PairingRequests /></div>} />
-          <Route path="upload-report" element={<UploadReport />} />
-          <Route path="outbox" element={<div className="flex-1 overflow-auto"><Outbox /></div>} />
+          <Route path="message-box" element={<div className="flex-1 overflow-auto"><MessageBox /></div>} />
+          <Route path="outbox" element={<Navigate to="../message-box" replace />} />
+          <Route path="inbox" element={<Navigate to="../message-box" replace />} />
           <Route path="compose" element={<Compose />} />
           <Route path="message/:id" element={<div className="flex-1 overflow-auto"><MessageDetail /></div>} />
         </Routes>

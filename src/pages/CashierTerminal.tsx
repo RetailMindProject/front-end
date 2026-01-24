@@ -106,7 +106,9 @@ export default function CashierTerminal() {
   const [customerFirstName, setCustomerFirstName] = useState("");
   const [customerLastName, setCustomerLastName] = useState("");
   const [customerEmail, setCustomerEmail] = useState("");
-  const [customerAddress, setCustomerAddress] = useState("");
+  // Address is not currently used in the cashier flow UI
+  // Keep setter only if/when we add an address field to the modal
+  const [, setCustomerAddress] = useState("");
   const [searchingCustomer, setSearchingCustomer] = useState(false);
   const [creatingCustomer, setCreatingCustomer] = useState(false);
   const [customerError, setCustomerError] = useState<string | null>(null);
@@ -1545,7 +1547,7 @@ export default function CashierTerminal() {
       <header className="border-b border-gray-200 px-6 py-4 flex items-center justify-between bg-white">
         {/* Left: My Store with Cashier Image and Name */}
         <button
-          onClick={() => navigate("/cashier/profile")}
+          onClick={() => navigate("/dashboard/profile")}
           className="flex items-center gap-3 hover:opacity-80 transition-opacity cursor-pointer"
         >
           <div className="relative">
@@ -1579,14 +1581,14 @@ export default function CashierTerminal() {
         {/* Right: Profile Image and Icons */}
         <div className="flex items-center gap-3">
           <button
-            onClick={() => navigate("/cashier/return")}
+            onClick={() => navigate("/dashboard/return")}
             className="p-2 rounded-lg text-gray-600 hover:text-orange-600 hover:bg-orange-50 transition-colors"
             title="Return Order"
           >
             <RotateCcw className="h-5 w-5" />
           </button>
           <button
-            onClick={() => navigate("/cashier/returns")}
+            onClick={() => navigate("/dashboard/returns")}
             className="p-2 rounded-lg text-gray-600 hover:text-purple-600 hover:bg-purple-50 transition-colors"
             title="Return Orders History"
           >
