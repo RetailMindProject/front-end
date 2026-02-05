@@ -123,6 +123,13 @@ const [parentType, setParentType] = useState<'select' | 'create'>('select'); // 
         ...prev,
         [name]: checked
       }));
+    } else if (name === 'sku') {
+      // Only allow numeric input for SKU
+      const numericValue = value.replace(/[^0-9]/g, '');
+      setFormData(prev => ({
+        ...prev,
+        [name]: numericValue
+      }));
     } else {
       setFormData(prev => ({
         ...prev,
@@ -345,24 +352,69 @@ const [parentType, setParentType] = useState<'select' | 'create'>('select'); // 
     
     // ID is not required for creation - backend generates it
     
-    if (!formData.sku.trim()) {
+    // SKU validation: must be a number only
+    const skuTrimmed = formData.sku.trim();
+    if (!skuTrimmed) {
       newErrors.sku = 'SKU is required';
+    } else {
+      // SKU must be a valid number
+      const skuNum = parseFloat(skuTrimmed);
+      if (isNaN(skuNum) || !/^\d+$/.test(skuTrimmed)) {
+        newErrors.sku = 'SKU must be a number only';
+      } else if (skuNum < 0) {
+        newErrors.sku = 'SKU must be a positive number';
+      }
     }
     
     if (!formData.name.trim()) {
       newErrors.name = 'Product name is required';
     }
     
-    if (!formData.price || isNaN(Number(formData.price)) || parseFloat(formData.price) <= 0) {
-      newErrors.price = 'Please enter a valid price';
+    // Validate numeric fields - ensure they are valid numbers
+    const costNum = formData.cost.trim() ? parseFloat(formData.cost) : NaN;
+    const wholesaleNum = formData.wholesalePrice.trim() ? parseFloat(formData.wholesalePrice) : NaN;
+    const priceNum = formData.price.trim() ? parseFloat(formData.price) : NaN;
+    
+    if (!formData.cost.trim() || isNaN(costNum) || costNum < 0) {
+      newErrors.cost = 'Please enter a valid cost (must be a number >= 0)';
     }
     
-    if (!formData.cost || isNaN(Number(formData.cost)) || parseFloat(formData.cost) < 0) {
-      newErrors.cost = 'Please enter a valid cost';
+    if (!formData.wholesalePrice.trim() || isNaN(wholesaleNum) || wholesaleNum < 0) {
+      newErrors.wholesalePrice = 'Please enter a valid wholesale price (must be a number >= 0)';
     }
     
-    if (!formData.wholesalePrice || isNaN(Number(formData.wholesalePrice)) || parseFloat(formData.wholesalePrice) < 0) {
-      newErrors.wholesalePrice = 'Please enter a valid wholesale price';
+    if (!formData.price.trim() || isNaN(priceNum) || priceNum <= 0) {
+      newErrors.price = 'Please enter a valid price (must be a number > 0)';
+    }
+    
+    // Validate price relationships: price > wholesalePrice AND price > cost AND wholesalePrice > cost
+    if (!isNaN(costNum) && !isNaN(wholesaleNum) && !isNaN(priceNum)) {
+      console.log('Validating price relationships:', { costNum, wholesaleNum, priceNum });
+      let priceError = '';
+      
+      // Check: wholesalePrice > cost
+      if (wholesaleNum <= costNum) {
+        console.error('Validation FAILED: wholesalePrice <= cost', { wholesaleNum, costNum });
+        newErrors.wholesalePrice = 'Must be greater than cost';
+      }
+      
+      // Check: price > wholesalePrice
+      if (priceNum <= wholesaleNum) {
+        console.error('Validation FAILED: price <= wholesalePrice', { priceNum, wholesaleNum });
+        priceError = 'Must be greater than wholesale price';
+      }
+      
+      // Check: price > cost (ensures price is highest)
+      if (priceNum <= costNum) {
+        console.error('Validation FAILED: price <= cost', { priceNum, costNum });
+        priceError = priceError 
+          ? 'Must be greater than wholesale price and cost'
+          : 'Must be greater than cost';
+      }
+      
+      if (priceError) {
+        newErrors.price = priceError;
+      }
     }
     
     // Description is optional, no validation needed
@@ -378,8 +430,10 @@ const [parentType, setParentType] = useState<'select' | 'create'>('select'); // 
       newErrors.category = 'Subcategory is required';
     }
     
-    if (formData.quantity && (isNaN(Number(formData.quantity)) || parseFloat(formData.quantity) < 0)) {
-      newErrors.quantity = 'Please enter a valid quantity (0 or greater)';
+    // Quantity is required
+    const quantityNum = formData.quantity.trim() ? parseFloat(formData.quantity) : NaN;
+    if (!formData.quantity.trim() || isNaN(quantityNum) || quantityNum < 0) {
+      newErrors.quantity = 'Quantity is required and must be 0 or greater';
     }
     
     // Validate expiration date if hasExpirationDate is true
@@ -394,7 +448,13 @@ const [parentType, setParentType] = useState<'select' | 'create'>('select'); // 
   const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     
-    if (validateForm()) {
+    const isValid = validateForm();
+    if (!isValid) {
+      console.error('Form validation failed. Cannot submit product with invalid pricing or other errors.');
+      return;
+    }
+    
+    if (isValid) {
       // Get parentCategoryId: parent is now mandatory
       let finalParentId: number | undefined;
       if (formData.parentCategoryId.trim()) {
@@ -441,6 +501,35 @@ const [parentType, setParentType] = useState<'select' | 'create'>('select'); // 
         quantity: formData.quantity ? parseFloat(formData.quantity) : 0,
         expirationDate: formData.hasExpirationDate && formData.expirationDate.trim() ? formData.expirationDate : null
       });
+      
+      // Reset form after successful creation to allow creating another product
+      setFormData({
+        sku: '',
+        name: '',
+        brand: '',
+        description: '',
+        cost: '',
+        price: '',
+        wholesalePrice: '',
+        unit: '',
+        quantity: '0',
+        image: null,
+        imageFile: null,
+        imageFiles: [],
+        category: '',
+        categoryId: '',
+        parentCategoryId: '',
+        subCategoryId: '',
+        isActive: true,
+        hasExpirationDate: false,
+        expirationDate: ''
+      });
+      setErrors({});
+      // Clear image input if it exists
+      const imageInput = document.getElementById('image') as HTMLInputElement;
+      if (imageInput) {
+        imageInput.value = '';
+      }
     }
   };
 
@@ -474,9 +563,11 @@ const [parentType, setParentType] = useState<'select' | 'create'>('select'); // 
               name="sku"
               value={formData.sku}
               onChange={handleChange}
+              inputMode="numeric"
+              pattern="[0-9]*"
               className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
-              placeholder="Enter SKU"
             />
+            <p className="mt-1 text-xs text-slate-500">Enter numbers only</p>
             {errors.sku && (
               <p className="mt-1 text-xs text-red-600">{errors.sku}</p>
             )}
@@ -595,7 +686,7 @@ const [parentType, setParentType] = useState<'select' | 'create'>('select'); // 
               min="0"
             />
             {errors.cost && (
-              <p className="mt-1 text-xs text-red-600">{errors.cost}</p>
+              <p className="mt-1 text-[11px] text-red-600">{errors.cost}</p>
             )}
           </div>
 
@@ -615,7 +706,7 @@ const [parentType, setParentType] = useState<'select' | 'create'>('select'); // 
               min="0"
             />
             {errors.wholesalePrice && (
-              <p className="mt-1 text-xs text-red-600">{errors.wholesalePrice}</p>
+              <p className="mt-1 text-[11px] text-red-600">{errors.wholesalePrice}</p>
             )}
           </div>
 
@@ -635,7 +726,7 @@ const [parentType, setParentType] = useState<'select' | 'create'>('select'); // 
               min="0"
             />
             {errors.price && (
-              <p className="mt-1 text-xs text-red-600">{errors.price}</p>
+              <p className="mt-1 text-[11px] text-red-600">{errors.price}</p>
             )}
           </div>
         </div>
@@ -661,7 +752,7 @@ const [parentType, setParentType] = useState<'select' | 'create'>('select'); // 
 
           <div>
             <label htmlFor="quantity" className="block text-sm font-medium text-slate-700 mb-1.5">
-              Initial Warehouse Quantity
+              Initial Warehouse Quantity <span className="text-red-500">*</span>
             </label>
             <input
               type="number"

@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { Package, AlertTriangle, X } from 'lucide-react';
 import StoreManager from '../components/Operations/StoreManager';
 import { storeProductsApi, type StoreProductResponseDTO, type StoreTransferRequestDTO } from '../services/store-products.api';
 import { productsApi, type ProductDTO } from '../services/products.api';
@@ -14,6 +15,7 @@ type UIStoreProduct = StoreProductResponseDTO & {
 
 export default function StoreOperations() {
   const [storeProducts, setStoreProducts] = useState<UIStoreProduct[]>([]);
+  const [allStoreProducts, setAllStoreProducts] = useState<UIStoreProduct[]>([]); // Keep unfiltered products for stats
   const [inventoryProducts, setInventoryProducts] = useState<ProductDTO[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -25,6 +27,15 @@ export default function StoreOperations() {
     isActive: ''
   });
   const [sortBy, setSortBy] = useState<'sales' | 'none'>('none');
+  const [showFilters, setShowFilters] = useState(false);
+  const [activeCardFilter, setActiveCardFilter] = useState<'all' | 'lowStock' | 'outOfStock'>('all');
+
+  // Summary statistics
+  const [stats, setStats] = useState({
+    totalProducts: 0,
+    lowStock: 0,
+    outOfStock: 0
+  });
 
   const fetchStoreProducts = async (filterOverrides?: typeof filters) => {
     try {
@@ -142,6 +153,10 @@ export default function StoreOperations() {
         }
         
         setStoreProducts(normalized);
+        // Store unfiltered products for stats when fetching without filters
+        if (!activeFilters.brand && !activeFilters.sku && !activeFilters.minPrice && !activeFilters.maxPrice && activeFilters.isActive === '') {
+          setAllStoreProducts(normalized);
+        }
       } else {
         setError(res.error || 'Failed to load store products');
       }
@@ -318,14 +333,136 @@ export default function StoreOperations() {
     // Set filters state and immediately fetch with reset filters
     setFilters(resetFilters);
     setSortBy('none');
+    setActiveCardFilter('all');
     // Fetch with empty filters immediately (don't wait for state update)
     fetchStoreProducts(resetFilters);
   };
 
-  // Load products on mount and when filters or sort change
+  // Calculate statistics - only calculate when allStoreProducts is fully loaded
+  const calculateStats = () => {
+    // Only calculate stats when allStoreProducts is fully loaded
+    // This prevents numbers from flickering/changing
+    if (allStoreProducts.length > 0) {
+      const totalProducts = allStoreProducts.length;
+      const low = allStoreProducts.filter(p => {
+        const storeQty = (p as any).storeQty || p.storeQuantity || 0;
+        return storeQty > 0 && storeQty < 10; // threshold
+      }).length;
+      const out = allStoreProducts.filter(p => {
+        const storeQty = (p as any).storeQty || p.storeQuantity || 0;
+        return storeQty === 0;
+      }).length;
+      setStats({
+        totalProducts,
+        lowStock: low,
+        outOfStock: out
+      });
+    }
+    // Don't set partial stats - wait until everything is ready
+  };
+
+  // Update stats only when allStoreProducts is fully loaded
   useEffect(() => {
+    calculateStats();
+  }, [allStoreProducts.length]); // Only trigger when length changes (fully loaded)
+
+  // Load all products for stats calculation on mount
+  useEffect(() => {
+    // Fetch all products without filters for stats
+    const fetchAllForStats = async () => {
+      try {
+        const res = await storeProductsApi.filter({
+          page: 0,
+          size: 1000,
+        });
+        
+        if (res.data) {
+          let content = res.data.content || [];
+          
+          // Fetch full product details for each store product
+          const normalizedResults: (UIStoreProduct | null)[] = await Promise.all(
+            content.map(async (p): Promise<UIStoreProduct | null> => {
+              const warehouseQty = (p as any).warehouseQty || p.warehouseQuantity || 0;
+              const storeQty = (p as any).storeQty || p.storeQuantity || 0;
+              
+              // Only process products that have storeQuantity > 0
+              if (storeQty <= 0) {
+                return null;
+              }
+              
+              try {
+                const productRes = await productsApi.getById(p.productId);
+                if (productRes.data) {
+                  const fullProduct = productRes.data;
+                  
+                  let imageUrl: string | null | undefined = null;
+                  if (fullProduct.images && Array.isArray(fullProduct.images) && fullProduct.images.length > 0) {
+                    const primaryImage = fullProduct.images.find((img: any) => img.isPrimary) || fullProduct.images[0];
+                    if (primaryImage?.url) {
+                      imageUrl = productsApi.normalizeImageUrl(primaryImage.url, fullProduct.id);
+                    }
+                  }
+                  if (!imageUrl && fullProduct.primaryImageUrl) {
+                    imageUrl = productsApi.normalizeImageUrl(fullProduct.primaryImageUrl, fullProduct.id);
+                  }
+                  if (!imageUrl && fullProduct.imageUrl) {
+                    imageUrl = productsApi.normalizeImageUrl(fullProduct.imageUrl, fullProduct.id);
+                  }
+                  
+                  let categoryName: string | undefined;
+                  if (typeof fullProduct.category === 'string') {
+                    categoryName = fullProduct.category;
+                  } else if (fullProduct.category && typeof fullProduct.category === 'object') {
+                    const catObj = fullProduct.category as any;
+                    categoryName = catObj.name || catObj.title;
+                  }
+                  
+                  return {
+                    ...p,
+                    productName: fullProduct.name || p.productName,
+                    price: fullProduct.price || fullProduct.defaultPrice || p.price || 0,
+                    cost: fullProduct.cost || fullProduct.defaultCost || p.cost,
+                    category: categoryName || p.category,
+                    imageUrl: imageUrl || p.imageUrl || null,
+                    primaryImageUrl: fullProduct.primaryImageUrl || p.primaryImageUrl,
+                    images: fullProduct.images || p.images,
+                    warehouseQuantity: warehouseQty,
+                    storeQuantity: storeQty,
+                    orders: (fullProduct as any).orders || (p as any).orders || 0,
+                    createdAt: fullProduct.createdAt,
+                    updatedAt: fullProduct.updatedAt,
+                    sales: (fullProduct as any).sales || (p as any).sales || 0
+                  };
+                }
+              } catch (err) {
+                console.error(`Failed to get full product details for ${p.productId}:`, err);
+              }
+              
+              return {
+                ...p,
+                imageUrl: p.imageUrl || null,
+                warehouseQuantity: warehouseQty,
+                storeQuantity: storeQty
+              };
+            })
+          );
+          
+          const normalized = normalizedResults.filter((p): p is UIStoreProduct => p !== null);
+          setAllStoreProducts(normalized);
+        }
+      } catch (err) {
+        console.error('Failed to fetch all products for stats:', err);
+      }
+    };
+    
+    fetchAllForStats();
     fetchStoreProducts();
     fetchInventoryProducts();
+  }, []); // initial load
+
+  // Load products when filters or sort change
+  useEffect(() => {
+    fetchStoreProducts();
   }, [sortBy]);
 
   // Get available inventory products (those with warehouseQuantity > 0 from stocks_snapshot)
@@ -453,8 +590,114 @@ export default function StoreOperations() {
           </div>
         )}
         
+        {/* Summary Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+          <button
+            onClick={() => {
+              const cleared = {
+                brand: '',
+                sku: '',
+                minPrice: '',
+                maxPrice: '',
+                isActive: ''
+              };
+              setFilters(cleared);
+              setActiveCardFilter('all');
+              setSortBy('none');
+              fetchStoreProducts(cleared);
+            }}
+            className={`bg-gradient-to-br from-indigo-50 to-blue-50 rounded-xl p-5 border-2 shadow-sm hover:shadow-md transition-all duration-300 cursor-pointer text-left w-full ${
+              activeCardFilter === 'all' 
+                ? 'border-indigo-500 ring-2 ring-indigo-300 shadow-md' 
+                : 'border-indigo-200/50'
+            }`}
+          >
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-indigo-700 mb-1">Total Products</p>
+                <p className="text-2xl font-bold text-indigo-900">{stats.totalProducts}</p>
+              </div>
+              <div className="w-12 h-12 rounded-full bg-indigo-100 flex items-center justify-center">
+                <Package className="w-6 h-6 text-indigo-600" />
+              </div>
+            </div>
+          </button>
+          
+          <button
+            onClick={() => {
+              const cleared = {
+                brand: '',
+                sku: '',
+                minPrice: '',
+                maxPrice: '',
+                isActive: ''
+              };
+              setFilters(cleared);
+              setActiveCardFilter('lowStock');
+              setSortBy('none');
+              fetchStoreProducts(cleared);
+            }}
+            className={`bg-gradient-to-br from-yellow-50 to-amber-50 rounded-xl p-5 border-2 shadow-sm hover:shadow-md transition-all duration-300 cursor-pointer text-left w-full ${
+              activeCardFilter === 'lowStock' 
+                ? 'border-yellow-500 ring-2 ring-yellow-300 shadow-md' 
+                : 'border-yellow-200/50'
+            }`}
+          >
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-yellow-700 mb-1">Low Stock</p>
+                <p className="text-2xl font-bold text-yellow-900">{stats.lowStock}</p>
+              </div>
+              <div className="w-12 h-12 rounded-full bg-yellow-100 flex items-center justify-center">
+                <AlertTriangle className="w-6 h-6 text-yellow-600" />
+              </div>
+            </div>
+          </button>
+          
+          <button
+            onClick={() => {
+              const cleared = {
+                brand: '',
+                sku: '',
+                minPrice: '',
+                maxPrice: '',
+                isActive: ''
+              };
+              setFilters(cleared);
+              setActiveCardFilter('outOfStock');
+              setSortBy('none');
+              fetchStoreProducts(cleared);
+            }}
+            className={`bg-gradient-to-br from-red-50 to-orange-50 rounded-xl p-5 border-2 shadow-sm hover:shadow-md transition-all duration-300 cursor-pointer text-left w-full ${
+              activeCardFilter === 'outOfStock' 
+                ? 'border-red-500 ring-2 ring-red-300 shadow-md' 
+                : 'border-red-200/50'
+            }`}
+          >
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-red-700 mb-1">Out of Stock</p>
+                <p className="text-2xl font-bold text-red-900">{stats.outOfStock}</p>
+              </div>
+              <div className="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center">
+                <X className="w-6 h-6 text-red-600" />
+              </div>
+            </div>
+          </button>
+        </div>
+        
         <StoreManager 
-          storeProducts={storeProducts}
+          storeProducts={activeCardFilter === 'lowStock' 
+            ? storeProducts.filter(p => {
+                const storeQty = (p as any).storeQty || p.storeQuantity || 0;
+                return storeQty > 0 && storeQty < 10;
+              })
+            : activeCardFilter === 'outOfStock'
+            ? storeProducts.filter(p => {
+                const storeQty = (p as any).storeQty || p.storeQuantity || 0;
+                return storeQty === 0;
+              })
+            : storeProducts}
           inventoryProducts={inventoryProducts}
           onDelete={deleteStoreProduct}
           onAddFromInventory={addProductFromInventory}
@@ -467,6 +710,11 @@ export default function StoreOperations() {
           getAvailableInventoryProducts={getAvailableInventoryProducts}
           sortBy={sortBy}
           onSortChange={setSortBy}
+          showFilters={showFilters}
+          onToggleFilters={() => setShowFilters(!showFilters)}
+          onFiltersChange={(newFilters) => setFilters(newFilters)}
+          isFiltering={activeCardFilter !== 'all' || filters.brand !== '' || filters.sku !== '' || filters.minPrice !== '' || filters.maxPrice !== '' || filters.isActive !== ''}
+          allStoreProducts={allStoreProducts}
         />
       </div>
     </div>

@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import type { ChangeEvent } from 'react';
-import { MoreVertical, Eye, Edit, Package, Trash2, ChevronLeft, ChevronRight } from 'lucide-react';
+import { MoreVertical, Eye, Edit, Package, Trash2, ChevronLeft, ChevronRight, Filter } from 'lucide-react';
 import ProductViewModal from './ProductViewModal';
 import ConfirmDeleteModal from './ConfirmDeleteModal';
 import AuthenticatedImage from './AuthenticatedImage';
@@ -27,6 +27,14 @@ interface Product {
   storeQuantity?: number;
 }
 
+interface FilterState {
+  brand: string;
+  sku: string;
+  minPrice: string;
+  maxPrice: string;
+  isActive: string;
+}
+
 interface ProductListProps {
   products: Product[];
   onDelete: (id: string | number) => void;
@@ -40,6 +48,12 @@ interface ProductListProps {
   totalElements?: number;
   onPageChange?: (page: number) => void;
   onItemsPerPageChange?: (size: number) => void;
+  showFilters?: boolean;
+  onToggleFilters?: () => void;
+  filters?: FilterState;
+  onFiltersChange?: (filters: FilterState) => void;
+  onApplyFilters?: () => void;
+  onResetFilters?: () => void;
 }
 
 const ProductList = ({ 
@@ -54,7 +68,15 @@ const ProductList = ({
   itemsPerPage = 10,
   totalElements = 0,
   onPageChange,
-  onItemsPerPageChange
+  onItemsPerPageChange,
+  showFilters = false,
+  onToggleFilters,
+  filters,
+  onFiltersChange,
+  onApplyFilters,
+  onResetFilters,
+  isFiltering = false,
+  allProducts
 }: ProductListProps) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [searchResults, setSearchResults] = useState<Product[]>([]);
@@ -84,24 +106,74 @@ const ProductList = ({
     }
   }, [openMenuId]);
 
+  // Debounced search function
+  const performSearch = async (searchValue: string) => {
+    if (!searchValue.trim()) {
+      setSearchResults([]);
+      setIsSearching(false);
+      return;
+    }
+    
+    setIsSearching(true);
+    try {
+      // Use API search to fetch only matching products
+      const res = await productsApi.search({
+        q: searchValue.trim(),
+        page: 0,
+        size: 1000 // Get a large number to show all search results
+      });
+      
+      if (res.data) {
+        let content: Product[] = [];
+        if (typeof res.data === 'object' && 'content' in res.data) {
+          content = (res.data as any).content || [];
+        } else if (Array.isArray(res.data)) {
+          content = res.data;
+        }
+        
+        // Fetch quantities for search results
+        const { storeProductsApi } = await import('../../services/store-products.api');
+        const normalized: Product[] = await Promise.all(
+          content.map(async (p) => {
+            let warehouseQuantity = 0;
+            let storeQuantity = 0;
+            if (p.id) {
+              try {
+                const productId = typeof p.id === 'string' ? parseInt(p.id) : p.id;
+                const stockRes = await storeProductsApi.getByProductId(productId);
+                if (stockRes.data) {
+                  warehouseQuantity = (stockRes.data as any).warehouseQty || (stockRes.data as any).warehouseQuantity || 0;
+                  storeQuantity = (stockRes.data as any).storeQty || (stockRes.data as any).storeQuantity || 0;
+                }
+              } catch (err) {
+                // ignore
+              }
+            }
+            
+            return {
+              ...p,
+              warehouseQuantity,
+              storeQuantity,
+            };
+          })
+        );
+        
+        setSearchResults(normalized);
+      } else {
+        setSearchResults([]);
+      }
+    } catch (err) {
+      console.error('Search failed:', err);
+      setSearchResults([]);
+    }
+  };
+
   const handleSearchChange = (e: ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
     setSearchTerm(value);
     
     if (value.trim()) {
-      const searchLower = value.toLowerCase().trim();
-      const results = products.filter(product => {
-        // Search by name
-        const nameMatch = product.name.toLowerCase().includes(searchLower);
-        // Search by SKU
-        const skuMatch = product.sku && product.sku.toLowerCase().includes(searchLower);
-        // Search by ID (convert both to string for comparison)
-        const idMatch = String(product.id).includes(searchLower);
-        
-        return nameMatch || skuMatch || idMatch;
-      });
-      setSearchResults(results);
-      setIsSearching(true);
+      performSearch(value);
     } else {
       setSearchResults([]);
       setIsSearching(false);
@@ -251,36 +323,125 @@ const ProductList = ({
       </div>
 
       {/* Search Section */}
-      <div className="px-6 py-4 border-b bg-slate-50/50">
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2">
-            <input
-              type="text"
-              value={searchTerm}
-              onChange={handleSearchChange}
-              placeholder="Search product"
-              className="px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent w-64"
-            />
+      <div className="px-6 py-4 border-b bg-slate-50/50 overflow-x-hidden">
+        <div className="flex items-center gap-2 flex-nowrap min-h-[40px] w-full min-w-0">
+          <div className="flex items-center gap-2 flex-shrink-0">
+             <input
+               type="text"
+               value={searchTerm}
+               onChange={handleSearchChange}
+               placeholder="Search product"
+               className={`border-solid border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-white placeholder:text-slate-400 hover:border-slate-400 transition-all duration-200 ease-out ${
+                 showFilters 
+                   ? 'px-2 py-1.5 text-xs w-28' 
+                   : 'px-3 py-2 text-sm flex-1 max-w-md'
+               }`}
+             />
             {isSearching && (
               <button 
                 onClick={clearSearch} 
-                className="px-2.5 py-1 text-xs font-medium text-slate-600 hover:text-slate-800 hover:bg-slate-200 rounded-md transition-colors focus:outline-none focus:ring-1 focus:ring-slate-400"
+                className="px-2 py-1 text-xs font-medium text-slate-600 hover:text-slate-800 hover:bg-slate-200 rounded-md transition-colors focus:outline-none focus:ring-1 focus:ring-slate-400 flex-shrink-0"
               >
                 Clear
               </button>
             )}
           </div>
           
-          <div className="flex items-center gap-3 ml-auto">
-            <span className="text-sm text-slate-600">
-              {isSearching 
-                ? `${searchResults.length} product${searchResults.length !== 1 ? 's' : ''} found` 
-                : onPageChange && totalElements > 0
-                  ? `${totalElements} total product${totalElements !== 1 ? 's' : ''}`
-                  : `${products.length} product${products.length !== 1 ? 's' : ''}`
-              }
-            </span>
-          </div>
+          {filters && onFiltersChange && (
+            <div 
+              className="flex items-center gap-2 flex-nowrap min-w-0 flex-1"
+              style={{ 
+                visibility: showFilters ? 'visible' : 'hidden',
+                opacity: showFilters ? 1 : 0,
+                pointerEvents: showFilters ? 'auto' : 'none',
+                transition: 'opacity 0.2s ease-out, visibility 0.2s ease-out',
+                maxWidth: showFilters ? 'none' : '0',
+                overflow: 'hidden'
+              }}
+            >
+              <input
+                placeholder="Brand"
+                className="px-2 py-1.5 text-xs border-solid border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all bg-white w-24 flex-shrink-0 placeholder:text-slate-400 hover:border-slate-400"
+                value={filters.brand}
+                onChange={(e) => onFiltersChange({ ...filters, brand: e.target.value })}
+              />
+              <input
+                placeholder="SKU"
+                className="px-2 py-1.5 text-xs border-solid border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all bg-white w-24 flex-shrink-0 placeholder:text-slate-400 hover:border-slate-400"
+                value={filters.sku}
+                onChange={(e) => onFiltersChange({ ...filters, sku: e.target.value })}
+              />
+              <input
+                placeholder="Min $"
+                type="number"
+                min="0"
+                step="0.01"
+                className="px-2 py-1.5 text-xs border-solid border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all bg-white w-20 flex-shrink-0 placeholder:text-slate-400 hover:border-slate-400"
+                value={filters.minPrice}
+                onChange={(e) => {
+                  const value = e.target.value;
+                  if (value === '' || parseFloat(value) >= 0) {
+                    onFiltersChange({ ...filters, minPrice: value });
+                  }
+                }}
+              />
+              <input
+                placeholder="Max $"
+                type="number"
+                min="0"
+                step="0.01"
+                className="px-2 py-1.5 text-xs border-solid border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all bg-white w-20 flex-shrink-0 placeholder:text-slate-400 hover:border-slate-400"
+                value={filters.maxPrice}
+                onChange={(e) => {
+                  const value = e.target.value;
+                  if (value === '' || parseFloat(value) >= 0) {
+                    onFiltersChange({ ...filters, maxPrice: value });
+                  }
+                }}
+              />
+              <select
+                className="px-2 py-1.5 text-xs border-solid border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all bg-white w-24 flex-shrink-0 text-slate-700 hover:border-slate-400"
+                value={filters.isActive}
+                onChange={(e) => onFiltersChange({ ...filters, isActive: e.target.value })}
+              >
+                <option value="">Status</option>
+                <option value="true">Active</option>
+                <option value="false">Inactive</option>
+              </select>
+              {onApplyFilters && (
+                <button
+                  onClick={onApplyFilters}
+                  className="px-2.5 py-1.5 text-xs font-semibold bg-gradient-to-r from-indigo-600 to-blue-600 text-white rounded-lg hover:from-indigo-700 hover:to-blue-700 transition-all duration-200 shadow-sm hover:shadow-md flex-shrink-0 whitespace-nowrap"
+                >
+                  Apply
+                </button>
+              )}
+              {onResetFilters && (
+                <button
+                  onClick={onResetFilters}
+                  className="px-2.5 py-1.5 text-xs font-medium border border-slate-300 rounded-lg hover:bg-slate-50 transition-all duration-200 flex-shrink-0 whitespace-nowrap"
+                >
+                  Reset
+                </button>
+              )}
+            </div>
+          )}
+          
+          {onToggleFilters && (
+            <div className="flex items-center gap-2 flex-shrink-0 ml-auto">
+              <button
+                onClick={onToggleFilters}
+                className={`p-2 rounded-lg transition-all duration-200 cursor-pointer border-2 ${
+                  showFilters 
+                    ? 'bg-indigo-600 text-white border-indigo-600 ring-2 ring-indigo-300 shadow-md' 
+                    : 'bg-white text-indigo-600 border-indigo-300 hover:bg-indigo-50 hover:border-indigo-400 hover:shadow-sm'
+                }`}
+                title={showFilters ? 'Hide filters' : 'Show filters'}
+              >
+                <Filter className="w-4 h-4" />
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
@@ -288,7 +449,7 @@ const ProductList = ({
       {loading ? (
         <div className="px-6 py-8 text-center text-slate-600">Loading products...</div>
       ) : displayProducts.length > 0 ? (
-        <div className="divide-y divide-slate-200">
+        <div className="divide-y divide-slate-200 min-h-[400px]">
           {displayProducts.map(product => (
             <div 
               key={product.id} 
@@ -420,19 +581,20 @@ const ProductList = ({
       ) : (
         <div className="px-6 py-16 text-center">
           <h3 className="text-lg font-semibold text-slate-800 mb-2">No products found</h3>
-          <p className="text-slate-600 mb-6">Try adjusting your search terms or add a new product.</p>
-          <button 
-            onClick={onCreate} 
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium bg-blue-600 hover:bg-blue-700 text-white rounded-md transition-colors focus:outline-none focus:ring-1 focus:ring-blue-500"
-          >
-            <span>+</span>
-            Add Product
-          </button>
+          {!isSearching && !isFiltering && (!onPageChange || totalElements === 0) && (
+            <button 
+              onClick={onCreate} 
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium bg-blue-600 hover:bg-blue-700 text-white rounded-md transition-colors focus:outline-none focus:ring-1 focus:ring-blue-500"
+            >
+              <span>+</span>
+              Add Product
+            </button>
+          )}
         </div>
       )}
 
       {/* Pagination Controls */}
-      {!isSearching && onPageChange && totalPages > 1 && (
+      {!isSearching && onPageChange && (
         <div className="px-6 py-4 border-t border-slate-200 flex items-center justify-between bg-slate-50/50">
           <div className="flex items-center gap-2">
             <span className="text-sm text-slate-600">Rows per page:</span>
