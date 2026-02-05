@@ -9,7 +9,7 @@ interface WasteModalProps {
   productId: number | null;
   batchId?: number | null;
   onSuccess: () => void;
-  onClose: () => void;
+  onClose: () => void;  
 }
 
 export default function WasteModal({ isOpen, productId, batchId, onSuccess, onClose }: WasteModalProps) {

@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import type { ChangeEvent } from 'react';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 import type { ProductDTO } from '../../services/products.api';
 import { storeProductsApi } from '../../services/store-products.api';
 import { productsApi } from '../../services/products.api';
@@ -47,6 +48,8 @@ const AddProductFromInventoryModal = ({
   const [loading, setLoading] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<(ProductDTO & { warehouseQuantity?: number; storeQuantity?: number }) | null>(null);
   const [quantity, setQuantity] = useState<string>('1');
+  const [currentPage, setCurrentPage] = useState(0);
+  const [itemsPerPage, setItemsPerPage] = useState(5);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const scrollPositionRef = useRef<number>(0);
   // Track pending transfer quantities (productId -> quantity to transfer)
@@ -66,8 +69,23 @@ const AddProductFromInventoryModal = ({
       setQuantityInputs(new Map());
       setExpirationDates(new Map());
       setHasExpirationDate(new Map());
+      setCurrentPage(0); // Reset to first page when modal opens
+      setSearchTerm('');
+      setSearchResults([]);
+      setIsSearching(false);
     }
   }, [isOpen, inventoryProducts]);
+
+  // Calculate pagination (must be before early return to maintain hook order)
+  const allDisplayProducts = isSearching ? searchResults : availableProducts;
+  const totalPages = Math.max(1, Math.ceil(allDisplayProducts.length / itemsPerPage));
+  
+  // Reset to first page if current page is out of bounds
+  useEffect(() => {
+    if (currentPage >= totalPages && totalPages > 0) {
+      setCurrentPage(0);
+    }
+  }, [currentPage, totalPages]);
 
   const loadAvailableProducts = async (preserveScroll = false) => {
     // Save scroll position before loading
@@ -189,29 +207,104 @@ const AddProductFromInventoryModal = ({
 
   if (!isOpen) return null;
 
+  // Debounced search function
+  const performSearch = async (searchValue: string) => {
+    if (!searchValue.trim()) {
+      setSearchResults([]);
+      setIsSearching(false);
+      setCurrentPage(0);
+      return;
+    }
+    
+    setIsSearching(true);
+    try {
+      // Use API search to fetch only matching products
+      const res = await productsApi.search({
+        q: searchValue.trim(),
+        page: 0,
+        size: 1000 // Get a large number to show all search results
+      });
+      
+      if (res.data) {
+        let content: ProductDTO[] = [];
+        if (typeof res.data === 'object' && 'content' in res.data) {
+          content = (res.data as any).content || [];
+        } else if (Array.isArray(res.data)) {
+          content = res.data;
+        }
+        
+        // Filter products that have warehouse quantity > 0 and fetch their quantities
+        const productsWithInventory: (ProductDTO & { warehouseQuantity?: number; storeQuantity?: number })[] = [];
+        
+        for (const product of content) {
+          try {
+            const productId = typeof product.id === 'string' ? parseInt(product.id) : product.id;
+            const stockRes = await storeProductsApi.getByProductId(productId);
+            if (stockRes.data && (stockRes.data.warehouseQty || stockRes.data.warehouseQuantity || 0) > 0) {
+              // Fetch category
+              let categoryName: string | undefined = typeof product.category === 'string' 
+                ? product.category 
+                : undefined;
+              
+              if (!categoryName && product.id) {
+                try {
+                  const catRes = await productsApi.getProductCategories(product.id);
+                  if (catRes.data && catRes.data.length > 0) {
+                    const sortedCategories = [...catRes.data].sort((a, b) => a.id - b.id);
+                    const subCategory = sortedCategories.find(cat => cat.parentId !== null && cat.parentId !== undefined) || sortedCategories[0];
+                    categoryName = subCategory.name;
+                  }
+                } catch (err) {
+                  // ignore
+                }
+              }
+              
+              if (!categoryName && product.category && typeof product.category === 'object') {
+                const catObj = product.category as any;
+                categoryName = catObj.name || catObj.title;
+              }
+              
+              productsWithInventory.push({
+                ...product,
+                warehouseQuantity: stockRes.data.warehouseQty || stockRes.data.warehouseQuantity || 0,
+                storeQuantity: stockRes.data.storeQty || stockRes.data.storeQuantity || 0,
+                category: categoryName,
+              });
+            }
+          } catch (err) {
+            // Skip products without inventory
+            continue;
+          }
+        }
+        
+        // Sort by warehouseQuantity descending (highest first)
+        productsWithInventory.sort((a, b) => {
+          const aQty = a.warehouseQuantity || 0;
+          const bQty = b.warehouseQuantity || 0;
+          return bQty - aQty;
+        });
+        
+        setSearchResults(productsWithInventory);
+        setCurrentPage(0); // Reset to first page when search results change
+      } else {
+        setSearchResults([]);
+      }
+    } catch (err) {
+      console.error('Search failed:', err);
+      setSearchResults([]);
+    }
+  };
+
   const handleSearchChange = (e: ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
     setSearchTerm(value);
     
     if (value.trim()) {
-      const results = availableProducts.filter(product =>
-        product.name.toLowerCase().includes(value.toLowerCase()) ||
-        (product.description && product.description.toLowerCase().includes(value.toLowerCase())) ||
-        (product.category && typeof product.category === 'string' && product.category.toLowerCase().includes(value.toLowerCase())) ||
-        (product.sku && product.sku.toLowerCase().includes(value.toLowerCase())) ||
-        (product.brand && product.brand.toLowerCase().includes(value.toLowerCase()))
-      );
-      // Sort search results by originalIndex to maintain order from availableProducts
-      results.sort((a, b) => {
-        const aIdx = (a as any).originalIndex ?? 0;
-        const bIdx = (b as any).originalIndex ?? 0;
-        return aIdx - bIdx; // Maintain original order
-      });
-      setSearchResults(results);
-      setIsSearching(true);
+      performSearch(value);
     } else {
       setSearchResults([]);
       setIsSearching(false);
+      setCurrentPage(0);
     }
   };
 
@@ -288,7 +381,10 @@ const AddProductFromInventoryModal = ({
   };
 
 
-  const displayProducts = isSearching ? searchResults : availableProducts;
+  // Calculate pagination display (after early return, but these are just calculations, not hooks)
+  const startIndex = currentPage * itemsPerPage;
+  const endIndex = startIndex + itemsPerPage;
+  const displayProducts = allDisplayProducts.slice(startIndex, endIndex);
 
   return (
     <div 
@@ -484,7 +580,8 @@ const AddProductFromInventoryModal = ({
                   <p className="text-slate-600">Loading available products...</p>
                 </div>
               ) : displayProducts.length > 0 ? (
-                <div ref={scrollContainerRef} className="flex-1 overflow-y-auto space-y-3 pr-2">
+                <>
+                <div ref={scrollContainerRef} className="flex-1 overflow-y-auto space-y-2 pr-2">
                   {displayProducts.map(product => {
                     const imageUrl = product.imageUrl || product.primaryImageUrl || 
                       (product.images && product.images.length > 0 ? product.images[0].url : null);
@@ -495,7 +592,7 @@ const AddProductFromInventoryModal = ({
                     return (
                 <div 
                   key={product.id} 
-                        className="flex items-center gap-4 p-4 border border-slate-200 rounded-lg hover:bg-slate-50 hover:border-blue-300 transition-colors"
+                        className="flex items-center gap-3 p-3 border border-slate-200 rounded-lg hover:bg-slate-50 hover:border-blue-300 transition-colors"
                 >
                   <div className="flex-shrink-0">
                     {(() => {
@@ -507,24 +604,24 @@ const AddProductFromInventoryModal = ({
                         <AuthenticatedImage
                           src={normalizedUrl}
                           alt={product.name}
-                          className="w-16 h-16 object-cover rounded-lg border border-slate-200"
+                          className="w-12 h-12 object-cover rounded-md border border-slate-200"
                           fallbackIcon={
-                            <div className="w-16 h-16 bg-amber-100 border border-amber-200 rounded-lg flex items-center justify-center">
-                              <span className="text-2xl">📦</span>
+                            <div className="w-12 h-12 bg-amber-100 border border-amber-200 rounded-md flex items-center justify-center">
+                              <span className="text-lg">📦</span>
                             </div>
                           }
                         />
                       ) : (
-                        <div className="w-16 h-16 bg-amber-100 border border-amber-200 rounded-lg flex items-center justify-center">
-                          <span className="text-2xl">📦</span>
+                        <div className="w-12 h-12 bg-amber-100 border border-amber-200 rounded-md flex items-center justify-center">
+                          <span className="text-lg">📦</span>
                         </div>
                       );
                     })()}
                   </div>
                   
                   <div className="flex-1 min-w-0">
-                          <h4 className="text-base font-semibold text-slate-800 mb-1">{product.name || 'Unknown Product'}</h4>
-                          <div className="flex items-center gap-4 text-sm text-slate-600 mb-2">
+                          <h4 className="text-sm font-semibold text-slate-800 mb-0.5">{product.name || 'Unknown Product'}</h4>
+                          <div className="flex items-center gap-3 text-xs text-slate-600 mb-1.5">
                             <span>
                               {(() => {
                                 if (typeof product.category === 'string') return product.category;
@@ -539,7 +636,7 @@ const AddProductFromInventoryModal = ({
                               ${((product.price || product.defaultPrice || 0) > 0 ? (product.price || product.defaultPrice || 0) : 0).toFixed(2)}
                             </span>
                           </div>
-                          <div className="flex items-center gap-4 text-xs">
+                          <div className="flex items-center gap-3 text-xs">
                             <span className="text-slate-500">
                               Warehouse: <span className="font-semibold text-blue-600">{warehouseQty}</span>
                             </span>
@@ -549,7 +646,7 @@ const AddProductFromInventoryModal = ({
                     </div>
                   </div>
                   
-                        <div className="flex-shrink-0 flex items-center gap-2">
+                        <div className="flex-shrink-0 flex items-center gap-1.5">
                           <button 
                             onClick={(e) => {
                               e.stopPropagation();
@@ -573,7 +670,7 @@ const AddProductFromInventoryModal = ({
                               });
                             }}
                             disabled={(parseInt(quantityInputs.get(productId) || '0') || 0) <= 0}
-                            className="px-3 py-2 bg-red-100 hover:bg-red-200 disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed text-red-700 font-medium rounded-lg transition-colors"
+                            className="px-2 py-1.5 bg-red-100 hover:bg-red-200 disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed text-red-700 font-medium rounded-md transition-colors text-xs"
                             title="Decrease quantity"
                           >
                             −
@@ -599,7 +696,7 @@ const AddProductFromInventoryModal = ({
                               });
                             }}
                             onClick={(e) => e.stopPropagation()}
-                            className="w-16 px-2 py-2 text-center border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                            className="w-12 px-1.5 py-1.5 text-center border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs"
                             placeholder="0"
                           />
                           <button 
@@ -624,7 +721,7 @@ const AddProductFromInventoryModal = ({
                               }
                             }}
                             disabled={warehouseQty <= 0 || (parseInt(quantityInputs.get(productId) || '0') || 0) >= warehouseQty}
-                            className="px-3 py-2 bg-green-100 hover:bg-green-200 disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed text-green-700 font-medium rounded-lg transition-colors"
+                            className="px-2 py-1.5 bg-green-100 hover:bg-green-200 disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed text-green-700 font-medium rounded-md transition-colors text-xs"
                             title="Increase quantity"
                           >
                             +
@@ -636,7 +733,7 @@ const AddProductFromInventoryModal = ({
                               await handleSelect(product);
                       }}
                             disabled={warehouseQty <= 0}
-                            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white font-medium rounded-lg transition-colors"
+                            className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white font-medium rounded-md transition-colors text-xs"
                             title="Transfer to store"
                     >
                             Transfer
@@ -646,6 +743,52 @@ const AddProductFromInventoryModal = ({
                     );
                   })}
             </div>
+            
+            {/* Pagination Controls */}
+            {allDisplayProducts.length > itemsPerPage && (
+              <div className="mt-4 pt-4 border-t border-slate-200 flex items-center justify-between bg-slate-50/50 -mx-6 px-6">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-slate-600">Rows per page:</span>
+                  <select
+                    value={itemsPerPage}
+                    onChange={(e) => {
+                      setItemsPerPage(Number(e.target.value));
+                      setCurrentPage(0); // Reset to first page when changing items per page
+                    }}
+                    className="px-2.5 py-1.5 text-sm border border-slate-300 rounded-md bg-white hover:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-150 cursor-pointer"
+                  >
+                    <option value={5}>5</option>
+                    <option value={10}>10</option>
+                    <option value={20}>20</option>
+                    <option value={50}>50</option>
+                  </select>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-slate-600">
+                    Page {currentPage + 1} of {totalPages} ({allDisplayProducts.length} total)
+                  </span>
+                  <div className="inline-flex rounded-lg overflow-hidden border border-slate-300 bg-white shadow-sm">
+                    <button
+                      onClick={() => setCurrentPage(Math.max(0, currentPage - 1))}
+                      disabled={currentPage === 0}
+                      className="px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-blue-50 hover:text-blue-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1"
+                      title="Previous page"
+                    >
+                      <ChevronLeft className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => setCurrentPage(Math.min(totalPages - 1, currentPage + 1))}
+                      disabled={currentPage >= totalPages - 1}
+                      className="px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-blue-50 hover:text-blue-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent transition-all duration-150 border-l border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1"
+                      title="Next page"
+                    >
+                      <ChevronRight className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+            </>
           ) : (
             <div className="text-center py-12">
               <p className="text-slate-600 mb-2">No products available to add.</p>

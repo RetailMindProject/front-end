@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react';
-import { Filter } from 'lucide-react';
+import { useSearchParams } from 'react-router-dom';
+import { Package, AlertTriangle, X } from 'lucide-react';
 import ProductList from '../components/Operations/ProductList';
 import CreateProduct from '../components/Operations/CreateProduct';
 import EditProduct from '../components/Operations/EditProduct';
 import RestockModal from '../components/Operations/RestockModal';
 import { productsApi, type ProductDTO, type ProductCreateDTO } from '../services/products.api';
+import { useToast } from '../contexts/ToastContext';
 
 type UIProduct = Omit<ProductDTO, 'category'> & { 
   category?: string;
@@ -16,6 +18,9 @@ type UIProduct = Omit<ProductDTO, 'category'> & {
 };
 
 export default function InventoryOperations() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const { showSuccess, showError } = useToast();
+  
   const initialFilters = {
     brand: '',
     sku: '',
@@ -25,6 +30,7 @@ export default function InventoryOperations() {
   };
 
   const [products, setProducts] = useState<UIProduct[]>([]);
+  const [allProducts, setAllProducts] = useState<UIProduct[]>([]); // Keep unfiltered products for stats
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [filters, setFilters] = useState(initialFilters);
@@ -33,9 +39,27 @@ export default function InventoryOperations() {
   const [totalPages, setTotalPages] = useState(0);
   const [totalElements, setTotalElements] = useState(0);
 
-  const [currentView, setCurrentView] = useState<'list' | 'create' | 'edit'>('list');
-  const [editingProductId, setEditingProductId] = useState<string | number | null>(null);
+  // Summary statistics
+  const [stats, setStats] = useState({
+    totalProducts: 0,
+    activeProducts: 0,
+    lowStock: 0,
+    outOfStock: 0
+  });
+
+  // Initialize currentView from URL params, default to 'list'
+  const viewFromUrl = searchParams.get('view') as 'list' | 'create' | 'edit' | null;
+  const [currentView, setCurrentView] = useState<'list' | 'create' | 'edit'>(
+    (viewFromUrl && ['list', 'create', 'edit'].includes(viewFromUrl)) ? viewFromUrl : 'list'
+  );
+  
+  // Initialize editingProductId from URL params
+  const editIdFromUrl = searchParams.get('editId');
+  const [editingProductId, setEditingProductId] = useState<string | number | null>(
+    editIdFromUrl ? editIdFromUrl : null
+  );
   const [showFilters, setShowFilters] = useState(false);
+  const [activeCardFilter, setActiveCardFilter] = useState<'all' | 'active' | 'lowStock' | 'outOfStock'>('all');
   const [restockModal, setRestockModal] = useState<{ isOpen: boolean; productId: string | number | null; productName: string }>({
     isOpen: false,
     productId: null,
@@ -161,6 +185,10 @@ export default function InventoryOperations() {
           })
         );
         setProducts(normalized);
+        // Store unfiltered products for stats when fetching without filters
+        if (!activeFilters.brand && !activeFilters.sku && !activeFilters.minPrice && !activeFilters.maxPrice && activeFilters.isActive === '') {
+          setAllProducts(normalized);
+        }
       } else {
         // Provide more context for 403 errors
         if (res.status === 403) {
@@ -406,12 +434,17 @@ export default function InventoryOperations() {
         // Refresh the list to show the new product (go to page 0 to see it)
         setCurrentPage(0);
         fetchProducts(undefined, 0, undefined);
+        // Stay on create view - don't navigate away since we have toast notification
+        // Show success toast
+        showSuccess('Product added successfully');
       } else {
         throw new Error(res.error || 'Unable to create product');
       }
-    setCurrentView('list');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unable to create product');
+      const errorMessage = err instanceof Error ? err.message : 'Unable to create product';
+      setError(errorMessage);
+      // Show error toast
+      showError(`Product creation failed: ${errorMessage}`);
     } finally {
       setLoading(false);
     }
@@ -622,10 +655,17 @@ export default function InventoryOperations() {
       
       // Refresh the current page to show updated product
       fetchProducts(undefined, currentPage, undefined);
-    setCurrentView('list');
-    setEditingProductId(null);
+      // Return to list view and clear URL params
+      setCurrentView('list');
+      setEditingProductId(null);
+      setSearchParams({});
+      // Show success toast
+      showSuccess('Product updated successfully');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unable to update product');
+      const errorMessage = err instanceof Error ? err.message : 'Unable to update product';
+      setError(errorMessage);
+      // Show error toast
+      showError(`Product update failed: ${errorMessage}`);
     } finally {
       setLoading(false);
     }
@@ -646,8 +686,13 @@ export default function InventoryOperations() {
       } else {
         fetchProducts(undefined, currentPage, undefined);
       }
+      // Show success toast
+      showSuccess('Product deleted successfully');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unable to delete product');
+      const errorMessage = err instanceof Error ? err.message : 'Unable to delete product';
+      setError(errorMessage);
+      // Show error toast
+      showError(`Product deletion failed: ${errorMessage}`);
     } finally {
       setLoading(false);
     }
@@ -656,15 +701,21 @@ export default function InventoryOperations() {
   const handleEdit = (id: string | number) => {
     setEditingProductId(id);
     setCurrentView('edit');
+    // Update URL params
+    setSearchParams({ view: 'edit', editId: String(id) });
   };
 
   const handleCreate = () => {
     setCurrentView('create');
+    // Update URL params
+    setSearchParams({ view: 'create' });
   };
 
   const handleCancel = () => {
     setCurrentView('list');
     setEditingProductId(null);
+    // Clear URL params
+    setSearchParams({});
   };
 
   const handleRestock = (id: string | number, name: string) => {
@@ -678,6 +729,8 @@ export default function InventoryOperations() {
   const handleRestockSuccess = () => {
     // Refresh products list after successful restock
     fetchProducts(undefined, currentPage, undefined);
+    // Show success toast
+    showSuccess('Product restocked successfully');
   };
 
   const handleCloseRestockModal = () => {
@@ -688,8 +741,140 @@ export default function InventoryOperations() {
     });
   };
 
-  // Load products from API on mount
+  // Sync view state with URL params (for browser back/forward navigation)
   useEffect(() => {
+    const viewFromUrl = searchParams.get('view') as 'list' | 'create' | 'edit' | null;
+    const editIdFromUrl = searchParams.get('editId');
+    
+    if (viewFromUrl && ['list', 'create', 'edit'].includes(viewFromUrl)) {
+      setCurrentView(viewFromUrl);
+      
+      if (viewFromUrl === 'edit' && editIdFromUrl) {
+        setEditingProductId(editIdFromUrl);
+      } else if (viewFromUrl !== 'edit') {
+        setEditingProductId(null);
+      }
+    } else {
+      // No view param, default to list
+      setCurrentView('list');
+      setEditingProductId(null);
+    }
+  }, [searchParams]);
+
+  // Calculate statistics from allProducts (unfiltered)
+  const calculateStats = () => {
+    // Only calculate stats when allProducts is fully loaded and matches totalElements
+    // This prevents numbers from flickering/changing
+    if (allProducts.length > 0 && totalElements > 0 && allProducts.length === totalElements) {
+      const active = allProducts.filter(p => p.isActive !== false).length;
+      const low = allProducts.filter(p => {
+        const total = (p.warehouseQuantity || 0) + (p.storeQuantity || 0);
+        return total > 0 && total < 10; // threshold
+      }).length;
+      const out = allProducts.filter(p => {
+        const total = (p.warehouseQuantity || 0) + (p.storeQuantity || 0);
+        return total === 0;
+      }).length;
+      setStats({
+        totalProducts: totalElements, // Use API totalElements for accuracy
+        activeProducts: active,
+        lowStock: low,
+        outOfStock: out
+      });
+    }
+    // Don't set partial stats - wait until everything is ready
+  };
+
+  // Update stats only when allProducts is fully loaded
+  useEffect(() => {
+    if (currentView === 'list') {
+      calculateStats();
+    }
+  }, [allProducts.length, totalElements, currentView]); // Only trigger when lengths match
+
+  // Load all products for stats calculation on mount
+  useEffect(() => {
+    // Fetch all products across all pages for accurate stats
+    const fetchAllForStats = async () => {
+      try {
+        const { storeProductsApi } = await import('../services/store-products.api');
+        const allProductsList: UIProduct[] = [];
+        let currentPage = 0;
+        let hasMore = true;
+        let totalElementsFromAPI = 0;
+        
+        while (hasMore) {
+          const res = await productsApi.filter({
+            page: currentPage,
+            size: 1000,
+          });
+          
+          if (res.data) {
+            let content: ProductDTO[] = [];
+            if (typeof res.data === 'object' && 'content' in res.data) {
+              const pageData = res.data as { content: ProductDTO[]; totalPages: number; totalElements: number };
+              content = pageData.content || [];
+              totalElementsFromAPI = pageData.totalElements || 0;
+              hasMore = currentPage < pageData.totalPages - 1;
+            } else if (Array.isArray(res.data)) {
+              content = res.data;
+              hasMore = false;
+            } else {
+              hasMore = false;
+            }
+            
+            const normalized: UIProduct[] = await Promise.all(
+              content.map(async (p) => {
+                let categoryName: string | undefined;
+                if (Array.isArray((p as any).categories) && (p as any).categories.length > 0) {
+                  categoryName = (p as any).categories[0]?.name;
+                } else if (typeof p.category === 'string' && p.category.trim()) {
+                  categoryName = p.category;
+                }
+                
+                let warehouseQuantity = 0;
+                let storeQuantity = 0;
+                if (p.id) {
+                  try {
+                    const productId = typeof p.id === 'string' ? parseInt(p.id) : p.id;
+                    const stockRes = await storeProductsApi.getByProductId(productId);
+                    if (stockRes.data) {
+                      warehouseQuantity = (stockRes.data as any).warehouseQty || (stockRes.data as any).warehouseQuantity || 0;
+                      storeQuantity = (stockRes.data as any).storeQty || (stockRes.data as any).storeQuantity || 0;
+                    }
+                  } catch (err) {
+                    // ignore
+                  }
+                }
+                
+                return {
+                  ...p,
+                  category: categoryName,
+                  price: p.price ?? p.defaultPrice ?? 0,
+                  warehouseQuantity,
+                  storeQuantity,
+                };
+              })
+            );
+            allProductsList.push(...normalized);
+            currentPage++;
+          } else {
+            hasMore = false;
+          }
+        }
+        
+        // Only set allProducts once all pages are loaded
+        setAllProducts(allProductsList);
+        // Update totalElements if we got it from API
+        if (totalElementsFromAPI > 0 && totalElementsFromAPI !== totalElements) {
+          setTotalElements(totalElementsFromAPI);
+        }
+      } catch (err) {
+        console.error('Failed to fetch all products for stats:', err);
+      }
+    };
+    
+    fetchAllForStats();
     fetchProducts();
   }, []); // initial load
 
@@ -720,93 +905,125 @@ export default function InventoryOperations() {
             {error}
           </div>
         )}
-        {/* Advanced Filters */}
+        
+        {/* Summary Cards */}
         {currentView === 'list' && (
-          <div className="mb-4">
-            <div className="flex items-center justify-between mb-3">
-              <button
-                onClick={() => setShowFilters(!showFilters)}
-                className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md transition-all duration-200 focus:outline-none focus:ring-1 focus:ring-slate-400 ${
-                  showFilters 
-                    ? 'bg-blue-100 text-blue-700 hover:bg-blue-200 border border-blue-300' 
-                    : 'text-slate-700 hover:text-slate-900 hover:bg-slate-200 border border-slate-300'
-                }`}
-                title={showFilters ? 'Hide filters' : 'Show filters'}
-              >
-                <Filter size={16} className={showFilters ? 'text-blue-600' : 'text-slate-600'} />
-                {showFilters && (
-                  <span className="ml-1 w-1.5 h-1.5 bg-blue-600 rounded-full"></span>
-                )}
-              </button>
-            </div>
-          {showFilters && (
-            <>
-              <div className="grid grid-cols-1 md:grid-cols-5 gap-2">
-                <input
-                  placeholder="Brand"
-                  className="px-2.5 py-1.5 text-sm border border-slate-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
-                  value={filters.brand}
-                  onChange={(e) => setFilters((p) => ({ ...p, brand: e.target.value }))}
-                />
-                <input
-                  placeholder="SKU"
-                  className="px-2.5 py-1.5 text-sm border border-slate-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
-                  value={filters.sku}
-                  onChange={(e) => setFilters((p) => ({ ...p, sku: e.target.value }))}
-                />
-                <input
-                  placeholder="Min Price"
-                  type="number"
-                  className="px-2.5 py-1.5 text-sm border border-slate-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
-                  value={filters.minPrice}
-                  onChange={(e) => setFilters((p) => ({ ...p, minPrice: e.target.value }))}
-                />
-                <input
-                  placeholder="Max Price"
-                  type="number"
-                  className="px-2.5 py-1.5 text-sm border border-slate-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
-                  value={filters.maxPrice}
-                  onChange={(e) => setFilters((p) => ({ ...p, maxPrice: e.target.value }))}
-                />
-                <select
-                  className="px-2.5 py-1.5 text-sm border border-slate-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
-                  value={filters.isActive}
-                  onChange={(e) => setFilters((p) => ({ ...p, isActive: e.target.value }))}
-                >
-                  <option value="">Any Status</option>
-                  <option value="true">Active</option>
-                  <option value="false">Inactive</option>
-                </select>
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+            <button
+              onClick={() => {
+                const cleared = { ...initialFilters };
+                setFilters(cleared);
+                setActiveCardFilter('all');
+                setCurrentPage(0);
+                fetchProducts(cleared, 0, undefined);
+              }}
+              className={`bg-gradient-to-br from-indigo-50 to-blue-50 rounded-xl p-5 border-2 shadow-sm hover:shadow-md transition-all duration-300 cursor-pointer text-left w-full ${
+                activeCardFilter === 'all' 
+                  ? 'border-indigo-500 ring-2 ring-indigo-300 shadow-md' 
+                  : 'border-indigo-200/50'
+              }`}
+            >
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-indigo-700 mb-1">Total Products</p>
+                  <p className="text-2xl font-bold text-indigo-900">{stats.totalProducts}</p>
+                </div>
+                <div className="w-12 h-12 rounded-full bg-indigo-100 flex items-center justify-center">
+                  <Package className="w-6 h-6 text-indigo-600" />
+                </div>
               </div>
-              <div className="flex gap-2 mt-3">
-                <button
-                  onClick={() => {
-                    setCurrentPage(0);
-                    fetchProducts(undefined, 0, undefined);
-                  }}
-                  className="px-3 py-1.5 text-sm font-medium bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors focus:outline-none focus:ring-1 focus:ring-blue-500"
-                >
-                  Apply
-                </button>
-                <button
-                  onClick={() => {
-                    const cleared = { ...initialFilters };
-                    setFilters(cleared);
-                    setCurrentPage(0);
-                    fetchProducts(cleared, 0, undefined);
-                  }}
-                  className="px-3 py-1.5 text-sm font-medium border border-slate-300 rounded-md hover:bg-slate-50 transition-colors focus:outline-none focus:ring-1 focus:ring-slate-400"
-                >
-                  Reset
-                </button>
+            </button>
+            
+            <button
+              onClick={() => {
+                const activeFilters = { ...filters, isActive: 'true' };
+                setFilters(activeFilters);
+                setActiveCardFilter('active');
+                setCurrentPage(0);
+                fetchProducts(activeFilters, 0, undefined);
+              }}
+              className={`bg-gradient-to-br from-green-50 to-emerald-50 rounded-xl p-5 border-2 shadow-sm hover:shadow-md transition-all duration-300 cursor-pointer text-left w-full ${
+                activeCardFilter === 'active' 
+                  ? 'border-green-500 ring-2 ring-green-300 shadow-md' 
+                  : 'border-green-200/50'
+              }`}
+            >
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-green-700 mb-1">Active Products</p>
+                  <p className="text-2xl font-bold text-green-900">{stats.activeProducts}</p>
+                </div>
+                <div className="w-12 h-12 rounded-full bg-green-100 flex items-center justify-center">
+                  <span className="text-2xl">✓</span>
+                </div>
               </div>
-            </>
-          )}
+            </button>
+            
+            <button
+              onClick={() => {
+                const cleared = { ...initialFilters };
+                setFilters(cleared);
+                setActiveCardFilter('lowStock');
+                setCurrentPage(0);
+                fetchProducts(cleared, 0, undefined);
+              }}
+              className={`bg-gradient-to-br from-yellow-50 to-amber-50 rounded-xl p-5 border-2 shadow-sm hover:shadow-md transition-all duration-300 cursor-pointer text-left w-full ${
+                activeCardFilter === 'lowStock' 
+                  ? 'border-yellow-500 ring-2 ring-yellow-300 shadow-md' 
+                  : 'border-yellow-200/50'
+              }`}
+            >
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-yellow-700 mb-1">Low Stock</p>
+                  <p className="text-2xl font-bold text-yellow-900">{stats.lowStock}</p>
+                </div>
+                <div className="w-12 h-12 rounded-full bg-yellow-100 flex items-center justify-center">
+                  <AlertTriangle className="w-6 h-6 text-yellow-600" />
+                </div>
+              </div>
+            </button>
+            
+            <button
+              onClick={() => {
+                const cleared = { ...initialFilters };
+                setFilters(cleared);
+                setActiveCardFilter('outOfStock');
+                setCurrentPage(0);
+                fetchProducts(cleared, 0, undefined);
+              }}
+              className={`bg-gradient-to-br from-red-50 to-orange-50 rounded-xl p-5 border-2 shadow-sm hover:shadow-md transition-all duration-300 cursor-pointer text-left w-full ${
+                activeCardFilter === 'outOfStock' 
+                  ? 'border-red-500 ring-2 ring-red-300 shadow-md' 
+                  : 'border-red-200/50'
+              }`}
+            >
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-red-700 mb-1">Out of Stock</p>
+                  <p className="text-2xl font-bold text-red-900">{stats.outOfStock}</p>
+                </div>
+                <div className="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center">
+                  <X className="w-6 h-6 text-red-600" />
+                </div>
+              </div>
+            </button>
           </div>
         )}
+
         {currentView === 'list' && (
           <ProductList 
-            products={products} 
+            products={activeCardFilter === 'lowStock' 
+              ? products.filter(p => {
+                  const total = (p.warehouseQuantity || 0) + (p.storeQuantity || 0);
+                  return total > 0 && total < 10;
+                })
+              : activeCardFilter === 'outOfStock'
+              ? products.filter(p => {
+                  const total = (p.warehouseQuantity || 0) + (p.storeQuantity || 0);
+                  return total === 0;
+                })
+              : products} 
             onDelete={deleteProduct}
             onEdit={handleEdit}
             onCreate={handleCreate}
@@ -825,6 +1042,22 @@ export default function InventoryOperations() {
               setCurrentPage(0);
               fetchProducts(undefined, 0, size);
             }}
+            showFilters={showFilters}
+            onToggleFilters={() => setShowFilters(!showFilters)}
+            filters={filters}
+            onFiltersChange={(newFilters) => setFilters(newFilters)}
+            onApplyFilters={() => {
+              setCurrentPage(0);
+              fetchProducts(undefined, 0, undefined);
+            }}
+            onResetFilters={() => {
+              const cleared = { ...initialFilters };
+              setFilters(cleared);
+              setCurrentPage(0);
+              fetchProducts(cleared, 0, undefined);
+            }}
+            isFiltering={activeCardFilter !== 'all' || filters.brand !== '' || filters.sku !== '' || filters.minPrice !== '' || filters.maxPrice !== '' || filters.isActive !== ''}
+            allProducts={allProducts}
           />
         )}
         {currentView === 'create' && (

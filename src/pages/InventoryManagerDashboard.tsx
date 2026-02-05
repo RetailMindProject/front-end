@@ -40,8 +40,8 @@ export default function InventoryManagerDashboard() {
               </div>
             }
           />
-          <Route path="operations" element={<div className="flex-1 p-4 md:p-6"><InventoryOperations /></div>} />
-          <Route path="waste" element={<div className="flex-1 p-4 md:p-6"><WasteManagement /></div>} />
+          <Route path="operations" element={<div className="flex-1"><InventoryOperations /></div>} />
+          <Route path="waste" element={<div className="flex-1"><WasteManagement /></div>} />
           <Route path="forecasting" element={<div className="flex-1 p-4 md:p-6"><Forecasting /></div>} />
           <Route
             path="upload-report"

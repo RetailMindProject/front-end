@@ -9,6 +9,14 @@ import type { StoreProductResponseDTO } from '../../services/store-products.api'
 import type { ProductDTO } from '../../services/products.api';
 import { productsApi } from '../../services/products.api';
 
+interface FilterState {
+  brand: string;
+  sku: string;
+  minPrice: string;
+  maxPrice: string;
+  isActive: string;
+}
+
 interface StoreManagerProps {
   storeProducts: (StoreProductResponseDTO & { imageUrl?: string | null })[];
   inventoryProducts: ProductDTO[];
@@ -16,19 +24,18 @@ interface StoreManagerProps {
   onAddFromInventory: (product: ProductDTO, quantity: number) => Promise<void>;
   onAdjustQuantity?: (productId: number, quantity: number, isIncrease: boolean) => Promise<void>;
   loading?: boolean;
-  filters?: {
-    brand: string;
-    sku: string;
-    minPrice: string;
-    maxPrice: string;
-    isActive: string;
-  };
+  filters?: FilterState;
   onFilterChange?: (name: string, value: string) => void;
   onApplyFilters?: () => void;
   onResetFilters?: () => void;
   getAvailableInventoryProducts?: () => Promise<ProductDTO[]>;
   sortBy?: 'sales' | 'none';
   onSortChange?: (sortBy: 'sales' | 'none') => void;
+  showFilters?: boolean;
+  onToggleFilters?: () => void;
+  onFiltersChange?: (filters: FilterState) => void;
+  isFiltering?: boolean;
+  allStoreProducts?: (StoreProductResponseDTO & { imageUrl?: string | null })[]; // All products for comprehensive search
 }
 
 const StoreManager = ({ 
@@ -44,7 +51,12 @@ const StoreManager = ({
   onResetFilters,
   getAvailableInventoryProducts,
   sortBy = 'none',
-  onSortChange
+  onSortChange,
+  showFilters = false,
+  onToggleFilters,
+  onFiltersChange,
+  isFiltering = false,
+  allStoreProducts
 }: StoreManagerProps) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [searchResults, setSearchResults] = useState<(StoreProductResponseDTO & { imageUrl?: string | null })[]>([]);
@@ -63,26 +75,79 @@ const StoreManager = ({
   });
   const [revertQuantity, setRevertQuantity] = useState<string>('');
   const [revertMode, setRevertMode] = useState<'all' | 'quantity'>('all');
-  const [showFilters, setShowFilters] = useState(false);
+
+  // Debounced search function
+  const performSearch = async (searchValue: string) => {
+    if (!searchValue.trim()) {
+      setSearchResults([]);
+      setIsSearching(false);
+      return;
+    }
+    
+    setIsSearching(true);
+    try {
+      // Use API search to fetch only matching products
+      const { storeProductsApi } = await import('../../services/store-products.api');
+      const res = await storeProductsApi.search({
+        q: searchValue.trim(),
+        page: 0,
+        size: 1000 // Get a large number to show all search results
+      });
+      
+      if (res.data) {
+        const content = res.data.content || [];
+        
+        // Fetch full product details for each result
+        const normalizedResults = await Promise.all(
+          content.map(async (p) => {
+            try {
+              const productRes = await productsApi.getById(p.productId);
+              if (productRes.data) {
+                const fullProduct = productRes.data;
+                
+                let imageUrl: string | null | undefined = null;
+                if (fullProduct.images && Array.isArray(fullProduct.images) && fullProduct.images.length > 0) {
+                  const primaryImage = fullProduct.images.find((img: any) => img.isPrimary) || fullProduct.images[0];
+                  if (primaryImage?.url) {
+                    imageUrl = productsApi.normalizeImageUrl(primaryImage.url, fullProduct.id);
+                  }
+                }
+                if (!imageUrl && fullProduct.primaryImageUrl) {
+                  imageUrl = productsApi.normalizeImageUrl(fullProduct.primaryImageUrl, fullProduct.id);
+                }
+                if (!imageUrl && fullProduct.imageUrl) {
+                  imageUrl = productsApi.normalizeImageUrl(fullProduct.imageUrl, fullProduct.id);
+                }
+                
+                return {
+                  ...p,
+                  imageUrl: imageUrl || p.imageUrl || null,
+                };
+              }
+            } catch (err) {
+              console.error(`Failed to get full product details for ${p.productId}:`, err);
+            }
+            
+            return p;
+          })
+        );
+        
+        setSearchResults(normalizedResults);
+      } else {
+        setSearchResults([]);
+      }
+    } catch (err) {
+      console.error('Search failed:', err);
+      setSearchResults([]);
+    }
+  };
 
   const handleSearchChange = (e: ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
     setSearchTerm(value);
     
     if (value.trim()) {
-      const searchLower = value.toLowerCase().trim();
-      const results = storeProducts.filter(product => {
-        // Search by name
-        const nameMatch = product.productName && product.productName.toLowerCase().includes(searchLower);
-        // Search by SKU
-        const skuMatch = product.sku && product.sku.toLowerCase().includes(searchLower);
-        // Search by ID (convert both to string for comparison)
-        const idMatch = String(product.productId).includes(searchLower);
-        
-        return nameMatch || skuMatch || idMatch;
-      });
-      setSearchResults(results);
-      setIsSearching(true);
+      performSearch(value);
     } else {
       setSearchResults([]);
       setIsSearching(false);
@@ -347,119 +412,136 @@ const StoreManager = ({
         </button>
       </div>
 
-      {/* Advanced Filters */}
-      {filters && onFilterChange && onApplyFilters && onResetFilters && (
-        <div className="px-6 py-4 border-b bg-slate-50/50">
-          <div className="flex items-center justify-between mb-3">
-            <button
-              onClick={() => setShowFilters(!showFilters)}
-              className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md transition-all duration-200 focus:outline-none focus:ring-1 focus:ring-slate-400 ${
-                showFilters 
-                  ? 'bg-blue-100 text-blue-700 hover:bg-blue-200 border border-blue-300' 
-                  : 'text-slate-700 hover:text-slate-900 hover:bg-slate-200 border border-slate-300'
-              }`}
-              title={showFilters ? 'Hide filters' : 'Show filters'}
-            >
-              <Filter size={16} className={showFilters ? 'text-blue-600' : 'text-slate-600'} />
-              {showFilters && (
-                <span className="ml-1 w-1.5 h-1.5 bg-blue-600 rounded-full"></span>
-              )}
-            </button>
-          </div>
-          {showFilters && (
-            <>
-              <div className="grid grid-cols-1 md:grid-cols-6 gap-2 mb-3">
-                <input
-                  placeholder="Brand"
-                  className="px-2.5 py-1.5 text-sm border border-slate-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
-                  value={filters.brand}
-                  onChange={(e) => onFilterChange('brand', e.target.value)}
-                />
-                <input
-                  placeholder="SKU"
-                  className="px-2.5 py-1.5 text-sm border border-slate-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
-                  value={filters.sku}
-                  onChange={(e) => onFilterChange('sku', e.target.value)}
-                />
-                <input
-                  placeholder="Min Price"
-                  type="number"
-                  className="px-2.5 py-1.5 text-sm border border-slate-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
-                  value={filters.minPrice}
-                  onChange={(e) => onFilterChange('minPrice', e.target.value)}
-                />
-                <input
-                  placeholder="Max Price"
-                  type="number"
-                  className="px-2.5 py-1.5 text-sm border border-slate-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
-                  value={filters.maxPrice}
-                  onChange={(e) => onFilterChange('maxPrice', e.target.value)}
-                />
-                <select
-                  className="px-2.5 py-1.5 text-sm border border-slate-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
-                  value={filters.isActive}
-                  onChange={(e) => onFilterChange('isActive', e.target.value)}
-                >
-                  <option value="">Any Status</option>
-                  <option value="true">Active</option>
-                  <option value="false">Inactive</option>
-                </select>
-                {onSortChange && (
-                  <select
-                    className="px-2.5 py-1.5 text-sm border border-slate-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
-                    value={sortBy}
-                    onChange={(e) => onSortChange(e.target.value as 'sales' | 'none')}
-                  >
-                    <option value="none">Sort By</option>
-                    <option value="sales">Most Sold</option>
-                  </select>
-                )}
-              </div>
-              <div className="flex gap-2">
-                <button
-                  onClick={onApplyFilters}
-                  className="px-3 py-1.5 text-sm font-medium bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors focus:outline-none focus:ring-1 focus:ring-blue-500"
-                >
-                  Apply
-                </button>
-                <button
-                  onClick={onResetFilters}
-                  className="px-3 py-1.5 text-sm font-medium border border-slate-300 rounded-md hover:bg-slate-50 transition-colors focus:outline-none focus:ring-1 focus:ring-slate-400"
-                >
-                  Reset
-                </button>
-              </div>
-            </>
-          )}
-        </div>
-      )}
-
       {/* Search Section */}
-      <div className="px-6 py-4 border-b bg-slate-50/50">
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2">
+      <div className="px-6 py-4 border-b bg-slate-50/50 overflow-x-hidden">
+        <div className="flex items-center gap-2 flex-nowrap min-h-[40px] w-full min-w-0">
+          <div className="flex items-center gap-2 flex-shrink-0">
             <input
               type="text"
               value={searchTerm}
               onChange={handleSearchChange}
-              placeholder="Search by name, SKU, or ID"
-              className="px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent w-64"
+              placeholder="Search product"
+              className={`border-solid border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-white placeholder:text-slate-400 hover:border-slate-400 transition-all duration-200 ease-out ${
+                showFilters 
+                  ? 'px-2 py-1.5 text-xs w-28' 
+                  : 'px-3 py-2 text-sm flex-1 max-w-md'
+              }`}
             />
             {isSearching && (
               <button 
                 onClick={clearSearch} 
-                className="px-2.5 py-1 text-xs font-medium text-slate-600 hover:text-slate-800 hover:bg-slate-200 rounded-md transition-colors focus:outline-none focus:ring-1 focus:ring-slate-400"
+                className="px-2 py-1 text-xs font-medium text-slate-600 hover:text-slate-800 hover:bg-slate-200 rounded-md transition-colors focus:outline-none focus:ring-1 focus:ring-slate-400 flex-shrink-0"
               >
                 Clear
               </button>
             )}
           </div>
           
-          <div className="flex items-center gap-3 ml-auto">
-            <span className="text-sm text-slate-600">
-              {isSearching ? `${searchResults.length} product${searchResults.length !== 1 ? 's' : ''} found` : `${storeProducts.length} products`}
-            </span>
-          </div>
+          {filters && onFiltersChange && (
+            <div 
+              className="flex items-center gap-2 flex-nowrap min-w-0 flex-1"
+              style={{ 
+                visibility: showFilters ? 'visible' : 'hidden',
+                opacity: showFilters ? 1 : 0,
+                pointerEvents: showFilters ? 'auto' : 'none',
+                transition: 'opacity 0.2s ease-out, visibility 0.2s ease-out',
+                maxWidth: showFilters ? 'none' : '0',
+                overflow: 'hidden'
+              }}
+            >
+              <input
+                placeholder="Brand"
+                className="px-2 py-1.5 text-xs border-solid border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all bg-white w-24 flex-shrink-0 placeholder:text-slate-400 hover:border-slate-400"
+                value={filters.brand}
+                onChange={(e) => onFiltersChange({ ...filters, brand: e.target.value })}
+              />
+              <input
+                placeholder="SKU"
+                className="px-2 py-1.5 text-xs border-solid border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all bg-white w-24 flex-shrink-0 placeholder:text-slate-400 hover:border-slate-400"
+                value={filters.sku}
+                onChange={(e) => onFiltersChange({ ...filters, sku: e.target.value })}
+              />
+              <input
+                placeholder="Min $"
+                type="number"
+                min="0"
+                step="0.01"
+                className="px-2 py-1.5 text-xs border-solid border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all bg-white w-20 flex-shrink-0 placeholder:text-slate-400 hover:border-slate-400"
+                value={filters.minPrice}
+                onChange={(e) => {
+                  const value = e.target.value;
+                  if (value === '' || parseFloat(value) >= 0) {
+                    onFiltersChange({ ...filters, minPrice: value });
+                  }
+                }}
+              />
+              <input
+                placeholder="Max $"
+                type="number"
+                min="0"
+                step="0.01"
+                className="px-2 py-1.5 text-xs border-solid border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all bg-white w-20 flex-shrink-0 placeholder:text-slate-400 hover:border-slate-400"
+                value={filters.maxPrice}
+                onChange={(e) => {
+                  const value = e.target.value;
+                  if (value === '' || parseFloat(value) >= 0) {
+                    onFiltersChange({ ...filters, maxPrice: value });
+                  }
+                }}
+              />
+              <select
+                className="px-2 py-1.5 text-xs border-solid border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all bg-white w-24 flex-shrink-0 text-slate-700 hover:border-slate-400"
+                value={filters.isActive}
+                onChange={(e) => onFiltersChange({ ...filters, isActive: e.target.value })}
+              >
+                <option value="">Status</option>
+                <option value="true">Active</option>
+                <option value="false">Inactive</option>
+              </select>
+              {onSortChange && (
+                <select
+                  className="px-2 py-1.5 text-xs border-solid border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all bg-white w-24 flex-shrink-0 text-slate-700 hover:border-slate-400"
+                  value={sortBy}
+                  onChange={(e) => onSortChange(e.target.value as 'sales' | 'none')}
+                >
+                  <option value="none">Sort By</option>
+                  <option value="sales">Most Sold</option>
+                </select>
+              )}
+              {onApplyFilters && (
+                <button
+                  onClick={onApplyFilters}
+                  className="px-2.5 py-1.5 text-xs font-semibold bg-gradient-to-r from-indigo-600 to-blue-600 text-white rounded-lg hover:from-indigo-700 hover:to-blue-700 transition-all duration-200 shadow-sm hover:shadow-md flex-shrink-0 whitespace-nowrap"
+                >
+                  Apply
+                </button>
+              )}
+              {onResetFilters && (
+                <button
+                  onClick={onResetFilters}
+                  className="px-2.5 py-1.5 text-xs font-medium border border-slate-300 rounded-lg hover:bg-slate-50 transition-all duration-200 flex-shrink-0 whitespace-nowrap"
+                >
+                  Reset
+                </button>
+              )}
+            </div>
+          )}
+          
+          {onToggleFilters && (
+            <div className="flex items-center gap-2 flex-shrink-0 ml-auto">
+              <button
+                onClick={onToggleFilters}
+                className={`p-2 rounded-lg transition-all duration-200 cursor-pointer border-2 ${
+                  showFilters 
+                    ? 'bg-indigo-600 text-white border-indigo-600 ring-2 ring-indigo-300 shadow-md' 
+                    : 'bg-white text-indigo-600 border-indigo-300 hover:bg-indigo-50 hover:border-indigo-400 hover:shadow-sm'
+                }`}
+                title={showFilters ? 'Hide filters' : 'Show filters'}
+              >
+                <Filter className="w-4 h-4" />
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
@@ -579,15 +661,16 @@ const StoreManager = ({
         </div>
       ) : (
         <div className="px-6 py-16 text-center">
-          <h3 className="text-lg font-semibold text-slate-800 mb-2">No products in store</h3>
-          <p className="text-slate-600 mb-6">Add products from inventory to get started.</p>
-          <button 
-            onClick={handleAddFromInventory} 
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium bg-blue-600 hover:bg-blue-700 text-white rounded-md transition-colors focus:outline-none focus:ring-1 focus:ring-blue-500"
-          >
-            <span>+</span>
-            Transfer
-          </button>
+          <h3 className="text-lg font-semibold text-slate-800 mb-2">No products found</h3>
+          {!isSearching && !isFiltering && (
+            <button 
+              onClick={handleAddFromInventory} 
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium bg-blue-600 hover:bg-blue-700 text-white rounded-md transition-colors focus:outline-none focus:ring-1 focus:ring-blue-500"
+            >
+              <span>+</span>
+              Transfer
+            </button>
+          )}
         </div>
       )}
       

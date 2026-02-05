@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import type { FormEvent } from 'react';
 import { storeProductsApi } from '../../services/store-products.api';
+import { productsApi } from '../../services/products.api';
 import type { StoreProductResponseDTO } from '../../services/store-products.api';
 
 interface RestockModalProps {
@@ -74,16 +75,60 @@ const RestockModal = ({ isOpen, onClose, productId, productName, onRestockSucces
     try {
       setLoadingProducts(true);
       setError(null);
-      const res = await storeProductsApi.getByProductId(id);
-      if (res.data) {
-        // Convert StoreProductResponseDTO to match our selectedProduct type
-        setSelectedProduct(res.data);
+      
+      // First try to get from store products (if it exists in inventory)
+      const storeRes = await storeProductsApi.getByProductId(id);
+      if (storeRes.data) {
+        // Product exists in store inventory, use that data
+        setSelectedProduct(storeRes.data);
+        return;
+      }
+      
+      // If not found in store products, try to get basic product info from products API
+      // This handles the case where product was just created but not yet added to inventory
+      const productRes = await productsApi.getById(id);
+      if (productRes.data) {
+        // Create a mock StoreProductResponseDTO from ProductDTO
+        const product = productRes.data;
+        const mockStoreProduct: StoreProductResponseDTO = {
+          productId: typeof product.id === 'string' ? parseInt(product.id) : product.id,
+          sku: product.sku || '',
+          productName: product.name || productName,
+          warehouseQty: 0, // Will be set when restocked
+          storeQty: 0,
+          warehouseQuantity: 0,
+          storeQuantity: 0,
+        };
+        setSelectedProduct(mockStoreProduct);
+        // Clear error since we found the product, just not in inventory yet
+        setError(null);
       } else {
         setError('Product not found');
       }
     } catch (err) {
       console.error('Failed to find product:', err);
-      setError(err instanceof Error ? err.message : 'Failed to load product');
+      // Try fallback to products API
+      try {
+        const productRes = await productsApi.getById(id);
+        if (productRes.data) {
+          const product = productRes.data;
+          const mockStoreProduct: StoreProductResponseDTO = {
+            productId: typeof product.id === 'string' ? parseInt(product.id) : product.id,
+            sku: product.sku || '',
+            productName: product.name || productName,
+            warehouseQty: 0,
+            storeQty: 0,
+            warehouseQuantity: 0,
+            storeQuantity: 0,
+          };
+          setSelectedProduct(mockStoreProduct);
+          setError(null);
+        } else {
+          setError('Product not found. Unable to load product information.');
+        }
+      } catch (fallbackErr) {
+        setError('Product not found. Unable to load product information.');
+      }
     } finally {
       setLoadingProducts(false);
     }

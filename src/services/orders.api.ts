@@ -350,7 +350,73 @@ export const ordersApi = {
 
     return { data: response.data };
   },
+
+  /**
+   * Get orders for sales report
+   * GET /api/orders/report?from=YYYY-MM-DD&to=YYYY-MM-DD&cashierName=...&limit=50&offset=0
+   */
+  async getOrdersReport(params: {
+    from?: string;
+    to?: string;
+    cashierName?: string;
+    cashierId?: number;
+    status?: string;
+    limit?: number;
+    offset?: number;
+    orderBy?: string;
+    orderDirection?: 'ASC' | 'DESC';
+  }): Promise<{ data?: OrderReportResponse; error?: string }> {
+    const queryParams = new URLSearchParams();
+    if (params.from) queryParams.append('from', params.from);
+    if (params.to) queryParams.append('to', params.to);
+    if (params.cashierName) queryParams.append('cashierName', params.cashierName);
+    if (params.cashierId) queryParams.append('cashierId', String(params.cashierId));
+    if (params.status) queryParams.append('status', params.status);
+    if (params.limit) queryParams.append('limit', String(params.limit));
+    if (params.offset) queryParams.append('offset', String(params.offset));
+    if (params.orderBy) queryParams.append('orderBy', params.orderBy);
+    if (params.orderDirection) queryParams.append('orderDirection', params.orderDirection);
+
+    const endpoint = `/api/orders/report?${queryParams.toString()}`;
+    const response = await apiClient.get<OrderReportResponse>(endpoint);
+
+    if (response.error) {
+      return { error: response.error };
+    }
+
+    return { data: response.data };
+  },
 };
+
+// Order Report Interfaces
+export interface OrderReportItem {
+  orderId: number;
+  orderNumber: string;
+  date: string;
+  time: string;
+  sessionId: number;
+  cashierId: number;
+  cashierName: string;
+  customerName: string | null;
+  customerPhone: string | null;
+  status: string;
+  itemCount: number;
+  subtotal: number;
+  discountAmount: number;
+  taxAmount: number;
+  grandTotal: number;
+  paymentMethod: string;
+  paidAt: string | null;
+  createdAt: string;
+  notes: string | null;
+}
+
+export interface OrderReportResponse {
+  items: OrderReportItem[];
+  total: number;
+  limit: number;
+  offset: number;
+}
 
 // Order for Return - includes return-specific fields
 // Note: API returns id (not orderItemId) and quantity (not soldQty)

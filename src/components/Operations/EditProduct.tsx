@@ -555,6 +555,13 @@ const EditProduct = ({ products, productId, onUpdate, onCancel, loading = false 
         ...prev,
         [name]: checked
       }));
+    } else if (name === 'sku') {
+      // Only allow numeric input for SKU
+      const numericValue = value.replace(/[^0-9]/g, '');
+      setFormData(prev => ({
+        ...prev,
+        [name]: numericValue
+      }));
     } else {
     setFormData(prev => ({
       ...prev,
@@ -1061,24 +1068,65 @@ const EditProduct = ({ products, productId, onUpdate, onCancel, loading = false 
     
     // ID is not required for editing - it's auto-incremented and loaded from productId prop
     
-    if (!formData.sku.trim()) {
+    // SKU validation: must be a number only
+    const skuTrimmed = formData.sku.trim();
+    if (!skuTrimmed) {
       newErrors.sku = 'SKU is required';
+    } else {
+      // SKU must be a valid number
+      const skuNum = parseFloat(skuTrimmed);
+      if (isNaN(skuNum) || !/^\d+$/.test(skuTrimmed)) {
+        newErrors.sku = 'SKU must be a number only';
+      } else if (skuNum < 0) {
+        newErrors.sku = 'SKU must be a positive number';
+      }
     }
     
     if (!formData.name.trim()) {
       newErrors.name = 'Product name is required';
     }
     
-    if (!formData.price || isNaN(Number(formData.price)) || parseFloat(formData.price) <= 0) {
-      newErrors.price = 'Please enter a valid price';
+    // Validate numeric fields - ensure they are valid numbers
+    const costNum = formData.cost.trim() ? parseFloat(formData.cost) : NaN;
+    const wholesaleNum = formData.wholesalePrice.trim() ? parseFloat(formData.wholesalePrice) : NaN;
+    const priceNum = formData.price.trim() ? parseFloat(formData.price) : NaN;
+    
+    if (!formData.cost.trim() || isNaN(costNum) || costNum < 0) {
+      newErrors.cost = 'Please enter a valid cost (must be a number >= 0)';
     }
 
-    if (!formData.cost || isNaN(Number(formData.cost)) || parseFloat(formData.cost) < 0) {
-      newErrors.cost = 'Please enter a valid cost';
+    if (!formData.wholesalePrice.trim() || isNaN(wholesaleNum) || wholesaleNum < 0) {
+      newErrors.wholesalePrice = 'Please enter a valid wholesale price (must be a number >= 0)';
     }
-
-    if (!formData.wholesalePrice || isNaN(Number(formData.wholesalePrice)) || parseFloat(formData.wholesalePrice) < 0) {
-      newErrors.wholesalePrice = 'Please enter a valid wholesale price';
+    
+    if (!formData.price.trim() || isNaN(priceNum) || priceNum <= 0) {
+      newErrors.price = 'Please enter a valid price (must be a number > 0)';
+    }
+    
+    // Validate price relationships: price > wholesalePrice AND price > cost AND wholesalePrice > cost
+    if (!isNaN(costNum) && !isNaN(wholesaleNum) && !isNaN(priceNum)) {
+      let priceError = '';
+      
+      // Check: wholesalePrice > cost
+      if (wholesaleNum <= costNum) {
+        newErrors.wholesalePrice = 'Must be greater than cost';
+      }
+      
+      // Check: price > wholesalePrice
+      if (priceNum <= wholesaleNum) {
+        priceError = 'Must be greater than wholesale price';
+      }
+      
+      // Check: price > cost (ensures price is highest)
+      if (priceNum <= costNum) {
+        priceError = priceError 
+          ? 'Must be greater than wholesale price and cost'
+          : 'Must be greater than cost';
+      }
+      
+      if (priceError) {
+        newErrors.price = priceError;
+      }
     }
     
     // Description is optional, no validation needed
@@ -1173,9 +1221,11 @@ const EditProduct = ({ products, productId, onUpdate, onCancel, loading = false 
               name="sku"
               value={formData.sku}
               onChange={handleChange}
+              inputMode="numeric"
+              pattern="[0-9]*"
               className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
-              placeholder="Enter SKU"
             />
+            <p className="mt-1 text-xs text-slate-500">Enter numbers only</p>
             {errors.sku && (
               <p className="mt-1 text-xs text-red-600">{errors.sku}</p>
             )}
@@ -1299,7 +1349,7 @@ const EditProduct = ({ products, productId, onUpdate, onCancel, loading = false 
               min="0"
             />
             {errors.cost && (
-              <p className="mt-1 text-xs text-red-600">{errors.cost}</p>
+              <p className="mt-1 text-[11px] text-red-600">{errors.cost}</p>
             )}
           </div>
 
@@ -1319,7 +1369,7 @@ const EditProduct = ({ products, productId, onUpdate, onCancel, loading = false 
               min="0"
             />
             {errors.wholesalePrice && (
-              <p className="mt-1 text-xs text-red-600">{errors.wholesalePrice}</p>
+              <p className="mt-1 text-[11px] text-red-600">{errors.wholesalePrice}</p>
             )}
           </div>
 
@@ -1339,7 +1389,7 @@ const EditProduct = ({ products, productId, onUpdate, onCancel, loading = false 
               min="0"
             />
             {errors.price && (
-              <p className="mt-1 text-xs text-red-600">{errors.price}</p>
+              <p className="mt-1 text-[11px] text-red-600">{errors.price}</p>
             )}
           </div>
         </div>

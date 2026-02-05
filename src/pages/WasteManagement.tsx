@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Trash2, ChevronDown, ChevronRight, ChevronLeft, Search, X, AlertTriangle } from 'lucide-react';
+import { Trash2, ChevronDown, ChevronRight, ChevronLeft, X, AlertTriangle, Package } from 'lucide-react';
 import WasteModal from '../components/Operations/WasteModal';
 import AuthenticatedImage from '../components/Operations/AuthenticatedImage';
 import { storeProductsApi, type StoreProductResponseDTO, type WasteRecordDTO, type ProductBatchDTO } from '../services/store-products.api';
@@ -20,15 +20,103 @@ export default function WasteManagement() {
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [error, setError] = useState<string | null>(null);
   
+  // Summary statistics
+  const [wasteStats, setWasteStats] = useState({
+    totalWasted: 0,
+    totalCost: 0,
+    thisMonth: 0,
+    topReason: { reason: '', count: 0 }
+  });
+  
   // Filters
   const [searchTerm, setSearchTerm] = useState('');
+  const [searchResults, setSearchResults] = useState<(StoreProductResponseDTO & { imageUrl?: string | null })[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
   const [reasonFilter, setReasonFilter] = useState<string>('');
   const [dateSort, setDateSort] = useState<'latest' | 'oldest'>('latest');
+  
+  // Store all products for search
+  const [allProducts, setAllProducts] = useState<(StoreProductResponseDTO & { imageUrl?: string | null })[]>([]);
   
   // Expanded products (showing batches)
   const [expandedProducts, setExpandedProducts] = useState<Set<number>>(new Set());
   const [batchesCache, setBatchesCache] = useState<Map<number, ProductBatchDTO[]>>(new Map());
   const [loadingBatches, setLoadingBatches] = useState<Set<number>>(new Set());
+  
+  // Debounced search function
+  const performSearch = async (searchValue: string) => {
+    if (!searchValue.trim()) {
+      setSearchResults([]);
+      setIsSearching(false);
+      return;
+    }
+    
+    setIsSearching(true);
+    try {
+      // Use API search to fetch only matching products
+      const res = await storeProductsApi.getProductsWithInventory({
+        q: searchValue.trim(),
+        page: 0,
+        size: 1000 // Get a large number to show all search results
+      });
+      
+      if (res.data) {
+        const pageData = res.data as { content: StoreProductResponseDTO[]; totalPages: number };
+        const productsWithInventory = pageData.content.filter(product => 
+          (product.warehouseQty || product.warehouseQuantity || 0) > 0
+        );
+        
+        // Normalize products with images
+        const normalized = await Promise.all(productsWithInventory.map(async (product) => {
+          let imageUrl: string | null | undefined = product.imageUrl || product.primaryImageUrl || null;
+          let productName: string = product.productName || '';
+          
+          // If productName is missing or imageUrl is missing, fetch product details
+          if (!productName || !imageUrl) {
+            try {
+              const productRes = await productsApi.getById(product.productId);
+              if (productRes.data) {
+                if (!productName && productRes.data.name) {
+                  productName = productRes.data.name;
+                }
+                if (!imageUrl) {
+                  if (productRes.data.images && Array.isArray(productRes.data.images) && productRes.data.images.length > 0) {
+                    const primaryImage = productRes.data.images.find((img: any) => img.isPrimary) || productRes.data.images[0];
+                    if (primaryImage?.url) {
+                      imageUrl = productsApi.normalizeImageUrl(primaryImage.url, product.productId);
+                    }
+                  } else if (productRes.data.imageUrl || productRes.data.primaryImageUrl) {
+                    imageUrl = productsApi.normalizeImageUrl(
+                      productRes.data.imageUrl || productRes.data.primaryImageUrl, 
+                      product.productId
+                    );
+                  }
+                }
+              }
+            } catch (err) {
+              console.error(`Failed to fetch product details for ${product.productId}:`, err);
+            }
+          } else {
+            // Normalize the existing URL
+            imageUrl = productsApi.normalizeImageUrl(imageUrl, product.productId);
+          }
+          
+          return {
+            ...product,
+            productName: productName || product.productName || 'Unknown Product',
+            imageUrl
+          };
+        }));
+        
+        setSearchResults(normalized);
+      } else {
+        setSearchResults([]);
+      }
+    } catch (err) {
+      console.error('Search failed:', err);
+      setSearchResults([]);
+    }
+  };
   
   // Waste modal
   const [wasteModal, setWasteModal] = useState<{
@@ -51,10 +139,52 @@ export default function WasteManagement() {
     productName: string;
   }>({ isOpen: false, batchId: null, expirationDate: null, productName: '' });
 
+  // Fetch all products for search navigation (only when no search term)
   useEffect(() => {
-    fetchProducts();
+    const fetchAllProducts = async () => {
+      if (!searchTerm.trim()) {
+        try {
+          const allProductsList: (StoreProductResponseDTO & { imageUrl?: string | null })[] = [];
+          let currentPage = 0;
+          let hasMore = true;
+          
+          while (hasMore) {
+            const res = await storeProductsApi.getProductsWithInventory({
+              page: currentPage,
+              size: 1000,
+              q: undefined
+            });
+            
+            if (res.data) {
+              const pageData = res.data as { content: StoreProductResponseDTO[]; totalPages: number };
+              const productsWithInventory = pageData.content.filter(product => 
+                (product.warehouseQty || product.warehouseQuantity || 0) > 0
+              );
+              allProductsList.push(...productsWithInventory);
+              hasMore = currentPage < pageData.totalPages - 1;
+              currentPage++;
+            } else {
+              hasMore = false;
+            }
+          }
+          
+          setAllProducts(allProductsList);
+        } catch (err) {
+          console.error('Failed to fetch all products for search navigation:', err);
+        }
+      }
+    };
+    
+    fetchAllProducts();
+  }, []); // Only fetch once on mount
+
+  useEffect(() => {
+    // Only fetch products if not searching (when searching, we show searchResults directly)
+    if (!isSearching) {
+      fetchProducts();
+    }
     fetchWasteHistory();
-  }, [page, itemsPerPage, searchTerm]);
+  }, [page, itemsPerPage]);
 
   useEffect(() => {
     setWasteHistoryPage(0); // Reset to first page when filter changes
@@ -63,6 +193,76 @@ export default function WasteManagement() {
   useEffect(() => {
     fetchWasteHistory();
   }, [wasteHistoryPage, wasteHistoryItemsPerPage, reasonFilter, dateSort]);
+
+  // Calculate statistics from waste history
+  useEffect(() => {
+    const calculateStats = async () => {
+      try {
+        // Fetch all waste history records across all pages for accurate stats
+        const allRecords: any[] = [];
+        let currentPage = 0;
+        let hasMore = true;
+        let totalElementsFromAPI = 0;
+        
+        while (hasMore) {
+          const res = await storeProductsApi.getWasteHistory({ page: currentPage, size: 1000 });
+          if (res.data) {
+            const pageData = res.data as { content: any[]; totalPages: number; totalElements: number };
+            const records = pageData.content || [];
+            allRecords.push(...records);
+            
+            totalElementsFromAPI = pageData.totalElements || 0;
+            hasMore = currentPage < pageData.totalPages - 1;
+            currentPage++;
+          } else {
+            hasMore = false;
+          }
+        }
+        
+        // Only calculate stats when we have all records (prevents flickering)
+        if (allRecords.length > 0 && (totalElementsFromAPI === 0 || allRecords.length === totalElementsFromAPI || currentPage === 1)) {
+          const totalWasted = allRecords.reduce((sum: number, r: any) => sum + (r.quantity || 0), 0);
+          
+          const now = new Date();
+          const thisMonth = allRecords.filter((r: any) => {
+            const date = new Date(r.createdAt || r.wastedAt || r.movedAt || r.created_at);
+            return date.getMonth() === now.getMonth() && date.getFullYear() === now.getFullYear();
+          }).reduce((sum: number, r: any) => sum + (r.quantity || 0), 0);
+          
+          // Calculate top reason
+          const reasonCounts: Record<string, number> = {};
+          allRecords.forEach((r: any) => {
+            let reason = r.wasteReason || 'UNKNOWN';
+            if (reason.includes('Waste Reason: ')) {
+              reason = reason.replace('Waste Reason: ', '').trim();
+            }
+            if (reason.includes('.')) {
+              reason = reason.split('.')[0].trim();
+            }
+            reason = reason.toUpperCase();
+            reasonCounts[reason] = (reasonCounts[reason] || 0) + 1;
+          });
+          const topReason = Object.entries(reasonCounts).sort((a, b) => b[1] - a[1])[0] || ['', 0];
+          
+          setWasteStats({ 
+            totalWasted, 
+            totalCost: 0, // TODO: Calculate from product costs if needed
+            thisMonth, 
+            topReason: { reason: topReason[0], count: topReason[1] } 
+          });
+          
+          // Update total elements if we got it from API
+          if (totalElementsFromAPI > 0 && totalElementsFromAPI !== wasteHistoryTotalElements) {
+            setWasteHistoryTotalElements(totalElementsFromAPI);
+          }
+        }
+      } catch (err) {
+        console.error('Failed to calculate stats:', err);
+      }
+    };
+    
+    calculateStats();
+  }, []); // Only run once on mount, not when wasteHistory changes
 
   const fetchProducts = async () => {
     setLoading(true);
@@ -429,11 +629,11 @@ export default function WasteManagement() {
         <div className="h-0.5 bg-gradient-to-r from-indigo-500 via-blue-500 to-indigo-500"></div>
         <div className="px-6 py-6">
           <div className="flex items-center gap-4">
-            <div className="grid h-12 w-12 place-items-center rounded-xl bg-gradient-to-br from-red-500 to-orange-600 shadow-lg ring-2 ring-white/20">
+            <div className="grid h-12 w-12 place-items-center rounded-xl bg-gradient-to-br from-indigo-500 to-blue-600 shadow-lg ring-2 ring-white/20">
               <Trash2 className="h-6 w-6 text-white" />
             </div>
             <div>
-              <h1 className="text-3xl font-bold bg-gradient-to-r from-red-600 via-orange-600 to-red-600 bg-clip-text text-transparent">
+              <h1 className="text-3xl font-bold bg-gradient-to-r from-indigo-600 via-blue-600 to-purple-600 bg-clip-text text-transparent">
                 Waste Management
               </h1>
               <p className="text-sm text-slate-600 mt-1">Record and track product waste</p>
@@ -443,52 +643,132 @@ export default function WasteManagement() {
       </header>
 
       <div className="p-6 space-y-6">
-        {/* Filters */}
-        <div className="bg-white rounded-lg shadow-sm border border-slate-200 p-4">
-          <div className="flex gap-4 items-end">
-            <div className="flex-1">
-              <label className="block text-sm font-medium text-slate-700 mb-2">
-                Search Product
-              </label>
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-slate-400" />
-                <input
-                  type="text"
-                  value={searchTerm}
-                  onChange={(e) => {
-                    setSearchTerm(e.target.value);
-                    setPage(0);
-                  }}
-                  placeholder="Search product"
-                  className="w-full pl-10 pr-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
+        {/* Summary Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div className="bg-gradient-to-br from-indigo-50 to-blue-50 rounded-xl p-5 border border-indigo-200/50 shadow-sm hover:shadow-md transition-all duration-300">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-indigo-700 mb-1">Total Wasted</p>
+                <p className="text-2xl font-bold text-indigo-900">{wasteStats.totalWasted}</p>
+              </div>
+              <div className="w-12 h-12 rounded-full bg-indigo-100 flex items-center justify-center">
+                <Trash2 className="w-6 h-6 text-indigo-600" />
+              </div>
+            </div>
+          </div>
+          
+          <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-xl p-5 border border-green-200/50 shadow-sm hover:shadow-md transition-all duration-300">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-green-700 mb-1">This Month</p>
+                <p className="text-2xl font-bold text-green-900">{wasteStats.thisMonth}</p>
+              </div>
+              <div className="w-12 h-12 rounded-full bg-green-100 flex items-center justify-center">
+                <AlertTriangle className="w-6 h-6 text-green-600" />
+              </div>
+            </div>
+          </div>
+          
+          <div className="bg-gradient-to-br from-red-50 to-orange-50 rounded-xl p-5 border border-red-200/50 shadow-sm hover:shadow-md transition-all duration-300">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-red-700 mb-1">Total Records</p>
+                <p className="text-2xl font-bold text-red-900">{wasteHistoryTotalElements}</p>
+              </div>
+              <div className="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center">
+                <Package className="w-6 h-6 text-red-600" />
+              </div>
+            </div>
+          </div>
+          
+          <div className="bg-gradient-to-br from-yellow-50 to-amber-50 rounded-xl p-5 border border-yellow-200/50 shadow-sm hover:shadow-md transition-all duration-300">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-yellow-700 mb-1">Top Reason</p>
+                <p className={`${wasteStats.topReason.reason === 'OTHER' ? 'text-lg' : 'text-2xl'} font-bold text-yellow-900 capitalize`}>{wasteStats.topReason.reason || 'N/A'}</p>
+              </div>
+              <div className="w-12 h-12 rounded-full bg-yellow-100 flex items-center justify-center">
+                <AlertTriangle className="w-6 h-6 text-yellow-600" />
               </div>
             </div>
           </div>
         </div>
 
         {/* Products List */}
-        <div className="bg-white rounded-lg shadow-sm border border-slate-200">
-          <div className="p-4 border-b border-slate-200">
-            <h2 className="text-lg font-semibold text-slate-800">Products</h2>
+        <div className="bg-white rounded-2xl shadow-sm border overflow-hidden">
+          <div className="flex items-center justify-between px-6 py-4 border-b">
+            <h2 className="text-2xl font-bold text-slate-800">Available Products</h2>
+          </div>
+
+          {/* Search Section */}
+          <div className="px-6 py-4 border-b bg-slate-50/50 overflow-x-hidden">
+            <div className="flex items-center gap-2 flex-nowrap min-h-[40px] w-full min-w-0">
+              <div className="flex items-center gap-2 flex-shrink-0">
+                <input
+                  type="text"
+                  value={searchTerm}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    setSearchTerm(value);
+                    
+                    if (value.trim()) {
+                      performSearch(value);
+                    } else {
+                      setSearchResults([]);
+                      setIsSearching(false);
+                    }
+                  }}
+                  placeholder="Search product"
+                  className="border-solid border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-white placeholder:text-slate-400 hover:border-slate-400 transition-all duration-200 ease-out px-3 py-2 text-sm flex-1 max-w-md"
+                />
+                {isSearching && (
+                  <button 
+                    onClick={() => {
+                      setSearchTerm('');
+                      setSearchResults([]);
+                      setIsSearching(false);
+                    }}
+                    className="px-2 py-1 text-xs font-medium text-slate-600 hover:text-slate-800 hover:bg-slate-200 rounded-md transition-colors focus:outline-none focus:ring-1 focus:ring-slate-400 flex-shrink-0"
+                  >
+                    Clear
+                  </button>
+                )}
+              </div>
+            </div>
           </div>
           
           {loading ? (
-            <div className="p-8 text-center text-slate-600">Loading products...</div>
+            <div className="p-12 text-center">
+              <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-red-600 mb-3"></div>
+              <p className="text-slate-600">Loading products...</p>
+            </div>
           ) : error ? (
-            <div className="p-8 text-center text-red-600">{error}</div>
-          ) : products.length === 0 ? (
-            <div className="p-8 text-center text-slate-600">No products found</div>
+            <div className="p-8 text-center">
+              <AlertTriangle className="w-12 h-12 text-red-500 mx-auto mb-3" />
+              <p className="text-red-600 font-medium">{error}</p>
+            </div>
+          ) : (isSearching ? searchResults : products).length === 0 ? (
+            <div className="p-12 text-center">
+              <div className="w-20 h-20 mx-auto mb-4 rounded-full bg-slate-100 flex items-center justify-center">
+                <Package className="w-10 h-10 text-slate-400" />
+              </div>
+              <p className="text-slate-600 font-medium">No products found</p>
+              <p className="text-sm text-slate-500 mt-1">Try adjusting your search</p>
+            </div>
           ) : (
-            <div className="divide-y divide-slate-200">
-              {products.map((product) => {
+            <div className="divide-y divide-slate-100">
+              {(isSearching ? searchResults : products).map((product, idx) => {
                 const isExpanded = expandedProducts.has(product.productId);
                 const batches = batchesCache.get(product.productId) || [];
                 const isLoadingBatches = loadingBatches.has(product.productId);
                 const hasBatches = batches.length > 0;
+                const qty = product.warehouseQty || product.warehouseQuantity || 0;
 
                 return (
-                  <div key={product.productId} className="p-4 hover:bg-slate-50 transition-colors">
+                  <div 
+                    key={product.productId} 
+                    className="p-5 hover:bg-slate-50 transition-all duration-200 group"
+                  >
                     <div className="flex items-center gap-4">
                       {/* Product Image */}
                       <div className="w-16 h-16 flex-shrink-0 bg-white border border-slate-200 rounded-lg p-2">
@@ -507,12 +787,22 @@ export default function WasteManagement() {
 
                       {/* Product Info */}
                       <div className="flex-1 min-w-0">
-                        <h3 className="font-semibold text-slate-800 truncate">
+                        <h4 className="text-base font-semibold text-blue-600 mb-1 group-hover:text-blue-700 transition-colors duration-200 truncate">
                           {product.productName || 'Unknown Product'}
-                        </h3>
-                        <p className="text-sm text-slate-600">
-                          Available: {product.warehouseQty || product.warehouseQuantity || 0} units
-                        </p>
+                        </h4>
+                        <div className="flex items-center gap-4 mt-2">
+                          <div className="flex items-center gap-1.5">
+                            <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
+                            <span className="text-sm text-slate-700">
+                              {qty} units available
+                            </span>
+                          </div>
+                          {product.productSku && (
+                            <span className="text-xs text-slate-500 bg-slate-100 px-2 py-0.5 rounded">
+                              SKU: {product.productSku}
+                            </span>
+                          )}
+                        </div>
                       </div>
 
                       {/* Actions */}
@@ -520,7 +810,7 @@ export default function WasteManagement() {
                         {hasBatches && (
                           <button
                             onClick={() => handleShowBatches(product.productId)}
-                            className="px-3 py-1.5 text-sm font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-md transition-colors flex items-center gap-1"
+                            className="px-4 py-2 text-sm font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition-all duration-200 flex items-center gap-2 hover:shadow-sm"
                           >
                             {isExpanded ? (
                               <>
@@ -547,24 +837,34 @@ export default function WasteManagement() {
 
                     {/* Expanded Batches */}
                     {isExpanded && (
-                      <div className="mt-4 ml-20 space-y-2">
+                      <div className="mt-4 ml-24 space-y-2">
                         {isLoadingBatches ? (
-                          <div className="text-sm text-slate-600">Loading batches...</div>
+                          <div className="text-sm text-slate-600 flex items-center gap-2">
+                            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-red-600"></div>
+                            Loading batches...
+                          </div>
                         ) : batches.length === 0 ? (
-                          <div className="text-sm text-slate-600">No batches available (all wasted)</div>
+                          <div className="text-sm text-slate-600 bg-slate-50 p-3 rounded-lg">
+                            No batches available (all wasted)
+                          </div>
                         ) : (
                           batches.map((batch) => (
                             <div
                               key={batch.batchId}
-                              className="flex items-center justify-between p-3 bg-slate-50 rounded-lg border border-slate-200"
+                              className="flex items-center justify-between p-4 bg-gradient-to-r from-slate-50 to-white rounded-lg border border-slate-200 hover:border-slate-300 hover:shadow-sm transition-all duration-200"
                             >
-                              <div>
-                                <p className="text-sm font-medium text-slate-800">
-                                  {batch.totalQuantity} units
-                                </p>
-                                <p className="text-xs text-slate-600">
-                                  Expiration: {new Date(batch.expirationDate).toLocaleDateString()}
-                                </p>
+                              <div className="flex items-center gap-4">
+                                <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center">
+                                  <Package className="w-5 h-5 text-blue-600" />
+                                </div>
+                                <div>
+                                  <p className="text-sm text-slate-800">
+                                    {batch.totalQuantity} units
+                                  </p>
+                                  <p className="text-xs text-slate-600">
+                                    Expires: {new Date(batch.expirationDate).toLocaleDateString()}
+                                  </p>
+                                </div>
                               </div>
                               <button
                                 onClick={() => handleRecordWaste(product.productId, batch.batchId)}
@@ -585,8 +885,7 @@ export default function WasteManagement() {
           )}
 
           {/* Pagination */}
-          {totalPages > 1 && (
-            <div className="p-4 border-t border-slate-200 flex items-center justify-between bg-slate-50/50">
+          <div className="p-4 border-t border-slate-200 flex items-center justify-between bg-slate-50/50">
               <div className="flex items-center gap-2">
                 <span className="text-sm text-slate-600">Rows per page:</span>
                 <select
@@ -628,17 +927,21 @@ export default function WasteManagement() {
                 </div>
               </div>
             </div>
-          )}
         </div>
 
         {/* Waste History */}
-        <div className="bg-white rounded-lg shadow-sm border border-slate-200">
-          <div className="p-4 border-b border-slate-200">
+        <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+          <div className="p-5 border-b border-slate-200 bg-gradient-to-r from-slate-50 to-white">
             <div className="flex items-center justify-between">
-              <h2 className="text-lg font-semibold text-slate-800">Waste History</h2>
+              <div>
+                <h2 className="text-xl font-bold text-slate-800">
+                  Waste History
+                </h2>
+                <p className="text-sm text-slate-600 mt-1">View all recorded waste entries</p>
+              </div>
               <div className="flex items-end gap-3">
                 <div className="w-48">
-                  <label className="block text-sm font-medium text-slate-700 mb-2">
+                  <label className="block text-sm font-semibold text-slate-700 mb-2">
                     Filter by Reason
                   </label>
                   <select
@@ -646,7 +949,7 @@ export default function WasteManagement() {
                     onChange={(e) => {
                       setReasonFilter(e.target.value);
                     }}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                    className="w-full px-3 py-2.5 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-sm bg-white transition-all"
                   >
                     <option value="">All Reasons</option>
                     <option value="EXPIRED">Expired</option>
@@ -656,7 +959,7 @@ export default function WasteManagement() {
                   </select>
                 </div>
                 <div className="w-48">
-                  <label className="block text-sm font-medium text-slate-700 mb-2">
+                  <label className="block text-sm font-semibold text-slate-700 mb-2">
                     Sort by Date
                   </label>
                   <select
@@ -664,10 +967,10 @@ export default function WasteManagement() {
                     onChange={(e) => {
                       setDateSort(e.target.value as 'latest' | 'oldest');
                     }}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                    className="w-full px-3 py-2.5 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-sm bg-white transition-all"
                   >
-                    <option value="latest">Latest</option>
-                    <option value="oldest">Earliest</option>
+                    <option value="latest">Latest First</option>
+                    <option value="oldest">Oldest First</option>
                   </select>
                 </div>
               </div>
@@ -675,26 +978,35 @@ export default function WasteManagement() {
           </div>
           
           {loadingHistory ? (
-            <div className="p-8 text-center text-slate-600">Loading history...</div>
+            <div className="p-12 text-center">
+              <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-red-600 mb-3"></div>
+              <p className="text-slate-600">Loading history...</p>
+            </div>
           ) : wasteHistory.length === 0 ? (
-            <div className="p-8 text-center text-slate-600">No waste records found</div>
+            <div className="p-12 text-center">
+              <div className="w-20 h-20 mx-auto mb-4 rounded-full bg-slate-100 flex items-center justify-center">
+                <Trash2 className="w-10 h-10 text-slate-400" />
+              </div>
+              <p className="text-slate-600 font-medium">No waste records found</p>
+              <p className="text-sm text-slate-500 mt-1">Start recording waste to see history here</p>
+            </div>
           ) : (
             <>
-              <div className="overflow-y-auto" style={{ maxHeight: '400px' }}>
+              <div className="overflow-y-auto min-h-[400px]" style={{ maxHeight: '400px' }}>
                 <table className="w-full">
-                  <thead className="bg-slate-50 border-b border-slate-200">
+                  <thead className="bg-gradient-to-r from-slate-50 to-slate-100 border-b-2 border-slate-200 sticky top-0">
                     <tr>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-slate-700 uppercase">Date</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-slate-700 uppercase">Product</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-slate-700 uppercase">SKU</th>
-                      <th className="px-4 py-3 text-center text-xs font-medium text-slate-700 uppercase">Quantity</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-slate-700 uppercase">Reason</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-slate-700 uppercase">Batch</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-slate-700 uppercase w-[100px]">Notes</th>
+                      <th className="px-5 py-4 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Date</th>
+                      <th className="px-5 py-4 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Product</th>
+                      <th className="px-5 py-4 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">SKU</th>
+                      <th className="px-5 py-4 text-center text-xs font-bold text-slate-700 uppercase tracking-wider">Quantity</th>
+                      <th className="px-5 py-4 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Reason</th>
+                      <th className="px-5 py-4 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Batch</th>
+                      <th className="px-5 py-4 text-left text-xs font-bold text-slate-700 uppercase tracking-wider w-[100px]">Notes</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-200">
-                    {wasteHistory.map((record) => {
+                  <tbody className="divide-y divide-slate-100">
+                    {wasteHistory.map((record, idx) => {
                       // Parse date safely
                       let dateDisplay = 'Invalid Date';
                       try {
@@ -752,50 +1064,61 @@ export default function WasteManagement() {
                       }
 
                       return (
-                        <tr key={record.movementId} className="hover:bg-slate-50">
-                          <td className="px-4 py-3 text-sm text-slate-600">
+                        <tr 
+                          key={record.movementId} 
+                          className="hover:bg-slate-50 transition-all duration-150"
+                        >
+                          <td className="px-5 py-4 text-sm text-slate-700 font-medium">
                             {dateDisplay}
                           </td>
-                          <td className="px-4 py-3 text-sm font-medium text-slate-800">{record.productName}</td>
-                          <td className="px-4 py-3 text-sm text-slate-600">{record.productSku || '-'}</td>
-                          <td className="px-4 py-3 text-sm text-center text-slate-800">{record.quantity}</td>
-                          <td className="px-4 py-3">
-                            <span className={`inline-block px-2 py-1 rounded text-xs font-medium ${getReasonColor(displayReason)}`}>
+                          <td className="px-5 py-4 text-sm font-semibold text-slate-800">{record.productName}</td>
+                          <td className="px-5 py-4 text-sm text-slate-600">
+                            <span className="bg-slate-100 px-2 py-1 rounded text-xs font-mono">
+                              {record.productSku || '-'}
+                            </span>
+                          </td>
+                          <td className="px-5 py-4 text-center text-sm text-slate-700">
+                            {record.quantity}
+                          </td>
+                          <td className="px-5 py-4">
+                            <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-bold ${getReasonColor(displayReason)} shadow-sm`}>
                               {displayReason}
                             </span>
                           </td>
-                          <td className="px-4 py-3 text-sm text-slate-600">
+                          <td className="px-5 py-4 text-sm text-slate-600">
                             {record.batchId ? (
-                              <span>
-                                Batch #{record.batchId}
+                              <div className="flex items-center gap-2">
+                                <span className="bg-blue-100 text-blue-700 px-2 py-1 rounded text-xs font-semibold">
+                                  #{record.batchId}
+                                </span>
                                 {record.expirationDate && (
-                                  <span className="text-xs text-slate-500 block">
-                                    Exp: {(() => {
+                                  <span className="text-xs text-slate-500">
+                                    {(() => {
                                       try {
                                         const expDate = new Date(record.expirationDate);
-                                        return !isNaN(expDate.getTime()) ? expDate.toLocaleDateString() : 'Invalid Date';
+                                        return !isNaN(expDate.getTime()) ? expDate.toLocaleDateString() : 'Invalid';
                                       } catch {
-                                        return 'Invalid Date';
+                                        return 'Invalid';
                                       }
                                     })()}
                                   </span>
                                 )}
-                              </span>
+                              </div>
                             ) : (
-                              '-'
+                              <span className="text-slate-400">-</span>
                             )}
                           </td>
-                          <td className="px-4 py-3 text-sm text-slate-600 max-w-[100px]">
+                          <td className="px-5 py-4 text-sm text-slate-600 max-w-[100px]">
                             {displayNotes !== '-' ? (
                               <span 
-                                className="cursor-pointer hover:bg-slate-100 hover:rounded px-1 py-0.5 transition-colors truncate inline-block max-w-full"
+                                className="cursor-pointer hover:bg-slate-100 hover:rounded px-2 py-1 transition-colors truncate inline-block max-w-full text-blue-600 hover:text-blue-700"
                                 onClick={() => setNoteModal({ isOpen: true, note: displayNotes })}
                                 title="Click to view full note"
                               >
                                 {displayNotes.length > 20 ? `${displayNotes.substring(0, 20)}...` : displayNotes}
                               </span>
                             ) : (
-                              <span className="block truncate">{displayNotes}</span>
+                              <span className="text-slate-400">-</span>
                             )}
                           </td>
                         </tr>
@@ -806,8 +1129,7 @@ export default function WasteManagement() {
               </div>
               
               {/* Pagination */}
-              {wasteHistoryTotalPages > 1 && (
-                <div className="p-4 border-t border-slate-200 flex items-center justify-between bg-slate-50/50">
+              <div className="p-4 border-t border-slate-200 flex items-center justify-between bg-slate-50/50">
                   <div className="flex items-center gap-2">
                     <span className="text-sm text-slate-600">Rows per page:</span>
                     <select
@@ -849,7 +1171,6 @@ export default function WasteManagement() {
                     </div>
                   </div>
                 </div>
-              )}
             </>
           )}
         </div>

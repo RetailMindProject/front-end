@@ -264,6 +264,11 @@ export default function InventoryReportTab() {
   };
 
   const calculateSummary = () => {
+    // Only calculate when allFilteredProducts is ready (prevents flickering)
+    if (allFilteredProducts.length === 0 && inventoryProducts.length > 0) {
+      return; // Wait for filters to be applied
+    }
+    
     const summaryData = {
       totalProducts: allFilteredProducts.length,
       totalInventoryValue: 0,
@@ -705,7 +710,7 @@ export default function InventoryReportTab() {
           <div className="p-8 text-center text-slate-600">No inventory data available</div>
         ) : (
           <>
-            <div className="overflow-x-auto max-h-[400px] overflow-y-auto">
+            <div className="overflow-x-auto min-h-[400px] max-h-[400px] overflow-y-auto">
               <table className="w-full">
                 <thead className="bg-slate-50 border-b border-slate-200 sticky top-0">
                   <tr>
@@ -743,8 +748,7 @@ export default function InventoryReportTab() {
             </div>
             
             {/* Pagination */}
-            {valueReportTotalPages > 1 && (
-              <div className="p-4 border-t border-slate-200 flex items-center justify-between">
+            <div className="p-4 border-t border-slate-200 flex items-center justify-between">
                 <p className="text-sm text-slate-600">
                   Page {valueReportPage + 1} of {valueReportTotalPages} {inventoryValueReport.length > 0 && `(${inventoryValueReport.length} total)`}
                 </p>
@@ -785,7 +789,6 @@ export default function InventoryReportTab() {
                   </button>
                 </div>
               </div>
-            )}
           </>
         )}
       </div>
@@ -811,7 +814,7 @@ export default function InventoryReportTab() {
           <div className="p-8 text-center text-slate-600">No low stock items found</div>
         ) : (
           <>
-            <div className="overflow-x-auto max-h-[400px] overflow-y-auto">
+            <div className="overflow-x-auto min-h-[400px] max-h-[400px] overflow-y-auto">
               <table className="w-full">
                 <thead className="bg-slate-50 border-b border-slate-200 sticky top-0">
                   <tr>
@@ -843,8 +846,7 @@ export default function InventoryReportTab() {
             </div>
             
             {/* Pagination */}
-            {lowStockTotalPages > 1 && (
-              <div className="p-4 border-t border-slate-200 flex items-center justify-between">
+            <div className="p-4 border-t border-slate-200 flex items-center justify-between">
                 <p className="text-sm text-slate-600">
                   Page {lowStockPage + 1} of {lowStockTotalPages} {lowStockProducts.length > 0 && `(${lowStockProducts.length} total)`}
                 </p>
@@ -885,7 +887,6 @@ export default function InventoryReportTab() {
                   </button>
                 </div>
               </div>
-            )}
           </>
         )}
       </div>
@@ -911,7 +912,7 @@ export default function InventoryReportTab() {
           <div className="p-8 text-center text-slate-600">No out of stock items found</div>
         ) : (
           <>
-            <div className="overflow-x-auto max-h-[400px] overflow-y-auto">
+            <div className="overflow-x-auto min-h-[400px] max-h-[400px] overflow-y-auto">
               <table className="w-full">
                 <thead className="bg-slate-50 border-b border-slate-200 sticky top-0">
                   <tr>
@@ -939,8 +940,7 @@ export default function InventoryReportTab() {
             </div>
             
             {/* Pagination */}
-            {outOfStockTotalPages > 1 && (
-              <div className="p-4 border-t border-slate-200 flex items-center justify-between">
+            <div className="p-4 border-t border-slate-200 flex items-center justify-between">
                 <p className="text-sm text-slate-600">
                   Page {outOfStockPage + 1} of {outOfStockTotalPages} {outOfStockProducts.length > 0 && `(${outOfStockProducts.length} total)`}
                 </p>
@@ -981,7 +981,6 @@ export default function InventoryReportTab() {
                   </button>
                 </div>
               </div>
-            )}
           </>
         )}
       </div>
@@ -1004,7 +1003,7 @@ export default function InventoryReportTab() {
           <div className="p-8 text-center text-slate-600">No category data available</div>
         ) : (
           <>
-            <div className="overflow-x-auto max-h-[400px] overflow-y-auto">
+            <div className="overflow-x-auto min-h-[400px] max-h-[400px] overflow-y-auto">
               <table className="w-full">
                 <thead className="bg-slate-50 border-b border-slate-200 sticky top-0">
                   <tr>
@@ -1040,8 +1039,7 @@ export default function InventoryReportTab() {
             </div>
             
             {/* Pagination */}
-            {categoryTotalPages > 1 && (
-              <div className="p-4 border-t border-slate-200 flex items-center justify-between">
+            <div className="p-4 border-t border-slate-200 flex items-center justify-between">
                 <p className="text-sm text-slate-600">
                   Page {categoryPage + 1} of {categoryTotalPages} {categoryInventory.length > 0 && `(${categoryInventory.length} total)`}
                 </p>
@@ -1082,7 +1080,6 @@ export default function InventoryReportTab() {
                   </button>
                 </div>
               </div>
-            )}
           </>
         )}
       </div>
