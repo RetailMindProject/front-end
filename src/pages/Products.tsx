@@ -1,8 +1,9 @@
+import PageHeader from "../components/PageHeader";
+
 export default function Products() {
   return (
     <div className="p-6">
-      <h1 className="text-2xl font-semibold">Products</h1>
-      <p className="text-slate-600">Coming soon...</p>
+      <PageHeader title="Products" icon={<span className="text-2xl">📦</span>} />
     </div>
   );
 }

@@ -4,6 +4,7 @@ import WasteModal from '../components/Operations/WasteModal';
 import AuthenticatedImage from '../components/Operations/AuthenticatedImage';
 import { storeProductsApi, type StoreProductResponseDTO, type WasteRecordDTO, type ProductBatchDTO } from '../services/store-products.api';
 import { productsApi } from '../services/products.api';
+import PageHeader from "../components/PageHeader";
 
 export default function WasteManagement() {
   const [products, setProducts] = useState<(StoreProductResponseDTO & { imageUrl?: string | null })[]>([]);
@@ -624,23 +625,10 @@ export default function WasteManagement() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50">
-      {/* Header */}
-      <header className="border-b border-indigo-200/50 bg-white/80 backdrop-blur-md shadow-sm">
-        <div className="h-0.5 bg-gradient-to-r from-indigo-500 via-blue-500 to-indigo-500"></div>
-        <div className="px-6 py-6">
-          <div className="flex items-center gap-4">
-            <div className="grid h-12 w-12 place-items-center rounded-xl bg-gradient-to-br from-indigo-500 to-blue-600 shadow-lg ring-2 ring-white/20">
-              <Trash2 className="h-6 w-6 text-white" />
-            </div>
-            <div>
-              <h1 className="text-3xl font-bold bg-gradient-to-r from-indigo-600 via-blue-600 to-purple-600 bg-clip-text text-transparent">
-                Waste Management
-              </h1>
-              <p className="text-sm text-slate-600 mt-1">Record and track product waste</p>
-            </div>
-          </div>
-        </div>
-      </header>
+      <PageHeader
+        title="Waste Management"
+        icon={<Trash2 className="h-6 w-6 text-white" />}
+      />
 
       <div className="p-6 space-y-6">
         {/* Summary Cards */}

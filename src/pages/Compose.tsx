@@ -1,25 +1,25 @@
-import { useLocation } from "react-router-dom";
-import UploadReport from "./UploadReport";
+import ComposeMessagePage from "./ComposeMessagePage";
+import { getCurrentRole } from "../services/tokens";
 
 export default function Compose() {
-  const { pathname } = useLocation();
-  
   // Different recipient options for Compose vs Upload Report based on role
   let recipientOptions: { value: string; label: string }[];
   
-  if (pathname.startsWith("/ceo")) {
+  const role = getCurrentRole();
+
+  if (role === "CEO") {
     // CEO can send to Store Manager and Inventory Manager
     recipientOptions = [
       { value: "store_manager", label: "Store Manager" },
       { value: "inventory_manager", label: "Inventory Manager" },
     ];
-  } else if (pathname.startsWith("/store-manager")) {
+  } else if (role === "STORE_MANAGER") {
     // Store Manager can send to all roles
     recipientOptions = [
       { value: "ceo", label: "CEO" },
       { value: "inventory_manager", label: "Inventory Manager" },
     ];
-  } else if (pathname.startsWith("/inventory-manager")) {
+  } else if (role === "INVENTORY_MANAGER") {
     // Inventory Manager can send to Store Manager and CEO
     recipientOptions = [
       { value: "store_manager", label: "Store Manager" },
@@ -34,6 +34,6 @@ export default function Compose() {
     ];
   }
 
-  return <UploadReport recipients={recipientOptions} />;
+  return <ComposeMessagePage recipients={recipientOptions} />;
 }
 

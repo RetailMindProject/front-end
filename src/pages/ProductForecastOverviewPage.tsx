@@ -19,6 +19,7 @@ import { productsApi, type ProductDTO } from "../services/products.api";
 import { forecastingApi } from "../services/forecasting.api";
 import type { ProductStockForecastSummary } from "../types/forecasting.dto";
 import ProductForecastPanel from "../components/Operations/ProductForecastPanel";
+import PageHeader from "../components/PageHeader";
 
 // Premium KPI Card Component with Glassmorphism
 interface KPICardProps {
@@ -404,32 +405,21 @@ export default function ProductForecastOverviewPage() {
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_2px_2px,_rgb(99_102_241)_1px,_transparent_0)] bg-[length:40px_40px] animate-pulse" />
       </div>
 
-      {/* Header Section with Glassmorphism */}
-      <div className="relative z-[5] bg-white/80 backdrop-blur-xl border-b border-white/20 shadow-lg flex-shrink-0">
-        <div className="px-6 sm:px-8 py-4">
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
-              <div className="p-2 rounded-xl bg-gradient-to-br from-indigo-500 to-indigo-600 text-white shadow-lg">
-                <BarChart3 className="h-5 w-5" />
-              </div>
-              <div>
-                <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight bg-gradient-to-r from-slate-900 via-indigo-900 to-slate-900 bg-clip-text text-transparent">
-                  Forecasting Overview
-                </h1>
-              </div>
-            </div>
-            
-            <ActionButton
-              onClick={handleBatchForecast}
-              loading={runningBatchForecast}
-              variant="primary"
-              icon={<Zap className="h-4 w-4" />}
-            >
-              {runningBatchForecast ? "Running Forecast..." : "Run Batch Forecast"}
-            </ActionButton>
-          </div>
-        </div>
-      </div>
+      <PageHeader
+        title="Forecasting Overview"
+        icon={<BarChart3 className="h-6 w-6 text-white" />}
+        right={
+          <ActionButton
+            onClick={handleBatchForecast}
+            loading={runningBatchForecast}
+            variant="primary"
+            icon={<Zap className="h-4 w-4" />}
+          >
+            {runningBatchForecast ? "Running Forecast..." : "Run Batch Forecast"}
+          </ActionButton>
+        }
+        className="mb-0"
+      />
 
       {/* Messages Section */}
       <div className="relative z-[5] px-6 sm:px-8 pt-4 flex-shrink-0">

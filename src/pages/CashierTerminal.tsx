@@ -1,8 +1,9 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Search,
   ChevronRight,
+  ChevronLeft,
   ChevronDown,
   ChevronUp,
   LogOut,
@@ -15,6 +16,10 @@ import {
   X,
   Loader2,
   RotateCcw,
+  Store,
+  Printer,
+  History,
+  CheckCircle,
 } from "lucide-react";
 import { getUserDisplayName, setSessionId, clearSessionId } from "../services/tokens";
 import { logoutForRole } from "../services/auth.api";
@@ -24,6 +29,7 @@ import { ordersApi, type Order, type OrderHistoryItem } from "../services/orders
 import { categoriesApi, type CategoryHierarchy } from "../services/categories.api";
 import { terminalApi } from "../services/terminal.api";
 import { customersApi, type Customer } from "../services/customers.api";
+import { productsApi } from "../services/products.api";
 
 interface Product {
   id: string | number;
@@ -31,6 +37,10 @@ interface Product {
   sku?: string;
   price: number;
   category?: string | null;
+  image?: {
+    url?: string;
+    altText?: string;
+  } | null;
 }
 
 interface CartItem {
@@ -83,19 +93,47 @@ export default function CashierTerminal() {
   const [heldOrders, setHeldOrders] = useState<Order[]>([]);
   const [heldOrdersExpanded, setHeldOrdersExpanded] = useState(false);
   const [unpairing, setUnpairing] = useState(false);
+  const [paidOrderId, setPaidOrderId] = useState<number | null>(null);
+  const [paidOrderNumber, setPaidOrderNumber] = useState<string | null>(null);
+  const [printingReceipt, setPrintingReceipt] = useState(false);
+  const [showUnpairConfirm, setShowUnpairConfirm] = useState(false);
+  const [showUnpairSuccess, setShowUnpairSuccess] = useState(false);
+  const [showHoldSuccess, setShowHoldSuccess] = useState(false);
+  const [showSessionClosedSuccess, setShowSessionClosedSuccess] = useState(false);
+  // Payment confirmation modal state
+  const [showPaymentConfirm, setShowPaymentConfirm] = useState(false);
+  const [showPaymentSuccess, setShowPaymentSuccess] = useState(false);
+  const [paymentMethod, setPaymentMethod] = useState<"cash" | "card" | "both" | null>(null);
+  const [paymentAmount, setPaymentAmount] = useState<number | null>(null);
+  // Pagination state
+  const [productsPage, setProductsPage] = useState(0);
+  const [productsPageSize] = useState(20); // Products per page
+  const [productsTotalPages, setProductsTotalPages] = useState(1);
+  const [productsTotalElements, setProductsTotalElements] = useState(0);
   
   // Customer registration state
   const [showCustomerModal, setShowCustomerModal] = useState(false);
   const [customerPhone, setCustomerPhone] = useState("");
-  const [customerName, setCustomerName] = useState("");
+  const [customerFirstName, setCustomerFirstName] = useState("");
+  const [customerLastName, setCustomerLastName] = useState("");
   const [customerEmail, setCustomerEmail] = useState("");
-  const [customerAddress, setCustomerAddress] = useState("");
+  // Address is not currently used in the cashier flow UI
+  // Keep setter only if/when we add an address field to the modal
+  const [, setCustomerAddress] = useState("");
   const [searchingCustomer, setSearchingCustomer] = useState(false);
   const [creatingCustomer, setCreatingCustomer] = useState(false);
   const [customerError, setCustomerError] = useState<string | null>(null);
   const [currentCustomer, setCurrentCustomer] = useState<Customer | null>(null);
+  const [shouldPromptForCustomer, setShouldPromptForCustomer] = useState(false);
+  const [customerFound, setCustomerFound] = useState(false);
+
+  // Barcode scanner state
+  const [barcodeBuffer, setBarcodeBuffer] = useState("");
+  const [isTypingInInput, setIsTypingInInput] = useState(false);
+  const barcodeInputRef = useRef<HTMLInputElement>(null);
 
   const cashierName = getUserDisplayName();
+  const storeName = "My store"; // يمكن جلبها من API لاحقاً
   const redirectToSelectTerminal = (customMessage?: string) => {
     setCurrentSessionId(null);
     clearSessionId();
@@ -153,7 +191,7 @@ export default function CashierTerminal() {
 
       // Load categories hierarchy from database
       const categoriesResult = await categoriesApi.getHierarchy();
-      if (categoriesResult.data && categoriesResult.data.length > 0) {
+      if (categoriesResult.data && (categoriesResult.data ?? []).length > 0) {
         setCategories(categoriesResult.data);
       } else if (categoriesResult.error) {
         console.error("Failed to load categories:", categoriesResult.error);
@@ -178,67 +216,111 @@ export default function CashierTerminal() {
     loadData();
   }, [cashierName]);
 
-  // Load products when subcategory is selected
+  // Load products with pagination
   useEffect(() => {
-    const loadProductsBySubCategory = async () => {
-      if (selectedSubCategory) {
-        setLoadingProducts(true);
-        const fetchedProducts = await offersApi.fetchProductsBySubCategory(
-          selectedSubCategory
-        );
-        if (fetchedProducts) {
-          // Map to local Product interface
-          setProducts(fetchedProducts.map(p => ({
-            id: p.id,
-            name: p.name,
-            sku: p.sku,
-            price: p.price,
-            category: p.category ?? undefined,
-          })));
+    const loadProducts = async () => {
+      setLoadingProducts(true);
+      try {
+        let response;
+        
+        if (selectedSubCategory) {
+          // For subcategory, we need to fetch all and filter client-side
+          // But for pagination, we'll use the filter API with category filter
+          response = await productsApi.filter({
+            page: productsPage,
+            size: productsPageSize,
+            isActive: true,
+          });
+        } else if (selectedCategory && !selectedSubCategory) {
+          // For parent category, use filter API
+          response = await productsApi.filter({
+            page: productsPage,
+            size: productsPageSize,
+            isActive: true,
+          });
         } else {
-          // If no products found, set empty array
+          // No category selected, load all products with pagination
+          response = await productsApi.filter({
+            page: productsPage,
+            size: productsPageSize,
+            isActive: true,
+          });
+        }
+
+        if (response.data) {
+          let pageProducts = response.data.content || [];
+          
+          // Filter by subcategory if selected (client-side filtering)
+          if (selectedSubCategory) {
+            pageProducts = pageProducts.filter((p: any) => {
+              if (p.categories && Array.isArray(p.categories)) {
+                return p.categories.some((cat: any) => cat.id === selectedSubCategory);
+              }
+              return false;
+            });
+          }
+          
+          // Filter by parent category if selected (client-side filtering)
+          if (selectedCategory && !selectedSubCategory) {
+            const selectedCategoryName = categories.find(
+              (c) => c.id === selectedCategory
+            )?.name;
+            if (selectedCategoryName) {
+              pageProducts = pageProducts.filter((p: any) => {
+                const productCategoryName =
+                  (p.categories && p.categories.length > 0)
+                    ? p.categories[0].name
+                    : (typeof p.category === 'string' 
+                        ? p.category 
+                        : (p.category?.name || null));
+                return productCategoryName === selectedCategoryName;
+              });
+            }
+          }
+
+          // Map to local Product interface
+          const mappedProducts = pageProducts.map((p: any) => {
+            const categoryName =
+              (p.categories && p.categories.length > 0)
+                ? p.categories[0].name
+                : (typeof p.category === 'string' 
+                    ? p.category 
+                    : (p.category?.name || null));
+
+            return {
+              id: p.id,
+              name: p.name || "",
+              sku: p.sku || "",
+              price: p.defaultPrice || p.price || 0,
+              category: categoryName ?? undefined,
+              image: p.image ? { url: p.image.url, altText: p.image.altText } : null,
+            };
+          });
+
+          setProducts(mappedProducts);
+          setProductsTotalPages(response.data.totalPages || 1);
+          setProductsTotalElements(response.data.totalElements || 0);
+        } else {
           setProducts([]);
+          setProductsTotalPages(1);
+          setProductsTotalElements(0);
         }
-        setLoadingProducts(false);
-      } else if (selectedCategory && !selectedSubCategory) {
-        // If only parent category is selected, load all products and filter by category name
-        setLoadingProducts(true);
-        const fetchedProducts = await offersApi.fetchProducts();
-        if (fetchedProducts) {
-          // Map to local Product interface
-          setProducts(fetchedProducts.map(p => ({
-            id: p.id,
-            name: p.name,
-            sku: p.sku,
-            price: p.price,
-            category: p.category ?? undefined,
-          })));
-        }
-        setLoadingProducts(false);
-      } else if (!selectedCategory && !selectedSubCategory) {
-        // If no category selected, load all products
-        setLoadingProducts(true);
-        const fetchedProducts = await offersApi.fetchProducts();
-        if (fetchedProducts) {
-          // Map to local Product interface
-          setProducts(fetchedProducts.map(p => ({
-            id: p.id,
-            name: p.name,
-            sku: p.sku,
-            price: p.price,
-            category: p.category ?? undefined,
-          })));
-        }
+      } catch (error) {
+        console.error("Error loading products:", error);
+        setProducts([]);
+        setProductsTotalPages(1);
+        setProductsTotalElements(0);
+      } finally {
         setLoadingProducts(false);
       }
     };
 
-    loadProductsBySubCategory();
-  }, [selectedSubCategory, selectedCategory]);
+    loadProducts();
+  }, [selectedSubCategory, selectedCategory, productsPage, productsPageSize]);
 
   // Sync cart with order items
   useEffect(() => {
-    if (currentOrder && products.length > 0) {
+    if (currentOrder && (products ?? []).length > 0) {
       const cartItems: CartItem[] = [];
       for (const orderItem of currentOrder.items) {
         const product = products.find((p) => p.id === orderItem.productId);
@@ -255,6 +337,138 @@ export default function CashierTerminal() {
       setCart([]);
     }
   }, [currentOrder, products]);
+
+  // Handle barcode scanner input
+  const handleBarcodeInput = (e: React.ChangeEvent<HTMLInputElement>) => {
+    // Only process if not typing in regular inputs and no modals are open
+    if (isTypingInInput || showSplitModal || showOrdersModal || showCustomerModal || showLogoutConfirm) {
+      return;
+    }
+    setBarcodeBuffer(e.target.value);
+  };
+
+  const handleBarcodeKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    // Only process if not typing in regular inputs and no modals are open
+    if (isTypingInInput || showSplitModal || showOrdersModal || showCustomerModal || showLogoutConfirm) {
+      return;
+    }
+
+    // Handle Enter key - process barcode
+    if (e.key === "Enter") {
+      e.preventDefault();
+      // Get barcode from input value directly (in case onChange hasn't updated state yet)
+      const barcode = (e.currentTarget.value || barcodeBuffer).trim();
+      
+      if (!barcode) {
+        return;
+      }
+      
+      // Find product by SKU
+      const product = products.find((p) => p.sku && p.sku === barcode);
+      
+      if (product) {
+        // Add to cart using existing addToCart function
+        addToCart(product);
+      } else {
+        // Product not found - could show a message, but silently ignore for now
+        console.warn(`Product with SKU "${barcode}" not found`);
+      }
+      
+      // Clear buffer and input
+      setBarcodeBuffer("");
+      if (barcodeInputRef.current) {
+        barcodeInputRef.current.value = "";
+      }
+    }
+  };
+
+  // Keep hidden input focused when not typing in other inputs
+  useEffect(() => {
+    if (isTypingInInput || showSplitModal || showOrdersModal || showCustomerModal || showLogoutConfirm) {
+      return;
+    }
+
+    const focusHiddenInput = () => {
+      if (barcodeInputRef.current && document.activeElement !== barcodeInputRef.current) {
+        barcodeInputRef.current.focus();
+      }
+    };
+
+    // Focus immediately and then periodically
+    focusHiddenInput();
+    const focusInterval = setInterval(focusHiddenInput, 500);
+
+    return () => {
+      clearInterval(focusInterval);
+    };
+  }, [isTypingInInput, showSplitModal, showOrdersModal, showCustomerModal, showLogoutConfirm]);
+
+  // Handle Enter key in search field to add product by SKU
+  const handleSearchKeyDown = async (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter" && (searchTerm ?? "").trim()) {
+      e.preventDefault();
+      const sku = (searchTerm ?? "").trim();
+      
+      // Find product by SKU
+      const product = products.find((p) => p.sku && p.sku === sku);
+      
+      if (product) {
+        // Add to cart using existing addToCart function
+        await addToCart(product);
+        // Clear search term after adding
+        setSearchTerm("");
+      } else {
+        // Product not found - show message
+        alert("SKU not found");
+      }
+    }
+  };
+
+  // Auto-detect barcode scanner input (when barcode is entered without Enter)
+  // Barcode scanners typically input numbers quickly, so we detect when searchTerm
+  // matches a product SKU exactly and hasn't changed for a short period
+  useEffect(() => {
+    // Don't auto-process if user is actively typing or modals are open
+    if (showSplitModal || showOrdersModal || showCustomerModal || showLogoutConfirm) {
+      return;
+    }
+
+    if (!(searchTerm ?? "").trim()) {
+      return;
+    }
+
+    // Check if searchTerm is a numeric string (likely a barcode)
+    const isNumericBarcode = /^\d+$/.test((searchTerm ?? "").trim());
+    
+    // Only auto-process if it looks like a barcode (numeric and at least 8 digits)
+    // and matches a product SKU exactly
+    if (isNumericBarcode && (searchTerm ?? "").trim().length >= 8) {
+      const timeoutId = setTimeout(async () => {
+        // Double-check that searchTerm hasn't changed (user might still be typing)
+        const currentSearchTerm = (searchTerm ?? "").trim();
+        
+        // Find product by SKU (exact match)
+        const product = products.find((p) => p.sku && p.sku === currentSearchTerm);
+        
+        if (product) {
+          // Add to cart using existing addToCart function
+          await addToCart(product);
+          // Clear search term after adding
+          setSearchTerm("");
+        }
+      }, 500); // Wait 500ms after last input to process
+
+      return () => {
+        clearTimeout(timeoutId);
+      };
+    }
+  }, [searchTerm, products, showSplitModal, showOrdersModal, showCustomerModal, showLogoutConfirm]);
+
+  // Reset to first page when category/subcategory changes
+  useEffect(() => {
+    setProductsPage(0);
+  }, [selectedCategory, selectedSubCategory]);
+
 
   const filteredProducts = products.filter((product) => {
     const matchesSearch =
@@ -315,8 +529,13 @@ export default function CashierTerminal() {
         if (createResult.data) {
           setCurrentOrder(createResult.data);
           orderId = createResult.data.id;
+          // Clear paid order info when starting a new order
+          setPaidOrderId(null);
+          setPaidOrderNumber(null);
         }
       }
+
+      // Customer linking is now optional - only when user clicks "Add Customer" button
 
       if (!orderId) {
         alert("Failed to get order ID");
@@ -491,9 +710,16 @@ export default function CashierTerminal() {
   const total = currentOrder?.grandTotal || (subtotal - discount + tax);
 
   // Customer registration functions
+
   const handleSearchCustomer = async () => {
-    if (!customerPhone.trim()) {
+    if (!(customerPhone ?? "").trim()) {
       setCustomerError("Please enter a phone number");
+      return;
+    }
+
+    // Check if order already has a customer attached (use customer.id instead of customerName)
+    if (currentOrder?.customer?.id) {
+      setCustomerError("This order already has a customer attached. Cannot link another customer.");
       return;
     }
 
@@ -501,35 +727,66 @@ export default function CashierTerminal() {
     setCustomerError(null);
 
     try {
-      const result = await customersApi.getCustomerByPhone(customerPhone.trim());
+      const result = await customersApi.searchCustomerByPhone((customerPhone ?? "").trim());
       
-      if (result.error && result.status === 404) {
-        // Customer not found - show create form
-        setCustomerError(null);
-        setCustomerName("");
+      if (result.error) {
+        setCustomerError(result.error);
+        setCustomerFound(false);
+        setCurrentCustomer(null);
+        setCustomerFirstName("");
+        setCustomerLastName("");
         setCustomerEmail("");
         setCustomerAddress("");
-      } else if (result.error) {
-        setCustomerError(result.error);
       } else if (result.data) {
-        // Customer found
-        setCurrentCustomer(result.data);
-        setCustomerName(result.data.name);
-        setCustomerEmail(result.data.email || "");
-        setCustomerAddress(result.data.address || "");
-        setCustomerError(null);
+        if (result.data.found && result.data.customer) {
+          // Customer found
+          setCustomerFound(true);
+          setCurrentCustomer(result.data.customer);
+          
+          // Use firstName/lastName directly from response (never use split)
+          const customer = result.data.customer;
+          setCustomerFirstName(customer.firstName ?? "");
+          setCustomerLastName(customer.lastName ?? "");
+          
+          setCustomerEmail(customer.email ?? "");
+          setCustomerAddress(customer.address ?? "");
+          setCustomerError(null);
+        } else {
+          // Customer not found - show create form
+          setCustomerFound(false);
+          setCurrentCustomer(null);
+          setCustomerFirstName("");
+          setCustomerLastName("");
+          setCustomerEmail("");
+          setCustomerAddress("");
+          setCustomerError(null);
+        }
       }
     } catch (err) {
       setCustomerError("An error occurred while searching for customer");
       console.error(err);
+      setCustomerFound(false);
+      setCurrentCustomer(null);
     } finally {
       setSearchingCustomer(false);
     }
   };
 
-  const handleCreateCustomer = async () => {
-    if (!customerName.trim() || !customerPhone.trim()) {
-      setCustomerError("Name and phone are required");
+  const handleLinkOrCreateCustomer = async () => {
+    if (!currentOrder) {
+      setCustomerError("No order found");
+      return;
+    }
+
+    // Prevent linking another customer if one is already attached (use customer.id instead of customerName)
+    if (currentOrder.customer?.id) {
+      setCustomerError("This order already has a customer attached. Cannot link another customer.");
+      return;
+    }
+
+    // Only allow if order status is DRAFT or HOLD
+    if (currentOrder.status !== "DRAFT" && currentOrder.status !== "HOLD") {
+      setCustomerError("Cannot attach customer to this order status");
       return;
     }
 
@@ -537,64 +794,219 @@ export default function CashierTerminal() {
     setCustomerError(null);
 
     try {
-      const result = await customersApi.createCustomer({
-        name: customerName.trim(),
-        phone: customerPhone.trim(),
-        email: customerEmail.trim() || undefined,
-        address: customerAddress.trim() || undefined,
-      });
+      if (customerFound && currentCustomer) {
+        // Customer found - link using PUT /api/orders/{orderId}/customer
+        const result = await ordersApi.linkCustomerToOrder(
+          currentOrder.id,
+          currentCustomer.id
+        );
 
-      if (result.error) {
-        setCustomerError(result.error);
-      } else if (result.data) {
-        setCurrentCustomer({
-          id: result.data.customerId,
-          name: result.data.name,
-          phone: result.data.phone,
-          email: result.data.email || null,
-          address: result.data.address || null,
-        });
-        setCustomerError(null);
+        if (result.error) {
+          setCustomerError(result.error);
+        } else if (result.data) {
+          // Merge customer data only - don't replace entire order
+          // Use fallback from currentCustomer if result.data.customer is not available
+          setCurrentOrder((prev) => {
+            if (!prev) return result.data || null;
+            if (!result.data) return prev;
+            
+            // Use customer from response, or fallback to currentCustomer
+            // New API may return customerId, userId, and customer object
+            const responseCustomer = result.data.customer;
+            const fallbackCustomer = currentCustomer;
+            const customerToUse = responseCustomer ?? fallbackCustomer;
+            
+            // Use customerId from response or customer.id
+            const customerIdFromResponse = result.data.customerId ?? responseCustomer?.id ?? fallbackCustomer?.id;
+            
+            // Use customerName directly from result.data.customer.customerName (backend now returns it)
+            let customerName: string | null = result.data.customer?.customerName 
+              ?? result.data.customerName 
+              ?? null;
+            
+            // Fallback: build from firstName + lastName if customerName not available
+            if (!customerName && customerToUse) {
+              const firstName = (customerToUse.firstName ?? "").trim();
+              const lastName = (customerToUse.lastName ?? "").trim();
+              if (firstName || lastName) {
+                customerName = `${firstName} ${lastName}`.trim();
+              } else {
+                customerName = (customerToUse.name ?? customerToUse.fullName ?? "").trim() || null;
+              }
+            }
+            
+            // Build customerPhone from response or fallback
+            const customerPhoneValue = result.data.customerPhone 
+              ?? responseCustomer?.phone 
+              ?? fallbackCustomer?.phone 
+              ?? prev.customerPhone 
+              ?? null;
+            
+            return {
+              ...prev,
+              // Only merge customer fields, keep all other order data intact
+              customerName: customerName ?? prev.customerName ?? null,
+              customerPhone: customerPhoneValue,
+              customerId: customerIdFromResponse ?? prev.customerId ?? null,
+              userId: result.data.userId ?? prev.userId ?? null,
+              customer: customerToUse ? {
+                id: customerIdFromResponse ?? customerToUse.id ?? 0, // Use customerId from response
+                firstName: customerToUse.firstName,
+                lastName: customerToUse.lastName,
+                name: customerToUse.name,
+                fullName: customerToUse.fullName,
+                phone: customerToUse.phone,
+                email: customerToUse.email,
+              } : prev.customer ?? null,
+            };
+          });
+          // Close modal and reset form
+          setShowCustomerModal(false);
+          setShouldPromptForCustomer(false);
+          setCustomerPhone("");
+          setCustomerFirstName("");
+          setCustomerLastName("");
+          setCustomerEmail("");
+          setCustomerAddress("");
+          setCurrentCustomer(null);
+          setCustomerFound(false);
+        }
+      } else {
+        // Customer not found - create and attach using POST /api/orders/{orderId}/customer/attach-by-phone
+        if (!(customerFirstName ?? "").trim() || !(customerLastName ?? "").trim() || !(customerPhone ?? "").trim()) {
+          setCustomerError("First name, last name, and phone are required");
+          setCreatingCustomer(false);
+          return;
+        }
+
+        const result = await ordersApi.attachCustomerByPhone(
+          currentOrder.id,
+          {
+            phone: (customerPhone ?? "").trim(),
+            createIfMissing: true,
+            firstName: (customerFirstName ?? "").trim(),
+            lastName: (customerLastName ?? "").trim(),
+            email: (customerEmail ?? "").trim() || undefined,
+          }
+        );
+
+        if (result.error) {
+          setCustomerError(result.error);
+        } else if (result.data) {
+          // Merge customer data only - don't replace entire order
+          // Use fallback from input data (customerFirstName/customerLastName) if result.data.customer is not available
+          setCurrentOrder((prev) => {
+            if (!prev) return result.data || null;
+            if (!result.data) return prev;
+            
+            // Use customer from response (new API returns customerId, userId, and customer object)
+            const responseCustomer = result.data.customer;
+            // Use customerId from response or customer.id
+            const customerIdFromResponse = result.data.customerId ?? responseCustomer?.id;
+            
+            let customerToUse = responseCustomer;
+            
+            // If no customer object in response but we have customerId, build from input data
+            if (!customerToUse && customerIdFromResponse) {
+              const firstName = (customerFirstName ?? "").trim();
+              const lastName = (customerLastName ?? "").trim();
+              if (firstName || lastName) {
+                customerToUse = {
+                  id: customerIdFromResponse, // Use customerId from response
+                  firstName: firstName || undefined,
+                  lastName: lastName || undefined,
+                  phone: (customerPhone ?? "").trim(),
+                  email: (customerEmail ?? "").trim() || undefined,
+                };
+              }
+            } else if (!customerToUse) {
+              // If no customerId either, build from input data (fallback)
+              const firstName = (customerFirstName ?? "").trim();
+              const lastName = (customerLastName ?? "").trim();
+              if (firstName || lastName) {
+                customerToUse = {
+                  id: 0, // Will be set by backend
+                  firstName: firstName || undefined,
+                  lastName: lastName || undefined,
+                  phone: (customerPhone ?? "").trim(),
+                  email: (customerEmail ?? "").trim() || undefined,
+                };
+              }
+            }
+            
+            // Use customerName directly from result.data.customer.customerName (backend now returns it)
+            let customerName: string | null = result.data.customer?.customerName 
+              ?? result.data.customerName 
+              ?? null;
+            
+            // Fallback: build from firstName + lastName if customerName not available
+            if (!customerName && customerToUse) {
+              const firstName = (customerToUse.firstName ?? "").trim();
+              const lastName = (customerToUse.lastName ?? "").trim();
+              if (firstName || lastName) {
+                customerName = `${firstName} ${lastName}`.trim();
+              } else {
+                customerName = (customerToUse.name ?? customerToUse.fullName ?? "").trim() || null;
+              }
+            }
+            
+            // Build customerPhone from response or input
+            const customerPhoneValue = result.data.customerPhone 
+              ?? responseCustomer?.phone 
+              ?? (customerPhone ?? "").trim() 
+              ?? prev.customerPhone 
+              ?? null;
+            
+            return {
+              ...prev,
+              // Only merge customer fields, keep all other order data intact
+              customerName: customerName ?? prev.customerName ?? null,
+              customerPhone: customerPhoneValue,
+              customerId: customerIdFromResponse ?? prev.customerId ?? null,
+              userId: result.data.userId ?? prev.userId ?? null,
+              customer: customerToUse ? {
+                id: customerIdFromResponse ?? customerToUse.id ?? 0, // Use customerId from response
+                firstName: customerToUse.firstName,
+                lastName: customerToUse.lastName,
+                name: customerToUse.name,
+                fullName: customerToUse.fullName,
+                phone: customerToUse.phone,
+                email: customerToUse.email,
+              } : prev.customer ?? null,
+            };
+          });
+          // Close modal and reset form
+          setShowCustomerModal(false);
+          setShouldPromptForCustomer(false);
+          setCustomerPhone("");
+          setCustomerFirstName("");
+          setCustomerLastName("");
+          setCustomerEmail("");
+          setCustomerAddress("");
+          setCurrentCustomer(null);
+          setCustomerFound(false);
+        }
       }
     } catch (err) {
-      setCustomerError("An error occurred while creating customer");
+      setCustomerError("An error occurred while processing customer");
       console.error(err);
     } finally {
       setCreatingCustomer(false);
     }
   };
 
-  const handleAttachCustomer = async () => {
-    if (!currentOrder || !currentCustomer) {
-      setCustomerError("No customer selected");
-      return;
-    }
-
-    setProcessing(true);
-    try {
-      const result = await ordersApi.attachCustomerToOrder(
-        currentOrder.id,
-        currentCustomer.id
-      );
-
-      if (result.error) {
-        setCustomerError(result.error);
-      } else if (result.data) {
-        setCurrentOrder(result.data);
-        setShowCustomerModal(false);
-        setCustomerError(null);
-        // Reset customer form
-        setCustomerPhone("");
-        setCustomerName("");
-        setCustomerEmail("");
-        setCustomerAddress("");
-      }
-    } catch (err) {
-      setCustomerError("An error occurred while attaching customer");
-      console.error(err);
-    } finally {
-      setProcessing(false);
-    }
+  // Handle skip/close customer modal
+  const handleSkipCustomer = () => {
+    setShowCustomerModal(false);
+    setShouldPromptForCustomer(false);
+    setCustomerPhone("");
+    setCustomerFirstName("");
+    setCustomerLastName("");
+    setCustomerEmail("");
+    setCustomerAddress("");
+    setCurrentCustomer(null);
+    setCustomerFound(false);
+    setCustomerError(null);
   };
 
   const handleRemoveCustomer = async () => {
@@ -619,7 +1031,7 @@ export default function CashierTerminal() {
   };
 
   const handlePayment = async (method: "cash" | "card" | "both") => {
-    if (!currentOrder || currentOrder.items.length === 0) {
+    if (!currentOrder || (currentOrder.items ?? []).length === 0) {
       alert("Order is empty");
       return;
     }
@@ -637,31 +1049,37 @@ export default function CashierTerminal() {
       return;
     }
 
-    // تأكيد قبل الدفع للـ Cash أو Card
-    const methodName = method === "cash" ? "Cash" : "Card";
-    const confirmMessage = `Confirm ${methodName} payment of ${fmtMoney(total)}?`;
-    
-    if (!window.confirm(confirmMessage)) {
-      return; // المستخدم ألغى العملية
-    }
+    // Show payment confirmation modal
+    setPaymentMethod(method);
+    setPaymentAmount(total);
+    setShowPaymentConfirm(true);
+  };
 
+  const handleConfirmPayment = async () => {
+    if (!currentOrder || !paymentMethod || !paymentAmount) return;
+
+    setShowPaymentConfirm(false);
     setProcessing(true);
     try {
       // Process single payment method
       const result = await ordersApi.processPayment({
         orderId: currentOrder.id,
-        paymentMethod: method.toUpperCase() as "CASH" | "CARD",
-        amount: total,
+        paymentMethod: paymentMethod.toUpperCase() as "CASH" | "CARD",
+        amount: paymentAmount,
       });
 
       if (result.error) {
         alert(`Payment failed: ${result.error}`);
       } else if (result.data) {
+        // Save order info before clearing
+        setPaidOrderId(result.data.id);
+        setPaidOrderNumber(result.data.orderNumber);
         setCurrentOrder(result.data);
         // Clear cart and reset order
         setCart([]);
         setCurrentOrder(null);
-        alert("Payment successful!");
+        // Show success modal
+        setShowPaymentSuccess(true);
       }
     } catch (error) {
       console.error("Error processing payment:", error);
@@ -696,13 +1114,19 @@ export default function CashierTerminal() {
       return;
     }
 
-    // تأكيد قبل الدفع
-    const confirmMessage = `Confirm split payment?\nCash: ${fmtMoney(cashAmount)}\nCard: ${fmtMoney(cardAmount)}\nTotal: ${fmtMoney(total)}`;
-    
-    if (!window.confirm(confirmMessage)) {
-      return; // المستخدم ألغى العملية
-    }
+    // Show payment confirmation modal for split payment
+    setPaymentMethod("both");
+    setPaymentAmount(total);
+    setShowPaymentConfirm(true);
+  };
 
+  const handleConfirmSplitPayment = async () => {
+    if (!currentOrder) return;
+
+    const cashAmount = parseFloat(splitCashAmount);
+    const cardAmount = parseFloat(splitCardAmount);
+
+    setShowPaymentConfirm(false);
     setProcessing(true);
     try {
       const result = await ordersApi.processPayment({
@@ -715,12 +1139,16 @@ export default function CashierTerminal() {
       if (result.error) {
         alert(`Payment failed: ${result.error}`);
       } else if (result.data) {
+        // Save order info before clearing
+        setPaidOrderId(result.data.id);
+        setPaidOrderNumber(result.data.orderNumber);
         setCurrentOrder(result.data);
         setShowSplitModal(false);
         // Clear cart and reset order
         setCart([]);
         setCurrentOrder(null);
-        alert("Payment successful!");
+        // Show success modal
+        setShowPaymentSuccess(true);
       }
     } catch (error) {
       console.error("Error processing split payment:", error);
@@ -750,6 +1178,40 @@ export default function CashierTerminal() {
       setSplitCashAmount(remaining.toFixed(2));
     } else if (value === "" || value === "0") {
       setSplitCashAmount("");
+    }
+  };
+
+  const handlePrintReceipt = async () => {
+    if (!paidOrderId) return;
+
+    setPrintingReceipt(true);
+    try {
+      const result = await ordersApi.downloadReceipt(paidOrderId);
+
+      if (result.error) {
+        if (result.status === 409) {
+          alert("Cannot print receipt: Order is not PAID yet.");
+        } else if (result.status === 404) {
+          alert("Order not found.");
+        } else {
+          alert(`Failed to print receipt: ${result.error}`);
+        }
+      } else if (result.data) {
+        // Create blob URL and open/download
+        const blobUrl = URL.createObjectURL(result.data);
+        const link = document.createElement("a");
+        link.href = blobUrl;
+        link.download = `receipt-${paidOrderNumber}.pdf`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(blobUrl);
+      }
+    } catch (error) {
+      console.error("Error printing receipt:", error);
+      alert("An error occurred while printing receipt");
+    } finally {
+      setPrintingReceipt(false);
     }
   };
 
@@ -850,7 +1312,7 @@ export default function CashierTerminal() {
           setSessionStats({
             totalCash: cashTotal,
             totalCard: cardTotal,
-            totalOrders: ordersResult.data.length,
+            totalOrders: (ordersResult.data ?? []).length,
             openingFloat,
             totalSales,
             expectedDrawer: openingFloat + cashTotal,
@@ -881,11 +1343,11 @@ export default function CashierTerminal() {
 
     try {
       await finalizeSessionBeforeExit();
+      // Show success modal before logout
+      setShowSessionClosedSuccess(true);
     } finally {
       setLoadingStats(false);
     }
-
-    logoutForRole('CASHIER');
   };
 
   const handleCancelLogout = () => {
@@ -894,7 +1356,7 @@ export default function CashierTerminal() {
   };
 
   const finalizeSessionBeforeExit = async () => {
-    if (currentOrder && currentOrder.status !== "PAID" && currentOrder.items.length > 0) {
+    if (currentOrder && currentOrder.status !== "PAID" && (currentOrder.items ?? []).length > 0) {
       console.log("Holding order before exit:", currentOrder.id, currentOrder.status);
       try {
         const holdResult = await ordersApi.holdOrder(currentOrder.id);
@@ -927,11 +1389,11 @@ export default function CashierTerminal() {
           alert("Warning: Failed to close the session. Please contact a supervisor.");
         } else if (closeResult.data) {
           console.log("Session closed successfully", closeResult.data);
-          alert(closeResult.data.message || "Session closed successfully");
           setCurrentSessionId(null);
           clearSessionId();
           setSessionStats(null);
           setHeldOrders([]);
+          // Show success modal (will be handled by handleConfirmLogout)
         }
       } catch (error) {
         console.error("Error closing session:", error);
@@ -944,14 +1406,11 @@ export default function CashierTerminal() {
       return;
     }
 
-    const confirmed = window.confirm(
-      "Unpair this browser from the terminal? You will need a new pairing code to continue working."
-    );
+    setShowUnpairConfirm(true);
+  };
 
-    if (!confirmed) {
-      return;
-    }
-
+  const confirmUnpair = async () => {
+    setShowUnpairConfirm(false);
     setUnpairing(true);
 
     try {
@@ -960,6 +1419,7 @@ export default function CashierTerminal() {
       const result = await terminalApi.unpairTerminal();
       if (result.error) {
         alert(result.error);
+        setUnpairing(false);
         return;
       }
 
@@ -969,11 +1429,13 @@ export default function CashierTerminal() {
       setCurrentOrder(null);
       setHeldOrders([]);
 
-      alert(result.data?.message || "This browser has been disconnected. You will be redirected to sign in again.");
-      logoutForRole('CASHIER');
+      setShowUnpairSuccess(true);
+      // Auto logout after showing success
+      setTimeout(() => {
+        logoutForRole('CASHIER');
+      }, 2000);
     } catch (error) {
       alert(error instanceof Error ? error.message : "Failed to unpair terminal");
-    } finally {
       setUnpairing(false);
     }
   };
@@ -1011,7 +1473,7 @@ export default function CashierTerminal() {
       try {
         const historyResult = await ordersApi.getSessionHistory(currentSessionId);
         if (historyResult.data) {
-          const held = historyResult.data.filter((o) => o.status === "HELD");
+          const held = historyResult.data.filter((o) => o.status === "HOLD");
           for (const heldOrder of held) {
             const fullOrder = await ordersApi.getOrder(heldOrder.id);
             if (fullOrder.data) {
@@ -1033,7 +1495,7 @@ export default function CashierTerminal() {
   };
 
   const handleHoldOrder = async () => {
-    if (!currentOrder || currentOrder.items.length === 0) {
+    if (!currentOrder || (currentOrder.items ?? []).length === 0) {
       alert("Order is empty");
       return;
     }
@@ -1043,7 +1505,7 @@ export default function CashierTerminal() {
       return;
     }
 
-    if (currentOrder.status === "HELD") {
+    if (currentOrder.status === "HOLD") {
       alert("Order is already held");
       return;
     }
@@ -1060,7 +1522,7 @@ export default function CashierTerminal() {
         if (currentSessionId) {
           await loadHeldOrders(currentSessionId);
         }
-        alert("Order held successfully");
+        setShowHoldSuccess(true);
       }
     } catch (error) {
       console.error("Error holding order:", error);
@@ -1103,22 +1565,55 @@ export default function CashierTerminal() {
   return (
     <div className="h-screen flex flex-col bg-white">
       {/* Header */}
-      <header className="border-b border-gray-200 px-6 py-4 flex items-center justify-between">
-        <h1 className="text-2xl font-semibold text-gray-800">{cashierName}</h1>
+      <header className="border-b border-gray-200 px-6 py-4 flex items-center justify-between bg-white">
+        {/* Left: My Store with Cashier Image and Name */}
+        <button
+          onClick={() => navigate("/dashboard/profile")}
+          className="flex items-center gap-3 hover:opacity-80 transition-opacity cursor-pointer"
+        >
+          <div className="relative">
+            <img
+              src={`${window.location.origin}/picture/cashier.png`}
+              alt="Cashier"
+              className="w-10 h-10 rounded-full object-cover border-2 border-gray-200"
+              onError={(e) => {
+                (e.target as HTMLImageElement).src = `${window.location.origin}/picture/ceo.png`;
+              }}
+            />
+          </div>
+          <div className="flex flex-col">
+            <div className="flex items-center gap-2">
+              <Store className="h-4 w-4 text-gray-600" />
+              <span className="text-sm font-medium text-gray-800">{storeName}</span>
+            </div>
+            <span className="text-xs text-gray-500">{cashierName}</span>
+          </div>
+        </button>
+
+        {/* Center: Session with Green Dot and Dropdown */}
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-gray-50 border border-gray-200">
+            <div className="h-2 w-2 rounded-full bg-green-500"></div>
+            <span className="text-sm font-medium text-gray-800">Session</span>
+            <ChevronDown className="h-4 w-4 text-gray-600" />
+          </div>
+        </div>
+
+        {/* Right: Profile Image and Icons */}
         <div className="flex items-center gap-3">
           <button
-            onClick={() => navigate("/cashier/return")}
+            onClick={() => navigate("/dashboard/return")}
             className="p-2 rounded-lg text-gray-600 hover:text-orange-600 hover:bg-orange-50 transition-colors"
             title="Return Order"
           >
             <RotateCcw className="h-5 w-5" />
           </button>
           <button
-            onClick={() => navigate("/cashier/returns")}
+            onClick={() => navigate("/dashboard/returns")}
             className="p-2 rounded-lg text-gray-600 hover:text-purple-600 hover:bg-purple-50 transition-colors"
             title="Return Orders History"
           >
-            <RotateCcw className="h-5 w-5" />
+            <History className="h-5 w-5" />
           </button>
           <button
             onClick={handleViewOrders}
@@ -1126,13 +1621,6 @@ export default function CashierTerminal() {
             title="View Orders"
           >
             <ShoppingBag className="h-5 w-5" />
-          </button>
-          <button
-            onClick={() => navigate("/cashier/profile")}
-            className="p-2 rounded-lg text-gray-600 hover:text-blue-600 hover:bg-blue-50 transition-colors"
-            title="Profile"
-          >
-            <User className="h-5 w-5" />
           </button>
           <button
             onClick={handleUnpairTerminal}
@@ -1161,7 +1649,7 @@ export default function CashierTerminal() {
         {/* Left Sidebar - Products */}
         <div className="w-80 border-r border-gray-200 flex flex-col">
           {/* Search */}
-          <div className="p-4 border-b border-gray-200">
+          <div className="p-4 border-b border-gray-200 flex-shrink-0">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
               <input
@@ -1169,97 +1657,123 @@ export default function CashierTerminal() {
                 placeholder="Search by product name or SKU..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
+                onKeyDown={handleSearchKeyDown}
+                onFocus={() => setIsTypingInInput(true)}
+                onBlur={() => setIsTypingInInput(false)}
                 className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
           </div>
+          
+          {/* Hidden input for barcode scanner */}
+          <input
+            ref={barcodeInputRef}
+            type="text"
+            autoFocus
+            value={barcodeBuffer}
+            onChange={handleBarcodeInput}
+            onKeyDown={handleBarcodeKeyDown}
+            style={{
+              position: "absolute",
+              left: "-9999px",
+              width: "1px",
+              height: "1px",
+              opacity: 0,
+              pointerEvents: "none",
+            }}
+            tabIndex={-1}
+          />
 
-          {/* Categories */}
-          <div className="p-4 border-b border-gray-200">
-            <h2 className="text-sm font-semibold text-gray-700 mb-3">
-              Categories
-            </h2>
-            <div className="space-y-1">
-              <button
-                onClick={() => {
-                  setSelectedCategory(null);
-                  setSelectedSubCategory(null);
-                  setExpandedCategory(null);
-                }}
-                className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm transition-colors ${
-                  selectedCategory === null && selectedSubCategory === null
-                    ? "bg-blue-50 text-blue-600"
-                    : "text-gray-700 hover:bg-gray-50"
-                }`}
-              >
-                <span>All</span>
-                <ChevronRight className="h-4 w-4" />
-              </button>
-              {categories.map((category) => (
-                <div key={category.id}>
+          {/* Categories - Scrollable */}
+          <div className="flex-shrink-0 border-b border-gray-200">
+            <div className="p-4 border-b border-gray-100">
+              <h2 className="text-sm font-semibold text-gray-700">
+                Categories
+              </h2>
+            </div>
+            <div className="overflow-y-auto" style={{ maxHeight: '200px' }}>
+              <div className="p-4 pt-2 space-y-1">
                 <button
-                    onClick={() => {
-                      if (expandedCategory === category.id) {
-                        setExpandedCategory(null);
-                        setSelectedCategory(null);
-                        setSelectedSubCategory(null);
-                      } else {
-                        setExpandedCategory(category.id);
-                        setSelectedCategory(category.id);
-                        setSelectedSubCategory(null);
-                      }
-                    }}
+                  onClick={() => {
+                    setSelectedCategory(null);
+                    setSelectedSubCategory(null);
+                    setExpandedCategory(null);
+                  }}
                   className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm transition-colors ${
-                      selectedCategory === category.id && selectedSubCategory === null
+                    selectedCategory === null && selectedSubCategory === null
                       ? "bg-blue-50 text-blue-600"
                       : "text-gray-700 hover:bg-gray-50"
                   }`}
                 >
-                  <span>{category.name}</span>
-                    <ChevronRight
-                      className={`h-4 w-4 transition-transform ${
-                        expandedCategory === category.id ? "rotate-90" : ""
-                      }`}
-                    />
-                  </button>
-                  {expandedCategory === category.id &&
-                    category.subCategories &&
-                    category.subCategories.length > 0 && (
-                      <div className="ml-4 mt-1 space-y-1">
-                        {category.subCategories
-                          .filter((sc) => sc != null)
-                          .map((subCategory) => (
-                          <button
-                            key={subCategory.id}
-                            onClick={() => {
-                              setSelectedSubCategory(subCategory.id);
-                              setSelectedCategory(category.id);
-                            }}
-                            className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs transition-colors ${
-                              selectedSubCategory === subCategory.id
-                                ? "bg-blue-100 text-blue-700"
-                                : "text-gray-600 hover:bg-gray-50"
-                            }`}
-                          >
-                            <span>
-                              {subCategory.name}
-                              {subCategory.productCount !== undefined && (
-                                <span className="ml-2 text-gray-500">
-                                  ({subCategory.productCount})
-                                </span>
-                              )}
-                            </span>
+                  <span>All</span>
+                  <ChevronRight className="h-4 w-4" />
                 </button>
-                        ))}
-                      </div>
-                    )}
-                </div>
-              ))}
+                {categories.map((category) => (
+                  <div key={category.id}>
+                  <button
+                      onClick={() => {
+                        if (expandedCategory === category.id) {
+                          setExpandedCategory(null);
+                          setSelectedCategory(null);
+                          setSelectedSubCategory(null);
+                        } else {
+                          setExpandedCategory(category.id);
+                          setSelectedCategory(category.id);
+                          setSelectedSubCategory(null);
+                        }
+                      }}
+                    className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm transition-colors ${
+                        selectedCategory === category.id && selectedSubCategory === null
+                        ? "bg-blue-50 text-blue-600"
+                        : "text-gray-700 hover:bg-gray-50"
+                    }`}
+                  >
+                    <span>{category.name}</span>
+                      <ChevronRight
+                        className={`h-4 w-4 transition-transform ${
+                          expandedCategory === category.id ? "rotate-90" : ""
+                        }`}
+                      />
+                    </button>
+                    {expandedCategory === category.id &&
+                      category.subCategories &&
+                      (category.subCategories ?? []).length > 0 && (
+                        <div className="ml-4 mt-1 space-y-1">
+                          {category.subCategories
+                            .filter((sc) => sc != null)
+                            .map((subCategory) => (
+                            <button
+                              key={subCategory.id}
+                              onClick={() => {
+                                setSelectedSubCategory(subCategory.id);
+                                setSelectedCategory(category.id);
+                              }}
+                              className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs transition-colors ${
+                                selectedSubCategory === subCategory.id
+                                  ? "bg-blue-100 text-blue-700"
+                                  : "text-gray-600 hover:bg-gray-50"
+                              }`}
+                            >
+                              <span>
+                                {subCategory.name}
+                                {subCategory.productCount !== undefined && (
+                                  <span className="ml-2 text-gray-500">
+                                    ({subCategory.productCount})
+                                  </span>
+                                )}
+                              </span>
+                  </button>
+                          ))}
+                        </div>
+                      )}
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
 
-          {/* Products List */}
-          <div className="flex-1 overflow-y-auto p-4">
+          {/* Products List - Scrollable */}
+          <div className="flex-1 overflow-y-auto p-4 min-h-0">
             {loadingProducts ? (
               <div className="flex items-center justify-center py-8">
                 <Loader2 className="h-6 w-6 animate-spin text-blue-600" />
@@ -1270,25 +1784,73 @@ export default function CashierTerminal() {
                 <button
                   key={product.id}
                   onClick={() => addToCart(product)}
-                  className="w-full text-left p-3 rounded-lg border border-gray-200 hover:border-blue-500 hover:bg-blue-50 transition-colors"
+                  className="w-full text-left p-3 rounded-lg border border-gray-200 hover:border-blue-500 hover:bg-blue-50 transition-colors flex items-center gap-3"
                 >
+                  {(() => {
+                    const productName = product.name.toLowerCase();
+                    const allowedProducts = ['katchap', 'saneora', 'tea', 'zatar', 'tona'];
+                    const hasImage = allowedProducts.some(name => productName.includes(name));
+                    
+                    if (hasImage && product.image?.url) {
+                      return (
+                        <img
+                          src={`${window.location.origin}${product.image.url}`}
+                          alt={product.image.altText ?? product.name}
+                          className="w-12 h-12 object-cover rounded border border-gray-200 flex-shrink-0"
+                          onError={(e) => {
+                            (e.target as HTMLImageElement).style.display = 'none';
+                          }}
+                        />
+                      );
+                    }
+                    return null;
+                  })()}
+                  <div className="flex-1 min-w-0">
                     <div className="font-medium text-gray-900">
                       {product.name}
                     </div>
-                  {product.sku && (
-                      <div className="text-xs text-gray-500 mt-1">
-                        SKU: {product.sku}
-                      </div>
-                  )}
-                  <div className="text-sm font-semibold text-blue-600 mt-1">
-                    {fmtMoney(product.price)}
+                    {product.sku && (
+                        <div className="text-xs text-gray-500 mt-1">
+                          SKU: {product.sku}
+                        </div>
+                    )}
+                    <div className="text-sm font-semibold text-blue-600 mt-1">
+                      {fmtMoney(product.price)}
+                    </div>
                   </div>
                 </button>
               ))}
-              {filteredProducts.length === 0 && (
+              {(filteredProducts ?? []).length === 0 && !loadingProducts && (
                   <p className="text-center text-gray-500 py-8">
                     No products found
                   </p>
+              )}
+              
+              {/* Pagination Controls */}
+              {productsTotalPages > 1 && (
+                <div className="flex items-center justify-between mt-4 pt-4 border-t border-gray-200">
+                  <button
+                    onClick={() => setProductsPage(prev => Math.max(0, prev - 1))}
+                    disabled={productsPage === 0 || loadingProducts}
+                    className="flex items-center gap-1 px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                    Previous
+                  </button>
+                  
+                  <span className="text-sm text-gray-700">
+                    Page {productsPage + 1} of {productsTotalPages} ({productsTotalElements} products)
+                  </span>
+                  
+                  <button
+                    onClick={() => setProductsPage(prev => Math.min(productsTotalPages - 1, prev + 1))}
+                    disabled={productsPage >= productsTotalPages - 1 || loadingProducts}
+                    className="flex items-center gap-1 px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Next
+                    <ChevronRight className="h-4 w-4" />
+                  </button>
+                </div>
               )}
             </div>
             )}
@@ -1303,47 +1865,103 @@ export default function CashierTerminal() {
             </h2>
           </div>
           <div className="flex-1 overflow-y-auto p-6">
-            {(!currentOrder || currentOrder.items.length === 0) &&
-            cart.length === 0 ? (
-              <div className="flex items-center justify-center h-full">
-                <p className="text-gray-400">No items in order</p>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {(currentOrder?.items.length ? currentOrder.items : cart).map(
-                  (item, index) => {
-                  const orderItem = currentOrder?.items[index];
-                  const cartItem = cart[index] as CartItem | undefined;
-                  const product = orderItem 
-                      ? products.find((p) => p.id === orderItem.productId) || {
-                          id: orderItem.productId,
-                          name: `Product ${orderItem.productId}`,
-                          price: orderItem.unitPrice,
-                        }
-                      : cartItem?.product || (item as CartItem).product;
-                    const quantity =
-                      orderItem?.quantity ||
-                      cartItem?.quantity ||
-                      (item as CartItem).quantity;
-                    const discount =
-                      orderItem?.discountAmount ||
-                      cartItem?.discountAmount ||
-                      0;
-                    const lineTotal =
-                      orderItem?.lineTotal ||
-                      product.price * quantity - discount;
+            {(() => {
+              const itemsToShow = (currentOrder?.items && currentOrder.items.length > 0)
+                ? currentOrder.items 
+                : (cart && cart.length > 0) ? cart : null;
+
+              if (!itemsToShow?.length) {
+                return (
+                  <div className="flex items-center justify-center h-full">
+                    <p className="text-gray-400">No items in order</p>
+                  </div>
+                );
+              }
+
+              return (
+                <div className="space-y-3">
+                  {itemsToShow.map((item) => {
+                  // Determine if item is OrderItem or CartItem
+                  const isOrderItem = 'productId' in item && 'unitPrice' in item;
+                  const orderItem = isOrderItem ? (item as any) : null;
+                  const cartItem = !isOrderItem ? (item as CartItem) : null;
+                  
+                  // Extract product directly from item
+                  console.log('🔍 Item:', item);
+                  console.log('🔍 Item keys:', Object.keys(item));
+                  
+                  let resolvedProduct: Product;
+                  if (orderItem) {
+                    // OrderItem
+                    console.log('📦 orderItem:', orderItem);
+                    console.log('📦 orderItem.product:', orderItem.product);
+                    console.log('📦 orderItem.product?.image:', orderItem.product?.image);
+                    console.log('📦 orderItem.product?.image?.url:', orderItem.product?.image?.url);
+                    
+                    if (orderItem.product) {
+                      console.log('✅ Using orderItem.product:', orderItem.product);
+                      console.log('✅ orderItem.product.image:', orderItem.product.image);
+                      resolvedProduct = {
+                        id: orderItem.product.id,
+                        name: orderItem.product.name,
+                        price: orderItem.unitPrice,
+                        image: orderItem.product.image || null,
+                      };
+                    } else {
+                      console.log('⚠️ orderItem.product is null, searching in products...');
+                      const foundProduct = products.find((p) => p.id === orderItem.productId);
+                      console.log('🔍 Found product:', foundProduct);
+                      resolvedProduct = foundProduct || {
+                        id: orderItem.productId,
+                        name: `Product ${orderItem.productId}`,
+                        price: orderItem.unitPrice,
+                        image: null,
+                      };
+                    }
+                  } else {
+                    // CartItem
+                    console.log('✅ Using cartItem.product:', cartItem!.product);
+                    resolvedProduct = cartItem!.product;
+                  }
+                  
+                  console.log('🎨 Resolved product:', resolvedProduct);
+                  console.log('🖼️ Resolved product.image:', resolvedProduct.image);
+                  console.log('🖼️ Resolved product.image?.url:', resolvedProduct.image?.url);
+                    
+                    const quantity = orderItem?.quantity || cartItem?.quantity || 0;
+                    const discount = orderItem?.discountAmount || cartItem?.discountAmount || 0;
+                    const lineTotal = orderItem?.lineTotal || (resolvedProduct.price * quantity - discount);  
                   
                   return (
                     <div
-                      key={orderItem?.id || `cart-${product.id}-${index}`}
+                      key={orderItem?.id || `cart-${resolvedProduct.id}`}
                       className="flex items-center justify-between p-4 border border-gray-200 rounded-lg"
                     >
-                      <div className="flex-1">
+                      <div className="flex items-center gap-3 flex-1 min-w-0">
+                        {/* Product image - only for specific products */}
+                        {(() => {
+                          const productName = resolvedProduct.name.toLowerCase();
+                          const allowedProducts = ['katchap', 'saneora', 'tea', 'zatar', 'tona'];
+                          const hasImage = allowedProducts.some(name => productName.includes(name));
+                          
+                          if (hasImage && resolvedProduct?.image?.url) {
+                            return (
+                              <img
+                                src={`${window.location.origin}${resolvedProduct.image.url}`}
+                                alt={resolvedProduct.image.altText ?? resolvedProduct.name}
+                                className="w-12 h-12 shrink-0 object-cover rounded"
+                                onError={(e) => (e.currentTarget.style.display = 'none')}
+                              />
+                            );
+                          }
+                          return null;
+                        })()}
+                        <div className="flex-1 min-w-0">
                           <div className="font-medium text-gray-900">
-                            {product.name}
+                            {resolvedProduct.name}
                           </div>
                         <div className="text-sm text-gray-500">
-                          {fmtMoney(orderItem?.unitPrice || product.price)} × {quantity}
+                          {fmtMoney(orderItem?.unitPrice || resolvedProduct.price)} × {quantity}
                           {/* عرض السعر الأصلي إذا كان هناك خصم */}
                           {orderItem?.originalLineTotal && orderItem.originalLineTotal > lineTotal && (
                             <span className="text-gray-400 line-through ml-1">
@@ -1357,28 +1975,63 @@ export default function CashierTerminal() {
                           )}
                         </div>
                         {/* عرض معلومات الـ offer إذا كان موجوداً */}
-                        {orderItem?.offerId && orderItem.offerTitle && (
-                          <div className="text-xs text-blue-600 mt-1 flex items-center gap-1">
-                            <span>🎁</span>
-                            <span>{orderItem.offerTitle}</span>
-                            {orderItem.originalLineTotal && orderItem.originalLineTotal > lineTotal && (
-                              <span className="text-green-600">
-                                ({Math.round(((orderItem.originalLineTotal - lineTotal) / orderItem.originalLineTotal) * 100)}% off)
-                              </span>
-                            )}
-                          </div>
-                        )}
-                        {/* عرض نسبة الخصم فقط إذا لم يكن هناك offerTitle */}
-                        {/* Bundle Offer يتم تطبيقه تلقائياً من الـ backend عند إضافة المنتجات */}
-                        {orderItem?.offerId && !orderItem.offerTitle && orderItem.originalLineTotal && orderItem.originalLineTotal > lineTotal && (
-                          <div className="text-xs text-blue-600 mt-1 flex items-center gap-1">
-                            <span>🎁</span>
-                            <span className="text-blue-600">Bundle Offer</span>
-                            <span className="text-green-600">
-                              ({Math.round(((orderItem.originalLineTotal - lineTotal) / orderItem.originalLineTotal) * 100)}% off)
-                            </span>
-                          </div>
-                        )}
+                        {orderItem?.offerId && (() => {
+                          // Get offer type name
+                          const getOfferTypeName = (offerType?: string | null): string | null => {
+                            if (!offerType) return null;
+                            switch (offerType.toUpperCase()) {
+                              case "BUNDLE":
+                                return "Bundle Offer";
+                              case "PRODUCT":
+                                return "Product Offer";
+                              case "CATEGORY":
+                                return "Category Offer";
+                              case "ORDER":
+                                return "Order Offer";
+                              default:
+                                return null;
+                            }
+                          };
+
+                          // Try to extract offer type from offerTitle if offerType is not available
+                          const extractOfferTypeFromTitle = (title?: string | null): string | null => {
+                            if (!title) return null;
+                            const titleLower = title.toLowerCase();
+                            if (titleLower.includes("bundle")) return "Bundle Offer";
+                            if (titleLower.includes("product")) return "Product Offer";
+                            if (titleLower.includes("category")) return "Category Offer";
+                            if (titleLower.includes("order")) return "Order Offer";
+                            return null;
+                          };
+
+                          // Priority: offerType > extract from offerTitle > offerTitle as-is > "Offer"
+                          let offerTypeName: string;
+                          if (orderItem.offerType) {
+                            // Use offerType directly from backend
+                            const typeName = getOfferTypeName(orderItem.offerType);
+                            offerTypeName = typeName || "Offer";
+                          } else if (orderItem.offerTitle) {
+                            // Try to extract type from offerTitle if offerType is not available
+                            const extractedType = extractOfferTypeFromTitle(orderItem.offerTitle);
+                            offerTypeName = extractedType || orderItem.offerTitle;
+                          } else {
+                            // Fallback to generic "Offer" if neither is available
+                            offerTypeName = "Offer";
+                          }
+
+                          return (
+                            <div className="text-xs text-blue-600 mt-1 flex items-center gap-1">
+                              <span>🎁</span>
+                              <span>{offerTypeName}</span>
+                              {orderItem.originalLineTotal && orderItem.originalLineTotal > lineTotal && (
+                                <span className="text-green-600">
+                                  ({Math.round(((orderItem.originalLineTotal - lineTotal) / orderItem.originalLineTotal) * 100)}% off)
+                                </span>
+                              )}
+                            </div>
+                          );
+                        })()}
+                        </div>
                       </div>
                       <div className="flex items-center gap-3">
                         <div className="font-semibold text-gray-900">
@@ -1386,7 +2039,7 @@ export default function CashierTerminal() {
                         </div>
                         <div className="flex items-center gap-1">
                           <button
-                            onClick={() => updateQuantity(product.id, -1)}
+                            onClick={() => updateQuantity(resolvedProduct.id, -1)}
                             disabled={processing}
                             className="w-8 h-8 flex items-center justify-center rounded border border-gray-300 hover:bg-gray-50 disabled:opacity-50"
                           >
@@ -1396,7 +2049,7 @@ export default function CashierTerminal() {
                               {quantity}
                             </span>
                           <button
-                            onClick={() => updateQuantity(product.id, 1)}
+                            onClick={() => updateQuantity(resolvedProduct.id, 1)}
                             disabled={processing}
                             className="w-8 h-8 flex items-center justify-center rounded border border-gray-300 hover:bg-gray-50 disabled:opacity-50"
                           >
@@ -1404,7 +2057,7 @@ export default function CashierTerminal() {
                           </button>
                         </div>
                         <button
-                          onClick={() => removeFromCart(product.id)}
+                          onClick={() => removeFromCart(resolvedProduct.id)}
                           disabled={processing}
                           className="text-red-600 hover:text-red-700 px-2 disabled:opacity-50"
                         >
@@ -1413,10 +2066,10 @@ export default function CashierTerminal() {
                       </div>
                     </div>
                   );
-                  }
-                )}
-              </div>
-            )}
+                  })}
+                </div>
+              );
+            })()}
           </div>
         </div>
 
@@ -1436,14 +2089,19 @@ export default function CashierTerminal() {
             {/* Customer Section */}
             {currentOrder && (
               <div className="border-b border-gray-200 pb-4 mb-4">
-                {currentOrder.customerName ? (
+                {currentOrder.customer?.id ? (
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <User className="h-4 w-4 text-gray-600" />
                       <div>
-                        <p className="text-sm font-medium text-gray-800">{currentOrder.customerName}</p>
-                        {currentOrder.customerPhone && (
-                          <p className="text-xs text-gray-500">{currentOrder.customerPhone}</p>
+                        <p className="text-sm font-medium text-gray-800">
+                          {currentOrder.customerName ?? 
+                            (currentOrder.customer?.firstName && currentOrder.customer?.lastName
+                              ? `${currentOrder.customer.firstName} ${currentOrder.customer.lastName}`.trim()
+                              : currentOrder.customer?.name ?? currentOrder.customer?.fullName ?? "Customer")}
+                        </p>
+                        {(currentOrder.customerPhone ?? currentOrder.customer?.phone) && (
+                          <p className="text-xs text-gray-500">{currentOrder.customerPhone ?? currentOrder.customer?.phone}</p>
                         )}
                       </div>
                     </div>
@@ -1458,13 +2116,20 @@ export default function CashierTerminal() {
                 ) : (
                   <button
                     onClick={() => {
+                      // Prevent opening modal if customer is already attached
+                      if (currentOrder?.customer?.id) {
+                        alert("This order already has a customer attached. Cannot link another customer.");
+                        return;
+                      }
                       setShowCustomerModal(true);
                       setCustomerPhone("");
-                      setCustomerName("");
+                      setCustomerFirstName("");
+                      setCustomerLastName("");
                       setCustomerEmail("");
                       setCustomerAddress("");
                       setCurrentCustomer(null);
                       setCustomerError(null);
+                      setCustomerFound(false);
                     }}
                     className="w-full flex items-center justify-center gap-2 py-2 px-3 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors text-sm"
                   >
@@ -1481,20 +2146,62 @@ export default function CashierTerminal() {
                 <span className="text-gray-600">Subtotal:</span>
                 <span className="text-gray-900">{fmtMoney(subtotal)}</span>
               </div>
-              {/* عرض خصم الـ offers على مستوى الـ items (Category/Product Offers) إذا كان موجوداً */}
-              {currentOrder && currentOrder.items.some(item => item.discountAmount > 0 || (item.originalLineTotal && item.originalLineTotal > item.lineTotal)) && (
-                <div className="text-xs text-gray-500 italic mb-1">
-                  Item discounts (Category/Product Offers): {fmtMoney(
-                    currentOrder.items.reduce((sum, item) => {
-                      const itemDiscount = item.discountAmount || 
-                        (item.originalLineTotal && item.originalLineTotal > item.lineTotal 
-                          ? item.originalLineTotal - item.lineTotal 
-                          : 0);
-                      return sum + itemDiscount;
-                    }, 0)
-                  )}
-                </div>
-              )}
+              {/* عرض خصم الـ offers على مستوى الـ items */}
+              {currentOrder && currentOrder.items.some(item => item.discountAmount > 0 || (item.originalLineTotal && item.originalLineTotal > item.lineTotal)) && (() => {
+                // Get unique offer types from items
+                const offerTypes = new Set<string>();
+                currentOrder.items.forEach(item => {
+                  if (item.offerId) {
+                    if (item.offerType) {
+                      const typeName = item.offerType.toUpperCase();
+                      switch (typeName) {
+                        case "BUNDLE":
+                          offerTypes.add("Bundle");
+                          break;
+                        case "PRODUCT":
+                          offerTypes.add("Product");
+                          break;
+                        case "CATEGORY":
+                          offerTypes.add("Category");
+                          break;
+                        case "ORDER":
+                          offerTypes.add("Order");
+                          break;
+                      }
+                    } else if (item.offerTitle) {
+                      // Try to extract type from offerTitle
+                      const titleLower = item.offerTitle.toLowerCase();
+                      if (titleLower.includes("bundle")) {
+                        offerTypes.add("Bundle");
+                      } else if (titleLower.includes("product")) {
+                        offerTypes.add("Product");
+                      } else if (titleLower.includes("category")) {
+                        offerTypes.add("Category");
+                      } else if (titleLower.includes("order")) {
+                        offerTypes.add("Order");
+                      }
+                    }
+                  }
+                });
+
+                const offerTypesText = offerTypes.size > 0 
+                  ? Array.from(offerTypes).join("/") + " Offer" + (offerTypes.size > 1 ? "s" : "")
+                  : "Item discounts";
+
+                return (
+                  <div className="text-xs text-gray-500 italic mb-1">
+                    Item discounts ({offerTypesText}): {fmtMoney(
+                      currentOrder.items.reduce((sum, item) => {
+                        const itemDiscount = item.discountAmount || 
+                          (item.originalLineTotal && item.originalLineTotal > item.lineTotal 
+                            ? item.originalLineTotal - item.lineTotal 
+                            : 0);
+                        return sum + itemDiscount;
+                      }, 0)
+                    )}
+                  </div>
+                );
+              })()}
               {discount > 0 && (
                 <div className="flex justify-between text-sm">
                   <span className="text-gray-600">Order Discount (Offer):</span>
@@ -1517,7 +2224,7 @@ export default function CashierTerminal() {
             <button
               onClick={handleHoldOrder}
               disabled={
-                processing || !currentOrder || currentOrder.items.length === 0 || currentOrder.status === "PAID" || currentOrder.status === "HELD"
+                processing || !currentOrder || (currentOrder.items ?? []).length === 0 || currentOrder.status === "PAID" || currentOrder.status === "HOLD"
               }
               className="w-full flex items-center justify-center gap-2 py-3 px-4 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
@@ -1530,9 +2237,9 @@ export default function CashierTerminal() {
               <button
                 onClick={() => handlePayment("cash")}
                 disabled={
-                  processing || !currentOrder || currentOrder.items.length === 0
+                  processing || !currentOrder || (currentOrder.items ?? []).length === 0
                 }
-                className="w-full flex items-center justify-center gap-2 py-4 px-4 bg-blue-50 text-blue-600 rounded-lg font-medium hover:bg-blue-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                className="w-full flex items-center justify-center gap-2 py-4 px-4 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {processing ? (
                   <Loader2 className="h-5 w-5 animate-spin" />
@@ -1546,9 +2253,9 @@ export default function CashierTerminal() {
               <button
                 onClick={() => handlePayment("card")}
                 disabled={
-                  processing || !currentOrder || currentOrder.items.length === 0
+                  processing || !currentOrder || (currentOrder.items ?? []).length === 0
                 }
-                className="w-full flex items-center justify-center gap-2 py-4 px-4 bg-blue-50 text-blue-600 rounded-lg font-medium hover:bg-blue-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                className="w-full flex items-center justify-center gap-2 py-4 px-4 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {processing ? (
                   <Loader2 className="h-5 w-5 animate-spin" />
@@ -1562,9 +2269,9 @@ export default function CashierTerminal() {
               <button
                 onClick={() => handlePayment("both")}
                 disabled={
-                  processing || !currentOrder || currentOrder.items.length === 0
+                  processing || !currentOrder || (currentOrder.items ?? []).length === 0
                 }
-                className="w-full flex items-center justify-center gap-2 py-4 px-4 bg-blue-50 text-blue-600 rounded-lg font-medium hover:bg-blue-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                className="w-full flex items-center justify-center gap-2 py-4 px-4 bg-purple-600 text-white rounded-lg font-medium hover:bg-purple-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {processing ? (
                   <Loader2 className="h-5 w-5 animate-spin" />
@@ -1576,12 +2283,30 @@ export default function CashierTerminal() {
                 )}
               </button>
             </div>
+
+            {/* Print Receipt Button - Show when order is PAID */}
+            {paidOrderId && paidOrderNumber && (
+              <button
+                onClick={handlePrintReceipt}
+                disabled={printingReceipt}
+                className="w-full flex items-center justify-center gap-2 py-3 px-4 bg-indigo-600 text-white rounded-lg font-medium hover:bg-indigo-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed mt-3"
+              >
+                {printingReceipt ? (
+                  <Loader2 className="h-5 w-5 animate-spin" />
+                ) : (
+                  <>
+                    <Printer className="h-5 w-5" />
+                    Print Receipt
+                  </>
+                )}
+              </button>
+            )}
           </div>
         </div>
         </div>
 
         {/* Held Orders Section */}
-        {heldOrders.length > 0 && (
+        {(heldOrders ?? []).length > 0 && (
           <div className="border-t border-gray-200 bg-yellow-50">
             <button
               onClick={() => setHeldOrdersExpanded(!heldOrdersExpanded)}
@@ -1590,7 +2315,7 @@ export default function CashierTerminal() {
               <div className="flex items-center gap-2">
                 <Pause className="h-4 w-4 text-yellow-600" />
                 <span className="text-sm font-semibold text-gray-800">
-                  Held Orders ({heldOrders.length})
+                  Held Orders ({(heldOrders ?? []).length})
                 </span>
               </div>
               {heldOrdersExpanded ? (
@@ -1602,7 +2327,7 @@ export default function CashierTerminal() {
             {heldOrdersExpanded && (
               <div className="px-4 pb-4 max-h-48 overflow-y-auto">
                 <div className="flex gap-3 overflow-x-auto pb-2">
-                  {heldOrders.map((order) => (
+                  {(heldOrders ?? []).map((order) => (
                     <div
                       key={order.id}
                       className="flex-shrink-0 w-56 p-3 bg-white border border-yellow-300 rounded-lg shadow-sm"
@@ -1612,7 +2337,7 @@ export default function CashierTerminal() {
                           {order.orderNumber}
                         </span>
                         <span className="px-2 py-1 bg-yellow-100 text-yellow-700 rounded text-xs font-medium flex-shrink-0">
-                          HELD
+                          HOLD
                         </span>
                       </div>
                       <div className="text-xs text-gray-600 space-y-1 mb-3">
@@ -1656,17 +2381,34 @@ export default function CashierTerminal() {
           <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4 max-h-[90vh] overflow-y-auto">
             <div className="p-6">
               <div className="flex items-center justify-between mb-4">
-                <h2 className="text-xl font-semibold text-gray-800">Add Customer</h2>
+                <h2 className="text-xl font-semibold text-gray-800">
+                  {shouldPromptForCustomer ? "Add Customer (Optional)" : "Add Customer"}
+                </h2>
                 <button
-                  onClick={() => {
-                    setShowCustomerModal(false);
-                    setCustomerError(null);
-                  }}
+                  onClick={handleSkipCustomer}
                   className="text-gray-400 hover:text-gray-600"
                 >
                   <X className="h-5 w-5" />
                 </button>
               </div>
+              
+              {shouldPromptForCustomer && (
+                <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg text-blue-700 text-sm">
+                  Enter customer phone number to link this order to a customer (optional).
+                </div>
+              )}
+
+              {currentOrder?.customer?.id && (
+                <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg text-yellow-700 text-sm">
+                  This order already has a customer attached: {
+                    currentOrder.customerName ?? 
+                    (currentOrder.customer?.firstName && currentOrder.customer?.lastName
+                      ? `${currentOrder.customer.firstName} ${currentOrder.customer.lastName}`.trim()
+                      : currentOrder.customer?.name ?? currentOrder.customer?.fullName ?? "Customer")
+                  }
+                  {(currentOrder.customerPhone ?? currentOrder.customer?.phone) && ` (${currentOrder.customerPhone ?? currentOrder.customer?.phone})`}
+                </div>
+              )}
 
               {customerError && (
                 <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
@@ -1685,12 +2427,14 @@ export default function CashierTerminal() {
                       type="tel"
                       value={customerPhone}
                       onChange={(e) => setCustomerPhone(e.target.value)}
+                      onFocus={() => setIsTypingInInput(true)}
+                      onBlur={() => setIsTypingInInput(false)}
                       placeholder="Enter phone number"
                       className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
                     />
                     <button
                       onClick={handleSearchCustomer}
-                      disabled={searchingCustomer || !customerPhone.trim()}
+                      disabled={searchingCustomer || !(customerPhone ?? "").trim()}
                       className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition flex items-center gap-2"
                     >
                       {searchingCustomer ? (
@@ -1702,21 +2446,46 @@ export default function CashierTerminal() {
                   </div>
                 </div>
 
-                {/* Customer Form */}
-                {(!currentCustomer || customerError) && (
+                {/* Customer Form - Show after search (if customer found or not found) */}
+                {(customerPhone ?? "").trim() && (customerFound || (!customerFound && !searchingCustomer)) && (
                   <>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Name *
-                      </label>
-                      <input
-                        type="text"
-                        value={customerName}
-                        onChange={(e) => setCustomerName(e.target.value)}
-                        placeholder="Enter customer name"
-                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                        required
-                      />
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          First Name *
+                        </label>
+                        <input
+                          type="text"
+                          value={customerFirstName}
+                          onChange={(e) => setCustomerFirstName(e.target.value)}
+                          onFocus={() => setIsTypingInInput(true)}
+                          onBlur={() => setIsTypingInInput(false)}
+                          placeholder="Enter first name"
+                          readOnly={customerFound}
+                          className={`w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 ${
+                            customerFound ? "bg-gray-100 cursor-not-allowed" : ""
+                          }`}
+                          required
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          Last Name *
+                        </label>
+                        <input
+                          type="text"
+                          value={customerLastName}
+                          onChange={(e) => setCustomerLastName(e.target.value)}
+                          onFocus={() => setIsTypingInInput(true)}
+                          onBlur={() => setIsTypingInInput(false)}
+                          placeholder="Enter last name"
+                          readOnly={customerFound}
+                          className={`w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 ${
+                            customerFound ? "bg-gray-100 cursor-not-allowed" : ""
+                          }`}
+                          required
+                        />
+                      </div>
                     </div>
 
                     <div>
@@ -1727,66 +2496,49 @@ export default function CashierTerminal() {
                         type="email"
                         value={customerEmail}
                         onChange={(e) => setCustomerEmail(e.target.value)}
+                        onFocus={() => setIsTypingInInput(true)}
+                        onBlur={() => setIsTypingInInput(false)}
                         placeholder="Enter email address"
-                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                        readOnly={customerFound}
+                        className={`w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 ${
+                          customerFound ? "bg-gray-100 cursor-not-allowed" : ""
+                        }`}
                       />
                     </div>
 
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Address (Optional)
-                      </label>
-                      <textarea
-                        value={customerAddress}
-                        onChange={(e) => setCustomerAddress(e.target.value)}
-                        placeholder="Enter address"
-                        rows={3}
-                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                      />
-                    </div>
-
-                    {!currentCustomer && (
-                      <button
-                        onClick={handleCreateCustomer}
-                        disabled={creatingCustomer || !customerName.trim() || !customerPhone.trim()}
-                        className="w-full px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition flex items-center justify-center gap-2"
-                      >
-                        {creatingCustomer ? (
-                          <>
-                            <Loader2 className="w-4 h-4 animate-spin" />
-                            Creating...
-                          </>
-                        ) : (
-                          "Create Customer"
-                        )}
-                      </button>
-                    )}
+                    {/* Main Action Button */}
+                    <button
+                      onClick={handleLinkOrCreateCustomer}
+                      disabled={
+                        creatingCustomer ||
+                        !(customerPhone ?? "").trim() ||
+                        !(customerFirstName ?? "").trim() ||
+                        !(customerLastName ?? "").trim()
+                      }
+                      className={`w-full px-4 py-2 text-white rounded-lg hover:opacity-90 disabled:bg-gray-400 disabled:cursor-not-allowed transition flex items-center justify-center gap-2 ${
+                        customerFound ? "bg-blue-600 hover:bg-blue-700" : "bg-green-600 hover:bg-green-700"
+                      }`}
+                    >
+                      {creatingCustomer ? (
+                        <>
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                          {customerFound ? "Linking..." : "Creating & Linking..."}
+                        </>
+                      ) : (
+                        customerFound ? "Link Customer" : "Create & Link"
+                      )}
+                    </button>
                   </>
                 )}
 
-                {/* Attach Customer Button */}
-                {currentCustomer && (
-                  <div className="space-y-3">
-                    <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
-                      <p className="text-sm font-medium text-green-800">Customer Found/Created</p>
-                      <p className="text-sm text-green-700">{currentCustomer.name}</p>
-                      <p className="text-xs text-green-600">{currentCustomer.phone}</p>
-                    </div>
-                    <button
-                      onClick={handleAttachCustomer}
-                      disabled={processing}
-                      className="w-full px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition flex items-center justify-center gap-2"
-                    >
-                      {processing ? (
-                        <>
-                          <Loader2 className="w-4 h-4 animate-spin" />
-                          Attaching...
-                        </>
-                      ) : (
-                        "Attach to Order"
-                      )}
-                    </button>
-                  </div>
+                {/* Skip button - only show if this is a prompt for new order */}
+                {shouldPromptForCustomer && (
+                  <button
+                    onClick={handleSkipCustomer}
+                    className="w-full px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+                  >
+                    Skip (Continue without customer)
+                  </button>
                 )}
               </div>
             </div>
@@ -1827,6 +2579,8 @@ export default function CashierTerminal() {
                   max={total}
                   value={splitCashAmount}
                   onChange={(e) => handleCashAmountChange(e.target.value)}
+                  onFocus={() => setIsTypingInInput(true)}
+                  onBlur={() => setIsTypingInInput(false)}
                   placeholder="0.00"
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
@@ -1842,6 +2596,8 @@ export default function CashierTerminal() {
                   max={total}
                   value={splitCardAmount}
                   onChange={(e) => handleCardAmountChange(e.target.value)}
+                  onFocus={() => setIsTypingInInput(true)}
+                  onBlur={() => setIsTypingInInput(false)}
                   placeholder="0.00"
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
@@ -1926,7 +2682,7 @@ export default function CashierTerminal() {
                                   ? "bg-green-100 text-green-700"
                                   : order.status === "CANCELLED"
                                   ? "bg-red-100 text-red-700"
-                                  : order.status === "HELD"
+                                  : order.status === "HOLD"
                                   ? "bg-yellow-100 text-yellow-700"
                                   : "bg-gray-100 text-gray-700"
                               }`}
@@ -1985,7 +2741,7 @@ export default function CashierTerminal() {
                               ? "bg-green-100 text-green-700"
                               : selectedOrder.status === "CANCELLED"
                               ? "bg-red-100 text-red-700"
-                              : selectedOrder.status === "HELD"
+                              : selectedOrder.status === "HOLD"
                               ? "bg-yellow-100 text-yellow-700"
                               : "bg-gray-100 text-gray-700"
                           }`}
@@ -2030,18 +2786,40 @@ export default function CashierTerminal() {
                       <h4 className="font-semibold text-gray-800 mb-3">Items</h4>
                       <div className="space-y-2">
                         {selectedOrder.items.map((item) => {
-                          const product = products.find(
+                          // Use item.product if available, otherwise fallback to products list
+                          const productName = item.product?.name || products.find(
                             (p) => p.id === item.productId
-                          );
+                          )?.name || `Product #${item.productId}`;
                           return (
                             <div
                               key={item.id}
                               className="p-3 bg-gray-50 rounded-lg border border-gray-200"
                             >
                               <div className="flex justify-between items-start mb-1">
-                                <span className="font-medium text-gray-900">
-                                  {product?.name || `Product #${item.productId}`}
-                                </span>
+                                <div className="flex items-center gap-2">
+                                  {(() => {
+                                    const productNameLower = productName.toLowerCase();
+                                    const allowedProducts = ['katchap', 'saneora', 'tea', 'zatar', 'tona'];
+                                    const hasImage = allowedProducts.some(name => productNameLower.includes(name));
+                                    
+                                    if (hasImage && item.product?.image?.url) {
+                                      return (
+                                        <img
+                                          src={`${window.location.origin}${item.product.image.url}`}
+                                          alt={item.product.image.altText || productName}
+                                          className="w-10 h-10 object-cover rounded border border-gray-200 flex-shrink-0"
+                                          onError={(e) => {
+                                            (e.target as HTMLImageElement).style.display = 'none';
+                                          }}
+                                        />
+                                      );
+                                    }
+                                    return null;
+                                  })()}
+                                  <span className="font-medium text-gray-900">
+                                    {productName}
+                                  </span>
+                                </div>
                                 <span className="font-semibold text-gray-900">
                                   {fmtMoney(item.lineTotal)}
                                 </span>
@@ -2158,6 +2936,218 @@ export default function CashierTerminal() {
                   </div>
                 )}
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Payment Confirmation Modal */}
+      {showPaymentConfirm && paymentMethod && paymentAmount && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-md mx-4">
+            <div className="p-6">
+              <h2 className="text-xl font-semibold text-gray-800 mb-4">
+                Confirm Payment
+              </h2>
+              <div className="mb-6">
+                <p className="text-gray-600 mb-2">
+                  Payment Method: <span className="font-semibold text-gray-900">
+                    {paymentMethod === "cash" ? "Cash" : paymentMethod === "card" ? "Card" : "Cash & Card"}
+                  </span>
+                </p>
+                {paymentMethod === "both" && (
+                  <div className="mt-3 space-y-2 text-sm text-gray-600">
+                    <p>Cash: <span className="font-semibold text-gray-900">{fmtMoney(parseFloat(splitCashAmount))}</span></p>
+                    <p>Card: <span className="font-semibold text-gray-900">{fmtMoney(parseFloat(splitCardAmount))}</span></p>
+                  </div>
+                )}
+                <p className="text-lg font-semibold text-gray-900 mt-4">
+                  Total Amount: {fmtMoney(paymentAmount)}
+                </p>
+              </div>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => {
+                    setShowPaymentConfirm(false);
+                    setPaymentMethod(null);
+                    setPaymentAmount(null);
+                  }}
+                  className="flex-1 py-2 px-4 bg-gray-200 text-gray-800 rounded-lg font-medium hover:bg-gray-300 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => {
+                    if (paymentMethod === "both") {
+                      handleConfirmSplitPayment();
+                    } else {
+                      handleConfirmPayment();
+                    }
+                  }}
+                  className="flex-1 py-2 px-4 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors"
+                >
+                  Confirm Payment
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Payment Success Modal */}
+      {showPaymentSuccess && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-md mx-4">
+            <div className="p-8 text-center">
+              <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <CheckCircle className="w-10 h-10 text-green-600" />
+              </div>
+              <h2 className="text-2xl font-bold text-gray-800 mb-2">
+                Payment Successful!
+              </h2>
+              <p className="text-gray-600 mb-6">
+                Order #{paidOrderNumber} has been paid successfully.
+              </p>
+              <button
+                onClick={() => {
+                  setShowPaymentSuccess(false);
+                  setPaymentMethod(null);
+                  setPaymentAmount(null);
+                }}
+                className="w-full py-3 px-4 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors"
+              >
+                OK
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Unpair Confirmation Modal */}
+      {showUnpairConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md mx-4 overflow-hidden">
+            <div className="p-6">
+              <div className="flex items-center justify-center mb-4">
+                <div className="w-16 h-16 bg-orange-100 rounded-full flex items-center justify-center">
+                  <span className="text-3xl">🔌</span>
+                </div>
+              </div>
+              <h2 className="text-2xl font-bold text-gray-900 mb-3 text-center">
+                Unpair Terminal?
+              </h2>
+              <p className="text-gray-600 mb-6 text-center">
+                This browser will be disconnected from the terminal. You will need a new pairing code to continue working.
+              </p>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setShowUnpairConfirm(false)}
+                  className="flex-1 py-3 px-4 border-2 border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors font-semibold"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={confirmUnpair}
+                  disabled={unpairing}
+                  className="flex-1 py-3 px-4 bg-gradient-to-r from-orange-500 to-orange-600 text-white rounded-lg font-semibold hover:from-orange-600 hover:to-orange-700 transition-all shadow-lg hover:shadow-xl disabled:opacity-70 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                >
+                  {unpairing ? (
+                    <>
+                      <Loader2 className="h-5 w-5 animate-spin" />
+                      Unpairing...
+                    </>
+                  ) : (
+                    "Confirm Unpair"
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Unpair Success Modal */}
+      {showUnpairSuccess && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+          <div className="bg-gradient-to-br from-gray-800 to-gray-900 rounded-xl shadow-2xl w-full max-w-md mx-4 overflow-hidden border border-gray-700">
+            <div className="p-8 text-center">
+              <div className="flex items-center justify-center mb-4">
+                <div className="w-20 h-20 bg-green-500/20 rounded-full flex items-center justify-center">
+                  <CheckCircle className="w-12 h-12 text-green-400" />
+                </div>
+              </div>
+              <h2 className="text-2xl font-bold text-white mb-3">
+                Terminal Unpaired Successfully
+              </h2>
+              <p className="text-gray-300 mb-6">
+                This browser has been disconnected. You will be redirected to sign in again.
+              </p>
+              <button
+                onClick={() => {
+                  setShowUnpairSuccess(false);
+                  logoutForRole('CASHIER');
+                }}
+                className="w-full py-3 px-6 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 transition-colors shadow-lg"
+              >
+                OK
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Hold Order Success Modal (Dark Theme) */}
+      {showHoldSuccess && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+          <div className="bg-gradient-to-br from-gray-800 to-gray-900 rounded-xl shadow-2xl w-full max-w-md mx-4 overflow-hidden border border-gray-700">
+            <div className="p-8 text-center">
+              <div className="flex items-center justify-center mb-4">
+                <div className="w-20 h-20 bg-green-500/20 rounded-full flex items-center justify-center">
+                  <CheckCircle className="w-12 h-12 text-green-400" />
+                </div>
+              </div>
+              <h2 className="text-2xl font-bold text-white mb-3">
+                Order held successfully
+              </h2>
+              <p className="text-gray-300 mb-6">
+                The order has been saved and can be retrieved later.
+              </p>
+              <button
+                onClick={() => setShowHoldSuccess(false)}
+                className="w-full py-3 px-6 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 transition-colors shadow-lg"
+              >
+                OK
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Session Closed Success Modal (Dark Theme) */}
+      {showSessionClosedSuccess && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+          <div className="bg-gradient-to-br from-gray-800 to-gray-900 rounded-xl shadow-2xl w-full max-w-md mx-4 overflow-hidden border border-gray-700">
+            <div className="p-8 text-center">
+              <div className="flex items-center justify-center mb-4">
+                <div className="w-20 h-20 bg-green-500/20 rounded-full flex items-center justify-center">
+                  <CheckCircle className="w-12 h-12 text-green-400" />
+                </div>
+              </div>
+              <h2 className="text-2xl font-bold text-white mb-3">
+                Session closed successfully
+              </h2>
+              <p className="text-gray-300 mb-6">
+                Your cashier session has been closed and all transactions have been saved.
+              </p>
+              <button
+                onClick={() => {
+                  setShowSessionClosedSuccess(false);
+                  logoutForRole('CASHIER');
+                }}
+                className="w-full py-3 px-6 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 transition-colors shadow-lg"
+              >
+                OK
+              </button>
             </div>
           </div>
         </div>

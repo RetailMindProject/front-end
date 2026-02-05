@@ -8,6 +8,7 @@ import KPI from "../components/sessions/primitives/KPI";
 import { sessionsApi } from "../services/sessions.api";
 import type { CashierDetailTransformed } from "../services/sessions.api";
 import { getCurrentRole, getRoleFromToken, getCurrentToken } from "../services/tokens";
+import PageHeader from "../components/PageHeader";
 
 const fmt = new Intl.NumberFormat(undefined, {
   style: "currency",
@@ -148,10 +149,12 @@ export default function CashierDetail() {
         Back to Sessions
       </button>
 
-      <div className="mb-6">
-        <h1 className="text-2xl font-semibold tracking-tight mb-2">Cashier Details</h1>
-        <p className="text-slate-600">Complete information for {cashier.name}</p>
-      </div>
+      {cashier && (
+        <PageHeader
+          title="Cashier Details"
+          icon={<User2 className="h-6 w-6 text-white" />}
+        />
+      )}
 
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
         <Card className="xl:col-span-1">

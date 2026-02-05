@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Send } from "lucide-react";
 import type { Message, SentMessage } from "../components/messages/types";
 import type { MessageDTO } from "../services/messages.api";
 import MessageContent from "../components/messages/MessageContent";
@@ -8,6 +8,7 @@ import ReplyForm from "../components/messages/ReplyForm";
 import SentMessageContent from "../components/messages/SentMessageContent";
 import { messagesApi } from "../services/messages.api";
 import { getCurrentToken, decodeJWT } from "../services/tokens";
+import PageHeader from "../components/PageHeader";
 
 function getCurrentUserId(): number | null {
   const token = getCurrentToken();
@@ -91,8 +92,6 @@ export default function MessageDetail() {
       setError("");
       setIsCurrentUserSender(false);
       
-      const isFromOutbox = pathname.includes("/outbox");
-      
       try {
         const result = await messagesApi.getMessageById(id);
         
@@ -107,7 +106,7 @@ export default function MessageDetail() {
           const senderId = result.dto.fromUser?.id;
           const isSender = currentUserId !== null && senderId !== undefined && String(currentUserId) === String(senderId);
           
-          if (isFromOutbox || isSender) {
+          if (isSender) {
             if (!result.dto.toUser) {
               setError("Invalid message data: missing recipient");
               setLoading(false);
@@ -127,6 +126,7 @@ export default function MessageDetail() {
             
             if (!result.data.read) {
               await messagesApi.markAsRead(id);
+              window.dispatchEvent(new CustomEvent("messages-updated"));
             }
           }
         } else {
@@ -166,7 +166,8 @@ export default function MessageDetail() {
       }
 
       const basePath = pathname.split("/").slice(0, 2).join("/");
-      navigate(`${basePath}/outbox`);
+      window.dispatchEvent(new CustomEvent("messages-updated"));
+      navigate(`${basePath}/message-box`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to send reply");
     } finally {
@@ -220,26 +221,23 @@ export default function MessageDetail() {
   }
 
   const basePath = pathname.split("/").slice(0, 2).join("/");
-  const backPath = isSentMessage ? `${basePath}/outbox` : `${basePath}`;
+  const backPath = `${basePath}/message-box`;
 
   return (
     <div className="flex-1 bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 min-h-full w-full">
       <div className="container mx-auto px-4 sm:px-6 py-6 max-w-5xl pb-20">
-        <div className="mb-6">
-          <button
-            onClick={() => navigate(backPath)}
-            className="mb-4 inline-flex items-center gap-2 text-slate-600 hover:text-slate-800 transition-all duration-200 hover:scale-105 active:scale-95"
-          >
-            <ArrowLeft size={20} />
-            <span>{isSentMessage ? "Back to Outbox" : "Back to Messages"}</span>
-          </button>
-          <h1 className="text-2xl font-semibold text-slate-800 mb-1">
-            {isSentMessage ? "Sent Message Details" : "Message Details"}
-          </h1>
-          <p className="text-slate-500 text-sm">
-            {isSentMessage ? "View your sent message" : "View message and send a reply"}
-          </p>
-        </div>
+        <button
+          onClick={() => navigate(backPath)}
+          className="mb-4 inline-flex items-center gap-2 text-slate-600 hover:text-slate-800 transition-all duration-200 hover:scale-105 active:scale-95"
+        >
+          <ArrowLeft size={20} />
+          <span>Back to Message Box</span>
+        </button>
+
+        <PageHeader
+          title={isSentMessage ? "Sent Message Details" : "Message Details"}
+          icon={<Send className="h-6 w-6 text-white" />}
+        />
 
         <div className="space-y-6">
           {error && (

@@ -1,9 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { FileText, Package, Trash2, Activity } from 'lucide-react';
 import SalesReportTab from './tabs/SalesReportTab';
 import InventoryReportTab from './tabs/InventoryReportTab';
 import WasteReportTab from './tabs/WasteReportTab';
 import OperationalReportTab from './tabs/OperationalReportTab';
+import PageHeader from "../../components/PageHeader";
 
 type ReportTab = 'sales' | 'inventory' | 'waste' | 'operational';
 
@@ -19,24 +20,19 @@ export default function CEOReportsPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50">
-      {/* Header */}
-      <div className="bg-white border-b border-slate-200 shadow-sm">
-        <div className="px-6 py-4">
-          <h1 className="text-2xl font-bold text-slate-800">Reports</h1>
-          <p className="text-sm text-slate-600 mt-1">Comprehensive business reports and analytics</p>
-        </div>
-
-        {/* Tabs */}
-        <div className="px-6 border-t border-slate-200">
-          <div className="flex gap-2 -mb-px">
+      <PageHeader
+        title="Reports"
+        icon={<FileText className="h-6 w-6 text-white" />}
+        right={
+          <div className="flex flex-wrap gap-2">
             {tabs.map((tab) => (
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
-                className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
+                className={`flex items-center gap-2 px-4 py-2.5 text-sm font-semibold rounded-lg transition-all duration-200 ${
                   activeTab === tab.id
-                    ? 'border-blue-600 text-blue-600'
-                    : 'border-transparent text-slate-600 hover:text-slate-800 hover:border-slate-300'
+                    ? 'bg-indigo-600 text-white shadow-sm'
+                    : 'bg-white/70 text-slate-700 hover:bg-white hover:shadow-sm'
                 }`}
               >
                 {tab.icon}
@@ -44,11 +40,11 @@ export default function CEOReportsPage() {
               </button>
             ))}
           </div>
-        </div>
-      </div>
+        }
+      />
 
       {/* Tab Content */}
-      <div className="p-6">
+      <div className="p-6 pt-0">
         {activeTab === 'sales' && <SalesReportTab />}
         {activeTab === 'inventory' && <InventoryReportTab />}
         {activeTab === 'waste' && <WasteReportTab />}

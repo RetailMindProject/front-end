@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect } from "react";
 import { Plus } from "lucide-react";
 import { Card, CardTitle, CardValue, CardHint } from "../components";
+import PageHeader from "../components/PageHeader";
 import OfferForm, { type OfferFormData } from "../components/offers/OfferForm";
 import OffersTable, { type Offer } from "../components/offers/OffersTable";
 import { offersApi, type OfferResponse } from "../services/offers.api";
@@ -206,20 +207,19 @@ export default function StoreManagerOffersPage() {
 
   return (
     <div className="p-6">
-      {/* Header */}
-      <div className="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h1 className="text-2xl md:text-3xl font-semibold tracking-tight text-slate-900">Offers & Discounts</h1>
-          <p className="text-sm text-slate-600 mt-1">Manage promotional offers and discounts for your store</p>
-        </div>
-        <button
-          onClick={handleCreate}
-          className="inline-flex items-center gap-2 px-4 py-2.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors text-sm font-medium shadow-sm"
-        >
-          <Plus className="h-4 w-4" />
-          New Offer
-        </button>
-      </div>
+      <PageHeader
+        title="Offers & Discounts"
+        icon={<span className="text-2xl">🏷️</span>}
+        right={
+          <button
+            onClick={handleCreate}
+            className="inline-flex items-center gap-2 px-4 py-2.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-all duration-200 text-sm font-semibold shadow-sm"
+          >
+            <Plus className="h-4 w-4" />
+            New Offer
+          </button>
+        }
+      />
 
       {/* Stats Row */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">

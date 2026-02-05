@@ -358,16 +358,18 @@ export default function ReturnOrder() {
                 New Return
               </button>
               <button
-                onClick={() => navigate("/cashier/returns")}
+                onClick={() => navigate("/dashboard/returns")}
                 className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition"
               >
                 View Return History
               </button>
               <button
                 onClick={() => navigate("/cashier")}
-                className="px-6 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 transition"
+                className="group relative inline-flex items-center gap-3 px-6 py-2.5 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-xl text-blue-700 hover:from-blue-100 hover:to-indigo-100 hover:border-blue-300 hover:shadow-md transition-all duration-200"
               >
-                Back to Terminal
+                <div className="absolute inset-0 bg-gradient-to-r from-blue-500/10 to-indigo-500/10 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity duration-200"></div>
+                <ArrowLeft size={18} className="relative z-10 group-hover:-translate-x-1 transition-transform duration-200" />
+                <span className="relative z-10 font-medium">Back to Terminal</span>
               </button>
             </div>
           </div>
@@ -383,10 +385,11 @@ export default function ReturnOrder() {
         <div className="mb-6">
           <button
             onClick={() => navigate("/cashier")}
-            className="mb-4 inline-flex items-center gap-2 text-slate-600 hover:text-slate-800 transition"
+            className="mb-6 group relative inline-flex items-center gap-3 px-4 py-2.5 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-xl text-blue-700 hover:from-blue-100 hover:to-indigo-100 hover:border-blue-300 hover:shadow-md transition-all duration-200"
           >
-            <ArrowLeft size={20} />
-            <span>Back to Terminal</span>
+            <div className="absolute inset-0 bg-gradient-to-r from-blue-500/10 to-indigo-500/10 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity duration-200"></div>
+            <ArrowLeft size={18} className="relative z-10 group-hover:-translate-x-1 transition-transform duration-200" />
+            <span className="relative z-10 font-medium">Back to Terminal</span>
           </button>
           <div className="flex items-center justify-between">
             <div>
@@ -395,13 +398,14 @@ export default function ReturnOrder() {
             </div>
             <button
               onClick={() => navigate("/cashier/returns")}
-              className="px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 transition flex items-center gap-2"
+              className="inline-flex items-center gap-2 px-4 py-2.5 bg-white/70 text-slate-700 rounded-lg hover:bg-white transition-all duration-200 shadow-sm border border-slate-200"
             >
               <RotateCcw className="w-4 h-4" />
               View History
             </button>
           </div>
-        </div>
+          </div>
+
 
         {/* Search Section */}
         <div className="bg-white rounded-lg shadow-md p-6 mb-6">
@@ -478,10 +482,12 @@ export default function ReturnOrder() {
                   <p className="text-sm text-gray-600">Paid At</p>
                   <p className="font-medium">{new Date(order.paidAt).toLocaleString()}</p>
                 </div>
-                {order.customer && (
+                {(order.customerName || order.customer) && (
                   <div>
                     <p className="text-sm text-gray-600">Customer</p>
-                    <p className="font-medium">{order.customer.name} ({order.customer.phone})</p>
+                    <p className="font-medium">
+                      {order.customerName || (order.customer ? `${order.customer.name} (${order.customer.phone})` : "N/A")}
+                    </p>
                   </div>
                 )}
               </div>

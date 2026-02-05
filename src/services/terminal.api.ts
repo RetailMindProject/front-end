@@ -628,40 +628,26 @@ export const terminalApi = {
    * Create Pairing Request (Cashier)
    * POST /api/pairing-requests
    * Body: { terminalId: number }
-   * Auth: JWT token in Authorization header + credentials: include (browser token)
+   * Auth: BrowserToken only (via cookies with credentials: "include")
+   * Note: No JWT required. BrowserTokenFilter handles browser token from cookies.
+   * requestedBy will be null and requestedByName will be "Unknown" - this is expected.
    */
   async createPairingRequest(
     request: CreatePairingRequestRequest
   ): Promise<{ data?: PairingRequestResponse; error?: string; status?: number }> {
     try {
-      // Get JWT token for cashier
-      const token = getCurrentToken();
-      if (!token) {
-        return {
-          error: "JWT token not found. Please login again.",
-          status: 401,
-        };
-      }
-
-      // Validate that token is a JWT
-      if (token.split('.').length !== 3) {
-        return {
-          error: "Invalid JWT token format. Please login again.",
-          status: 401,
-        };
-      }
-
       console.log("Creating pairing request for terminal:", request.terminalId);
       
-      // Send JWT in Authorization header + browser token in cookies
+      // Send request with credentials: "include" only
+      // BrowserTokenFilter will handle browser token from cookies automatically
+      // No JWT, no X-Browser-Token header, no document.cookie checks needed
       const response = await fetch("http://localhost:8081/api/pairing-requests", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}`, // JWT token required by backend
         },
         body: JSON.stringify({ terminalId: request.terminalId }),
-        credentials: 'include', // Also send browser token via cookies
+        credentials: "include", // BrowserTokenFilter reads browser token from cookies
         mode: 'cors',
       });
       

@@ -8,6 +8,8 @@ import ProfileBanner from "../components/profile/ProfileBanner";
 import type { ProfileFormData } from "../components/profile/types";
 import { getUserInfo, getCurrentRole, decodeJWT, getCurrentToken, setUserInfo } from "../services/tokens";
 import { getCurrentUserProfile } from "../services/auth.api";
+import PageHeader from "../components/PageHeader";
+import BackButton from "../components/BackButton";
 
 function useRoleAndName() {
   const userInfo = getUserInfo();
@@ -93,18 +95,8 @@ export default function Profile() {
   // Get dashboard route based on role
   const getDashboardRoute = (): string => {
     const role = getCurrentRole();
-    switch (role) {
-      case "CEO":
-        return "/ceo";
-      case "STORE_MANAGER":
-        return "/store-manager";
-      case "INVENTORY_MANAGER":
-        return "/inventory-manager";
-      case "CASHIER":
-        return "/cashier";
-      default:
-        return "/ceo"; // Default fallback
-    }
+    if (role) return "/dashboard";
+    return "/login";
   };
 
   useEffect(() => {
@@ -170,14 +162,26 @@ export default function Profile() {
       <div className="max-w-4xl mx-auto px-4 py-12">
         {/* Header */}
         <div className="mb-8">
-          <button
-            onClick={() => navigate(getDashboardRoute())}
-            className="flex items-center gap-2 text-slate-600 hover:text-slate-900 mb-4 transition-colors group"
-          >
-            <ArrowLeft className="h-5 w-5 group-hover:-translate-x-1 transition-transform" />
-            <span className="font-medium">Back to Dashboard</span>
-          </button>
-          <h1 className="text-4xl font-bold text-slate-900 mb-2">Profile Settings</h1>
+          {getCurrentRole() === "CASHIER" ? (
+            <button
+              onClick={() => navigate("/cashier")}
+              className="relative inline-flex items-center gap-2 px-4 py-2 rounded-lg text-slate-700 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 shadow-sm hover:shadow-md hover:border-blue-300 transition-all duration-200 ease-in-out group overflow-hidden mb-4"
+            >
+              <div className="absolute inset-0 bg-gradient-to-r from-blue-500/10 to-indigo-500/10 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity duration-200"></div>
+              <ArrowLeft size={18} className="relative z-10 group-hover:-translate-x-1 transition-transform duration-200" />
+              <span className="relative z-10 font-medium">Back to Terminal</span>
+            </button>
+          ) : (
+            <button
+              onClick={() => navigate(getDashboardRoute())}
+              className="relative inline-flex items-center gap-2 px-4 py-2 rounded-lg text-slate-700 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 shadow-sm hover:shadow-md hover:border-blue-300 transition-all duration-200 ease-in-out group overflow-hidden mb-4"
+            >
+              <div className="absolute inset-0 bg-gradient-to-r from-blue-500/10 to-indigo-500/10 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity duration-200"></div>
+              <ArrowLeft size={18} className="relative z-10 group-hover:-translate-x-1 transition-transform duration-200" />
+              <span className="relative z-10 font-medium">Back to Dashboard</span>
+            </button>
+          )}
+          <h1 className="text-4xl font-bold text-slate-900 mb-2">Profile</h1>
           <p className="text-slate-600">Manage your personal information and account details</p>
         </div>
 

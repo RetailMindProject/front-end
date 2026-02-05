@@ -176,9 +176,13 @@ export default function ProductForecastPanel({
               className="px-3 py-2 border border-slate-300/50 rounded-lg text-sm font-medium text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-all bg-white/60 backdrop-blur-sm shadow-sm hover:shadow-md"
               disabled={loading || runningForecast}
             >
+              <option value={5}>5 days</option>
+              <option value={10}>10 days</option>
               <option value={30}>30 days</option>
               <option value={60}>60 days</option>
               <option value={90}>90 days</option>
+              <option value={180}>180 days</option>
+              <option value={360}>360 days</option>
             </select>
           </div>
 
