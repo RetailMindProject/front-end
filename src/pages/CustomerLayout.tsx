@@ -1,5 +1,5 @@
-import { Link, Outlet, useLocation } from "react-router-dom";
-import { LogOut, MessageSquare, ReceiptText, User } from "lucide-react";
+import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
+import { LogOut, MessageSquare, ReceiptText, User, Search } from "lucide-react";
 import PageHeader from "../components/PageHeader";
 import Footer from "../components/Footer";
 import { useAuth } from "../hooks/useAuth";
@@ -35,10 +35,12 @@ function IconLink({
 
 export default function CustomerLayout() {
   const { pathname } = useLocation();
+  const navigate = useNavigate();
   const { logout } = useAuth();
 
   const isMessages = pathname.startsWith("/dashboard/message") || pathname.startsWith("/dashboard/message-box");
   const isOrders = pathname.startsWith("/dashboard/orders");
+  const isSearch = pathname.startsWith("/dashboard/search");
   const showHeader = !pathname.startsWith("/dashboard/message/");
 
   return (
@@ -58,6 +60,18 @@ export default function CustomerLayout() {
           }
           right={
             <div className="flex items-center gap-2">
+              <button
+                onClick={() => navigate("/dashboard/search")}
+                className={`relative inline-flex items-center justify-center h-10 w-10 rounded-lg border transition-all duration-200 ${
+                  isSearch
+                    ? "bg-blue-50 border-blue-200 text-blue-700 shadow-sm"
+                    : "bg-white/70 border-slate-200 text-slate-600 hover:bg-white hover:text-slate-900"
+                }`}
+                aria-label="Search"
+                title="Search"
+              >
+                <Search className="h-5 w-5" />
+              </button>
               <IconLink to="/dashboard/message-box" label="Messages" active={isMessages}>
                 <MessageSquare className="h-5 w-5" />
               </IconLink>

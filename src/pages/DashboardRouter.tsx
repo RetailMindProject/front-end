@@ -7,6 +7,7 @@ import CustomerLayout from "./CustomerLayout";
 import CustomerMyPage from "./CustomerMyPage";
 import CustomerOrdersPage from "./CustomerOrdersPage";
 import CustomerMessageBoxPage from "./CustomerMessageBoxPage";
+import CustomerSearchPage from "./CustomerSearchPage";
 import MessageDetail from "./MessageDetail";
 import CashierTerminal from "./CashierTerminal";
 import CashierOrders from "./CashierOrders";
@@ -28,6 +29,7 @@ export default function DashboardRouter() {
       <Routes>
         <Route path="/" element={<CustomerLayout />}>
           <Route index element={<CustomerMyPage />} />
+          <Route path="search" element={<CustomerSearchPage />} />
           <Route path="orders" element={<CustomerOrdersPage />} />
           <Route path="message-box" element={<CustomerMessageBoxPage />} />
           <Route path="message/:id" element={<MessageDetail />} />

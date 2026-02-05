@@ -2,7 +2,6 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { ArrowLeft, RotateCcw, Eye, Loader2, DollarSign, CreditCard, Search, ChevronLeft, ChevronRight, X } from "lucide-react";
 import { returnsApi, type ReturnOrderSummary, type OrderReturnSummary, type ReturnOrderDetails } from "../services/returns.api";
-import PageHeader from "../components/PageHeader";
 
 const fmt = new Intl.NumberFormat(undefined, {
   style: "currency",
@@ -142,14 +141,15 @@ export default function ReturnOrdersHistory() {
               <p className="text-gray-600">View orders with returns</p>
             </div>
             <button
-              onClick={() => navigate("/dashboard/return")}
+              onClick={() => navigate("/cashier/return")}
               className="inline-flex items-center gap-2 px-4 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-all duration-200 shadow-sm"
             >
               <RotateCcw className="w-4 h-4" />
               New Return
             </button>
-          }
-        />
+          </div>
+          </div>
+
 
         {/* Filters */}
         <div className="bg-white rounded-lg shadow-md p-6 mb-6">
