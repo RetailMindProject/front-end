@@ -1,9 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Trash2, ChevronDown, ChevronRight, ChevronLeft, X, AlertTriangle, Package } from 'lucide-react';
 import WasteModal from '../components/Operations/WasteModal';
 import AuthenticatedImage from '../components/Operations/AuthenticatedImage';
 import { storeProductsApi, type StoreProductResponseDTO, type WasteRecordDTO, type ProductBatchDTO } from '../services/store-products.api';
-import { productsApi } from '../services/products.api';
+import { productsApi, type ProductDTO } from '../services/products.api';
 import PageHeader from "../components/PageHeader";
 
 export default function WasteManagement() {
@@ -44,6 +44,9 @@ export default function WasteManagement() {
   const [batchesCache, setBatchesCache] = useState<Map<number, ProductBatchDTO[]>>(new Map());
   const [loadingBatches, setLoadingBatches] = useState<Set<number>>(new Set());
   
+  // Debounce timer ref (300ms consistent across all components)
+  const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  
   // Debounced search function
   const performSearch = async (searchValue: string) => {
     if (!searchValue.trim()) {
@@ -54,62 +57,80 @@ export default function WasteManagement() {
     
     setIsSearching(true);
     try {
-      // Use API search to fetch only matching products
-      const res = await storeProductsApi.getProductsWithInventory({
-        q: searchValue.trim(),
+      // ✅ OPTIMIZED: Use productsApi.filter with search and includeStock
+      const searchLower = searchValue.trim().toLowerCase();
+      const res = await productsApi.filter({
         page: 0,
-        size: 1000 // Get a large number to show all search results
+        size: 1000, // Get a large number to show all search results
+        isActive: true,
+        includeStock: true,
+        includeCategories: true
       });
       
       if (res.data) {
-        const pageData = res.data as { content: StoreProductResponseDTO[]; totalPages: number };
-        const productsWithInventory = pageData.content.filter(product => 
-          (product.warehouseQty || product.warehouseQuantity || 0) > 0
-        );
+        let content: ProductDTO[] = [];
+        if (typeof res.data === 'object' && 'content' in res.data) {
+          content = (res.data as any).content || [];
+        } else if (Array.isArray(res.data)) {
+          content = res.data;
+        }
         
-        // Normalize products with images
-        const normalized = await Promise.all(productsWithInventory.map(async (product) => {
-          let imageUrl: string | null | undefined = product.imageUrl || product.primaryImageUrl || null;
-          let productName: string = product.productName || '';
-          
-          // If productName is missing or imageUrl is missing, fetch product details
-          if (!productName || !imageUrl) {
-            try {
-              const productRes = await productsApi.getById(product.productId);
-              if (productRes.data) {
-                if (!productName && productRes.data.name) {
-                  productName = productRes.data.name;
-                }
-                if (!imageUrl) {
-                  if (productRes.data.images && Array.isArray(productRes.data.images) && productRes.data.images.length > 0) {
-                    const primaryImage = productRes.data.images.find((img: any) => img.isPrimary) || productRes.data.images[0];
+        // Filter by search term and warehouse quantity > 0
+        const productsWithInventory = content
+          .map((p) => {
+            const warehouseQty = (p as any).warehouseQuantity ?? (p as any).warehouseQty ?? 0;
+            return {
+              ...p,
+              warehouseQuantity: warehouseQty,
+              storeQuantity: (p as any).storeQuantity ?? (p as any).storeQty ?? 0
+            };
+          })
+          .filter(product => 
+            (product.warehouseQuantity || 0) > 0 &&
+            (product.name?.toLowerCase().includes(searchLower) ||
+             product.sku?.toLowerCase().includes(searchLower) ||
+             product.brand?.toLowerCase().includes(searchLower))
+          );
+        
+        // ✅ OPTIMIZED: Data is already in response, no individual API calls needed
+        const convertedProducts: (StoreProductResponseDTO & { imageUrl?: string | null })[] = productsWithInventory.map((p) => {
+          // Extract image URL
+          let imageUrl: string | null | undefined = null;
+          if (p.images && Array.isArray(p.images) && p.images.length > 0) {
+            const primaryImage = p.images.find(img => img.isPrimary) || p.images[0];
                     if (primaryImage?.url) {
-                      imageUrl = productsApi.normalizeImageUrl(primaryImage.url, product.productId);
-                    }
-                  } else if (productRes.data.imageUrl || productRes.data.primaryImageUrl) {
-                    imageUrl = productsApi.normalizeImageUrl(
-                      productRes.data.imageUrl || productRes.data.primaryImageUrl, 
-                      product.productId
-                    );
-                  }
-                }
-              }
-            } catch (err) {
-              console.error(`Failed to fetch product details for ${product.productId}:`, err);
+              imageUrl = productsApi.normalizeImageUrl(primaryImage.url, p.id);
             }
-          } else {
-            // Normalize the existing URL
-            imageUrl = productsApi.normalizeImageUrl(imageUrl, product.productId);
+          }
+          if (!imageUrl && p.primaryImageUrl) {
+            imageUrl = productsApi.normalizeImageUrl(p.primaryImageUrl, p.id);
+          }
+          if (!imageUrl && p.imageUrl) {
+            imageUrl = productsApi.normalizeImageUrl(p.imageUrl, p.id);
           }
           
           return {
-            ...product,
-            productName: productName || product.productName || 'Unknown Product',
-            imageUrl
+            productId: typeof p.id === 'string' ? parseInt(p.id) : p.id,
+            productName: p.name,
+            sku: p.sku,
+            brand: p.brand,
+            category: Array.isArray(p.categories) && p.categories.length > 0 
+              ? p.categories[0].name 
+              : (typeof p.category === 'string' ? p.category : undefined),
+            price: p.price ?? p.defaultPrice,
+            cost: p.cost ?? p.defaultCost,
+            warehouseQuantity: p.warehouseQuantity ?? 0,
+            warehouseQty: p.warehouseQuantity ?? 0,
+            storeQuantity: p.storeQuantity ?? 0,
+            storeQty: p.storeQuantity ?? 0,
+            imageUrl: imageUrl || p.imageUrl,
+            primaryImageUrl: p.primaryImageUrl,
+            images: p.images,
+            isActive: p.isActive
           };
-        }));
+        });
         
-        setSearchResults(normalized);
+        setSearchResults(convertedProducts);
       } else {
         setSearchResults([]);
       }
@@ -192,8 +213,21 @@ export default function WasteManagement() {
   }, [reasonFilter, dateSort]);
 
   useEffect(() => {
+    // Reset to page 0 when filters or sort change
+    if (reasonFilter || dateSort !== 'latest') {
+      setWasteHistoryPage(0);
+    }
     fetchWasteHistory();
   }, [wasteHistoryPage, wasteHistoryItemsPerPage, reasonFilter, dateSort]);
+
+  // Cleanup debounce timer on unmount
+  useEffect(() => {
+    return () => {
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current);
+      }
+    };
+  }, []);
 
   // Calculate statistics from waste history
   useEffect(() => {
@@ -269,155 +303,111 @@ export default function WasteManagement() {
     setLoading(true);
     setError(null);
     try {
-      // Use getProductsWithInventory to get products with warehouse quantity > 0
-      // This gets products available for waste, not products that have been wasted
-      const res = await storeProductsApi.getProductsWithInventory({
+      // ✅ OPTIMIZED: Use productsApi.filter with includeStock instead of getProductsWithInventory
+      const res = await productsApi.filter({
         page,
         size: itemsPerPage,
-        q: searchTerm.trim() || undefined
+        isActive: true, // Only active products
+        includeStock: true,        // Request stock quantities in the same call
+        includeCategories: true     // Request categories in the same call
       });
       
       if (res.data) {
-        // Extract pagination info from API response
-        const pageData = res.data as { content: StoreProductResponseDTO[]; totalPages: number; totalElements: number; number: number; size: number };
+        // Handle paginated response
+        let content: ProductDTO[] = [];
+        let totalPagesValue = 0;
+        let totalElementsValue = 0;
+        
+        if (typeof res.data === 'object' && 'content' in res.data) {
+          const pageData = res.data as { content: ProductDTO[]; totalPages: number; totalElements: number; number: number; size: number };
+          content = pageData.content || [];
+          totalPagesValue = pageData.totalPages || 0;
+          totalElementsValue = pageData.totalElements || 0;
+        } else if (Array.isArray(res.data)) {
+          content = res.data as ProductDTO[];
+          totalPagesValue = 1;
+          totalElementsValue = content.length;
+        } else {
+          content = (res.data as any).content || [];
+          totalPagesValue = (res.data as any).totalPages || 0;
+          totalElementsValue = (res.data as any).totalElements || 0;
+        }
         
         // Filter to only show products with warehouse quantity > 0
-        const productsWithInventory = pageData.content.filter(product => 
-          (product.warehouseQty || product.warehouseQuantity || 0) > 0
-        );
+        // Check both field name variations
+        const productsWithInventory = content
+          .map((p) => {
+            const warehouseQty = (p as any).warehouseQuantity ?? (p as any).warehouseQty ?? 0;
+            return {
+              ...p,
+              warehouseQuantity: warehouseQty,
+              storeQuantity: (p as any).storeQuantity ?? (p as any).storeQty ?? 0
+            };
+          })
+          .filter(product => (product.warehouseQuantity || 0) > 0);
         
-        // Debug logging
-        console.log('Products API Response Debug:', {
-          contentLength: pageData.content?.length,
-          totalPages: pageData.totalPages,
-          totalElements: pageData.totalElements,
-          requestedSize: itemsPerPage,
-          actualResponseSize: pageData.size,
-          requestedPage: page,
-          afterFiltering: productsWithInventory.length,
-          filteredOut: pageData.content?.length - productsWithInventory.length,
-          productsWithZeroQty: pageData.content?.filter(p => (p.warehouseQty || p.warehouseQuantity || 0) === 0).map(p => ({ id: p.productId, name: p.productName, qty: p.warehouseQty || p.warehouseQuantity }))
-        });
+        // Apply search filter if provided
+        let filteredProducts = productsWithInventory;
+        if (searchTerm.trim()) {
+          const searchLower = searchTerm.toLowerCase();
+          filteredProducts = productsWithInventory.filter(product =>
+            product.name?.toLowerCase().includes(searchLower) ||
+            product.sku?.toLowerCase().includes(searchLower) ||
+            product.brand?.toLowerCase().includes(searchLower)
+          );
+        }
         
-        // Check if backend paginated correctly
-        // If content length > requested size, backend didn't paginate properly
-        const backendPaginatedCorrectly = pageData.content.length <= itemsPerPage;
-        
-        if (!backendPaginatedCorrectly || pageData.totalPages === 0) {
-          // Backend didn't paginate properly - do client-side pagination
-          const totalFiltered = productsWithInventory.length;
+        // Client-side pagination for filtered results
+        const totalFiltered = filteredProducts.length;
           const totalPagesCalculated = Math.ceil(totalFiltered / itemsPerPage);
           
-          // Slice to show only current page
           const startIndex = page * itemsPerPage;
           const endIndex = startIndex + itemsPerPage;
-          const paginatedProducts = productsWithInventory.slice(startIndex, endIndex);
+        const paginatedProducts = filteredProducts.slice(startIndex, endIndex);
           
           setTotalPages(totalPagesCalculated);
           setTotalElements(totalFiltered);
           
-          // Normalize only the paginated products
-          const normalized = await Promise.all(paginatedProducts.map(async (product) => {
-          let imageUrl: string | null | undefined = product.imageUrl || product.primaryImageUrl || null;
-          let productName: string = product.productName || '';
-          
-          // If productName is missing or imageUrl is missing, fetch product details
-          if (!productName || !imageUrl) {
-            try {
-              const productRes = await productsApi.getById(product.productId);
-              if (productRes.data) {
-                // Get product name
-                if (!productName && productRes.data.name) {
-                  productName = productRes.data.name;
-                }
-                
-                // Try to get image from images array
-                if (!imageUrl) {
-                  if (productRes.data.images && Array.isArray(productRes.data.images) && productRes.data.images.length > 0) {
-                    const primaryImage = productRes.data.images.find((img: any) => img.isPrimary) || productRes.data.images[0];
+        // ✅ OPTIMIZED: Data is already in response, no individual API calls needed
+        // Convert to StoreProductResponseDTO format for compatibility
+        const convertedProducts: (StoreProductResponseDTO & { imageUrl?: string | null })[] = paginatedProducts.map((p) => {
+          // Extract image URL
+          let imageUrl: string | null | undefined = null;
+          if (p.images && Array.isArray(p.images) && p.images.length > 0) {
+            const primaryImage = p.images.find(img => img.isPrimary) || p.images[0];
                     if (primaryImage?.url) {
-                      imageUrl = productsApi.normalizeImageUrl(primaryImage.url, product.productId);
-                    }
-                  } else if (productRes.data.imageUrl || productRes.data.primaryImageUrl) {
-                    imageUrl = productsApi.normalizeImageUrl(
-                      productRes.data.imageUrl || productRes.data.primaryImageUrl, 
-                      product.productId
-                    );
-                  }
-                }
-              }
-            } catch (err) {
-              console.error(`Failed to fetch product details for ${product.productId}:`, err);
+              imageUrl = productsApi.normalizeImageUrl(primaryImage.url, p.id);
             }
-          } else {
-            // Normalize the existing URL
-            imageUrl = productsApi.normalizeImageUrl(imageUrl, product.productId);
+          }
+          if (!imageUrl && p.primaryImageUrl) {
+            imageUrl = productsApi.normalizeImageUrl(p.primaryImageUrl, p.id);
+          }
+          if (!imageUrl && p.imageUrl) {
+            imageUrl = productsApi.normalizeImageUrl(p.imageUrl, p.id);
           }
           
           return {
-            ...product,
-            productName: productName || product.productName || 'Unknown Product',
-            imageUrl
+            productId: typeof p.id === 'string' ? parseInt(p.id) : p.id,
+            productName: p.name,
+            sku: p.sku,
+            brand: p.brand,
+            category: Array.isArray(p.categories) && p.categories.length > 0 
+              ? p.categories[0].name 
+              : (typeof p.category === 'string' ? p.category : undefined),
+            price: p.price ?? p.defaultPrice,
+            cost: p.cost ?? p.defaultCost,
+            warehouseQuantity: p.warehouseQuantity ?? 0,
+            warehouseQty: p.warehouseQuantity ?? 0,
+            storeQuantity: p.storeQuantity ?? 0,
+            storeQty: p.storeQuantity ?? 0,
+            imageUrl: imageUrl || p.imageUrl,
+            primaryImageUrl: p.primaryImageUrl,
+            images: p.images,
+            isActive: p.isActive
           };
-          }));
-          
-          setProducts(normalized);
-        } else {
-          // Backend paginated correctly - use backend's totalPages
-          // But recalculate based on filtered results if needed
-          const totalFiltered = productsWithInventory.length;
-          const totalPagesFromFiltered = Math.ceil((pageData.totalElements || totalFiltered) / itemsPerPage);
-          
-          setTotalPages(totalPagesFromFiltered > 0 ? totalPagesFromFiltered : 1);
-          setTotalElements(pageData.totalElements || totalFiltered);
-          
-          // Normalize all products from this page
-          const normalized = await Promise.all(productsWithInventory.map(async (product) => {
-            let imageUrl: string | null | undefined = product.imageUrl || product.primaryImageUrl || null;
-            let productName: string = product.productName || '';
-            
-            // If productName is missing or imageUrl is missing, fetch product details
-            if (!productName || !imageUrl) {
-              try {
-                const productRes = await productsApi.getById(product.productId);
-                if (productRes.data) {
-                  // Get product name
-                  if (!productName && productRes.data.name) {
-                    productName = productRes.data.name;
-                  }
-                  
-                  // Try to get image from images array
-                  if (!imageUrl) {
-                    if (productRes.data.images && Array.isArray(productRes.data.images) && productRes.data.images.length > 0) {
-                      const primaryImage = productRes.data.images.find((img: any) => img.isPrimary) || productRes.data.images[0];
-                      if (primaryImage?.url) {
-                        imageUrl = productsApi.normalizeImageUrl(primaryImage.url, product.productId);
-                      }
-                    } else if (productRes.data.imageUrl || productRes.data.primaryImageUrl) {
-                      imageUrl = productsApi.normalizeImageUrl(
-                        productRes.data.imageUrl || productRes.data.primaryImageUrl, 
-                        product.productId
-                      );
-                    }
-                  }
-                }
-              } catch (err) {
-                console.error(`Failed to fetch product details for ${product.productId}:`, err);
-              }
-            } else {
-              // Normalize the existing URL
-              imageUrl = productsApi.normalizeImageUrl(imageUrl, product.productId);
-            }
-            
-            return {
-              ...product,
-              productName: productName || product.productName || 'Unknown Product',
-              imageUrl
-            };
-          }));
-          
-          setProducts(normalized);
-        }
+        });
+        
+        setProducts(convertedProducts);
       } else {
         setError(res.error || 'Failed to fetch products');
         setTotalPages(0);
@@ -433,13 +423,12 @@ export default function WasteManagement() {
   const fetchWasteHistory = async () => {
     setLoadingHistory(true);
     try {
-      // If filtering or sorting by oldest, fetch all records and paginate on frontend
-      // Otherwise, use backend pagination (assuming backend returns latest first by default)
-      const shouldFetchAll = (reasonFilter && reasonFilter.trim()) || dateSort === 'oldest';
+      // ✅ OPTIMIZED: Use backend pagination, filtering, and sorting
       const res = await storeProductsApi.getWasteHistory({
-        page: shouldFetchAll ? 0 : wasteHistoryPage,
-        size: shouldFetchAll ? 1000 : wasteHistoryItemsPerPage, // Use configurable page size
-        reason: reasonFilter || undefined
+        page: wasteHistoryPage,
+        size: wasteHistoryItemsPerPage,
+        reason: reasonFilter || undefined,
+        sortBy: dateSort // ✅ Backend sorting: 'latest' or 'oldest'
       });
       
       if (res.data) {
@@ -495,48 +484,10 @@ export default function WasteManagement() {
           };
         });
         
-        // Apply frontend filtering (backend filtering might not work correctly or reason format might differ)
-        let filtered = normalized;
-        if (reasonFilter && reasonFilter.trim()) {
-          filtered = normalized.filter((record: any) => {
-            const reason = (record.wasteReason || '').toUpperCase().trim();
-            const filterValue = reasonFilter.toUpperCase().trim();
-            return reason === filterValue;
-          });
-        }
-        
-        // Apply date sorting (only if we fetched all records or need custom sorting)
-        if (shouldFetchAll) {
-          filtered = filtered.sort((a: any, b: any) => {
-            const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-            const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
-            
-            if (dateSort === 'latest') {
-              // Newest first (descending)
-              return dateB - dateA;
-            } else {
-              // Oldest first (ascending)
-              return dateA - dateB;
-            }
-          });
-        }
-        
-        // If filtering or sorting, paginate on frontend
-        if (shouldFetchAll) {
-          const startIndex = wasteHistoryPage * wasteHistoryItemsPerPage;
-          const endIndex = startIndex + wasteHistoryItemsPerPage;
-          const paginatedFiltered = filtered.slice(startIndex, endIndex);
-          const totalFilteredPages = Math.ceil(filtered.length / wasteHistoryItemsPerPage);
-          
-          setWasteHistory(paginatedFiltered);
-          setWasteHistoryTotalPages(totalFilteredPages);
-          setWasteHistoryTotalElements(filtered.length);
-        } else {
-          // No filter, use backend pagination (assumes backend returns latest first)
-          setWasteHistory(filtered);
+        // ✅ OPTIMIZED: Backend handles filtering and sorting, use backend pagination
+        setWasteHistory(normalized);
           setWasteHistoryTotalPages(res.data.totalPages || 0);
-          setWasteHistoryTotalElements(res.data.totalElements || filtered.length);
-        }
+        setWasteHistoryTotalElements(res.data.totalElements || normalized.length);
       } else {
         console.error('Failed to fetch waste history:', res.error);
       }
@@ -699,12 +650,20 @@ export default function WasteManagement() {
                     const value = e.target.value;
                     setSearchTerm(value);
                     
+                    // Clear existing timer
+                    if (debounceTimerRef.current) {
+                      clearTimeout(debounceTimerRef.current);
+                    }
+                    
+                    // Set new timer for debounced search (300ms)
+                    debounceTimerRef.current = setTimeout(() => {
                     if (value.trim()) {
                       performSearch(value);
                     } else {
                       setSearchResults([]);
                       setIsSearching(false);
                     }
+                    }, 300);
                   }}
                   placeholder="Search product"
                   className="border-solid border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-white placeholder:text-slate-400 hover:border-slate-400 transition-all duration-200 ease-out px-3 py-2 text-sm flex-1 max-w-md"

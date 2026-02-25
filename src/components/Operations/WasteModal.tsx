@@ -39,19 +39,19 @@ export default function WasteModal({ isOpen, productId, batchId, onSuccess, onCl
     setError(null);
     
     try {
-      // Fetch product details from products API
-      const productRes = await productsApi.getById(productId);
-      
-      // Fetch store product details to get warehouse quantity
-      const storeProductRes = await storeProductsApi.getByProductId(productId);
+      // ✅ OPTIMIZED: Fetch product with stock in one call
+      const productRes = await productsApi.getById(productId, {
+        includeStock: true,
+        includeCategories: true
+      });
       
       if (productRes.data) {
-        // Combine product data with warehouse quantity from store product
+        // ✅ Stock quantities are already in response
+        const warehouseQty = (productRes.data as any).warehouseQuantity ?? (productRes.data as any).warehouseQty ?? 0;
+        
         const productWithQuantity = {
           ...productRes.data,
-          warehouseQuantity: storeProductRes.data 
-            ? (storeProductRes.data.warehouseQty || storeProductRes.data.warehouseQuantity || 0)
-            : 0
+          warehouseQuantity: warehouseQty
         };
         setProduct(productWithQuantity);
       }

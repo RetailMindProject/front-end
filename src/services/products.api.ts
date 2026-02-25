@@ -41,6 +41,8 @@ export interface ProductDTO {
   taxRate?: number;
   createdAt?: string; 
   updatedAt?: string;
+  warehouseQuantity?: number; // Included when includeStock=true
+  storeQuantity?: number; // Included when includeStock=true
 }
 
 export interface ProductCreateDTO {
@@ -105,8 +107,9 @@ export const productsApi = {
     return apiClient.get<CategoryDTO[]>(`/api/categories/product/${productId}`);
   },
 
-  async getById(id: number | string) {
-    return apiClient.get<ProductDTO>(`/api/products/${id}`);
+  async getById(id: number | string, options?: { includeStock?: boolean; includeCategories?: boolean }) {
+    const query = buildQuery(options || {});
+    return apiClient.get<ProductDTO>(`/api/products/${id}${query}`);
   },
 
   async search(params: { q?: string; page?: number; size?: number } = {}) {
@@ -123,9 +126,17 @@ export const productsApi = {
     page?: number;
     size?: number;
     sort?: string;
+    includeStock?: boolean;
+    includeCategories?: boolean;
+    minWarehouseQuantity?: number;
+    minStoreQuantity?: number;
+    search?: string;
   } = {}) {
     const query = buildQuery(params);
-    return apiClient.get<PageResponse<ProductDTO>>(`/api/products/filter${query}`);
+    const url = `/api/products/filter${query}`;
+    console.log('🌐 productsApi.filter URL:', url);
+    console.log('🌐 productsApi.filter params:', params);
+    return apiClient.get<PageResponse<ProductDTO>>(url);
   },
 
   async create(payload: ProductCreateDTO) {
@@ -349,5 +360,24 @@ export const productsApi = {
     return apiClient.put<ProductDTO>(`/api/products/${productId}/images/${mediaId}/set-primary`, {});
   },
 
+  async getStats(params: {
+    brand?: string;
+    isActive?: boolean;
+    minPrice?: number;
+    maxPrice?: number;
+    sku?: string;
+  } = {}) {
+    const query = buildQuery(params);
+    return apiClient.get<ProductStats>(`/api/products/stats${query}`);
+  },
+
 };
 
+export interface ProductStats {
+  totalProducts: number;
+  activeProducts: number;
+  inactiveProducts: number;
+  lowStock: number;
+  outOfStock: number;
+  inStock: number;
+}

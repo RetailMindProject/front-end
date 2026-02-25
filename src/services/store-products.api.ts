@@ -208,17 +208,43 @@ export const storeProductsApi = {
     size?: number;
     reason?: string;
     productId?: number;
+    sortBy?: 'latest' | 'oldest';
   }): Promise<ApiResponse<{ content: WasteRecordDTO[]; totalElements: number; totalPages: number; number: number; size: number }>> {
     const queryParams = new URLSearchParams();
     if (params?.page !== undefined) queryParams.append('page', params.page.toString());
     if (params?.size !== undefined) queryParams.append('size', params.size.toString());
     if (params?.reason) queryParams.append('reason', params.reason);
     if (params?.productId) queryParams.append('productId', params.productId.toString());
+    if (params?.sortBy) queryParams.append('sortBy', params.sortBy);
     
     const queryString = queryParams.toString();
     return apiClient.get<{ content: WasteRecordDTO[]; totalElements: number; totalPages: number; number: number; size: number }>(
       `/api/store-products/waste-history${queryString ? `?${queryString}` : ''}`
     );
   },
+
+  // Get store products statistics
+  async getStats(params?: {
+    brand?: string;
+    isActive?: boolean;
+    minPrice?: number;
+    maxPrice?: number;
+    sku?: string;
+  }): Promise<ApiResponse<StoreProductStats>> {
+    const queryParams = new URLSearchParams();
+    if (params?.brand) queryParams.append('brand', params.brand);
+    if (params?.isActive !== undefined) queryParams.append('isActive', params.isActive.toString());
+    if (params?.minPrice !== undefined) queryParams.append('minPrice', params.minPrice.toString());
+    if (params?.maxPrice !== undefined) queryParams.append('maxPrice', params.maxPrice.toString());
+    if (params?.sku) queryParams.append('sku', params.sku);
+    
+    const queryString = queryParams.toString();
+    return apiClient.get<StoreProductStats>(`/api/store-products/stats${queryString ? `?${queryString}` : ''}`);
+  },
 };
 
+export interface StoreProductStats {
+  totalProducts: number;
+  lowStock: number;
+  outOfStock: number;
+}

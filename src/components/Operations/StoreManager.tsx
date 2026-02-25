@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import type { ChangeEvent } from 'react';
-import { ChevronLeft, ChevronRight, Filter, MoreVertical, Eye, RotateCcw } from 'lucide-react';
+import { Filter, MoreVertical, Eye, RotateCcw, ChevronLeft, ChevronRight } from 'lucide-react';
 import ProductViewModal from './ProductViewModal';
 import AddProductFromInventoryModal from './AddProductFromInventoryModal';
 import ConfirmDeleteModal from './ConfirmDeleteModal';
@@ -21,7 +21,7 @@ interface StoreManagerProps {
   storeProducts: (StoreProductResponseDTO & { imageUrl?: string | null })[];
   inventoryProducts: ProductDTO[];
   onDelete: (id: string | number) => void;
-  onAddFromInventory: (product: ProductDTO, quantity: number, expirationDate?: string | null) => Promise<void>;
+  onAddFromInventory: (product: ProductDTO, quantity: number) => Promise<void>;
   onAdjustQuantity?: (productId: number, quantity: number, isIncrease: boolean) => Promise<void>;
   loading?: boolean;
   filters?: FilterState;
@@ -35,7 +35,12 @@ interface StoreManagerProps {
   onToggleFilters?: () => void;
   onFiltersChange?: (filters: FilterState) => void;
   isFiltering?: boolean;
-  allStoreProducts?: (StoreProductResponseDTO & { imageUrl?: string | null })[]; // All products for comprehensive search
+  currentPage?: number;
+  totalPages?: number;
+  itemsPerPage?: number;
+  totalElements?: number;
+  onPageChange?: (page: number) => void;
+  onItemsPerPageChange?: (size: number) => void;
 }
 
 const StoreManager = ({ 
@@ -56,7 +61,12 @@ const StoreManager = ({
   onToggleFilters,
   onFiltersChange,
   isFiltering = false,
-  allStoreProducts
+  currentPage = 0,
+  totalPages = 0,
+  itemsPerPage = 10,
+  totalElements = 0,
+  onPageChange,
+  onItemsPerPageChange
 }: StoreManagerProps) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [searchResults, setSearchResults] = useState<(StoreProductResponseDTO & { imageUrl?: string | null })[]>([]);
@@ -75,83 +85,38 @@ const StoreManager = ({
   });
   const [revertQuantity, setRevertQuantity] = useState<string>('');
   const [revertMode, setRevertMode] = useState<'all' | 'quantity'>('all');
-
-  // Debounced search function
-  const performSearch = async (searchValue: string) => {
-    if (!searchValue.trim()) {
-      setSearchResults([]);
-      setIsSearching(false);
-      return;
-    }
-    
-    setIsSearching(true);
-    try {
-      // Use API search to fetch only matching products
-      const { storeProductsApi } = await import('../../services/store-products.api');
-      const res = await storeProductsApi.search({
-        q: searchValue.trim(),
-        page: 0,
-        size: 1000 // Get a large number to show all search results
-      });
-      
-      if (res.data) {
-        const content = res.data.content || [];
-        
-        // Fetch full product details for each result
-        const normalizedResults = await Promise.all(
-          content.map(async (p) => {
-            try {
-              const productRes = await productsApi.getById(p.productId);
-              if (productRes.data) {
-                const fullProduct = productRes.data;
-                
-                let imageUrl: string | null | undefined = null;
-                if (fullProduct.images && Array.isArray(fullProduct.images) && fullProduct.images.length > 0) {
-                  const primaryImage = fullProduct.images.find((img: any) => img.isPrimary) || fullProduct.images[0];
-                  if (primaryImage?.url) {
-                    imageUrl = productsApi.normalizeImageUrl(primaryImage.url, fullProduct.id);
-                  }
-                }
-                if (!imageUrl && fullProduct.primaryImageUrl) {
-                  imageUrl = productsApi.normalizeImageUrl(fullProduct.primaryImageUrl, fullProduct.id);
-                }
-                if (!imageUrl && fullProduct.imageUrl) {
-                  imageUrl = productsApi.normalizeImageUrl(fullProduct.imageUrl, fullProduct.id);
-                }
-                
-                return {
-                  ...p,
-                  imageUrl: imageUrl || p.imageUrl || null,
-                };
-              }
-            } catch (err) {
-              console.error(`Failed to get full product details for ${p.productId}:`, err);
-            }
-            
-            return p;
-          })
-        );
-        
-        setSearchResults(normalizedResults);
-      } else {
-        setSearchResults([]);
-      }
-    } catch (err) {
-      console.error('Search failed:', err);
-      setSearchResults([]);
-    }
-  };
+  const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const handleSearchChange = (e: ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
     setSearchTerm(value);
     
-    if (value.trim()) {
-      performSearch(value);
-    } else {
-      setSearchResults([]);
-      setIsSearching(false);
+    // Clear existing timer
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
     }
+    
+    // Set new timer for debounced search (300ms)
+    debounceTimerRef.current = setTimeout(() => {
+      if (value.trim()) {
+        const searchLower = value.toLowerCase().trim();
+        const results = storeProducts.filter(product => {
+          // Search by name
+          const nameMatch = product.productName && product.productName.toLowerCase().includes(searchLower);
+          // Search by SKU
+          const skuMatch = product.sku && product.sku.toLowerCase().includes(searchLower);
+          // Search by ID (convert both to string for comparison)
+          const idMatch = String(product.productId).includes(searchLower);
+          
+          return nameMatch || skuMatch || idMatch;
+        });
+        setSearchResults(results);
+        setIsSearching(true);
+      } else {
+        setSearchResults([]);
+        setIsSearching(false);
+      }
+    }, 300);
   };
 
   // Close menu when clicking outside
@@ -172,6 +137,15 @@ const StoreManager = ({
       };
     }
   }, [openMenuId]);
+
+  // Cleanup debounce timer on unmount
+  useEffect(() => {
+    return () => {
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current);
+      }
+    };
+  }, []);
 
   const handleDelete = (id: string | number, name: string) => {
     // Find the product to get store quantity
@@ -268,20 +242,23 @@ const StoreManager = ({
     // Fetch full product details to show all information
     try {
       const { productsApi } = await import('../../services/products.api');
-      const productRes = await productsApi.getById(product.productId);
+      // ✅ OPTIMIZED: Request stock and categories in the same call
+      const productRes = await productsApi.getById(product.productId, {
+        includeStock: true,
+        includeCategories: true
+      });
       
       if (productRes.data) {
         const fullProduct = productRes.data;
         
-        // Fetch category from product categories endpoint
+        // ✅ OPTIMIZED: Categories are already in response, no separate API call needed
         let categoryName: string | undefined = product.category;
-        try {
-          const catRes = await productsApi.getProductCategories(product.productId);
-          if (catRes.data && catRes.data.length > 0) {
-            categoryName = catRes.data[0].name;
-          }
-        } catch (err) {
-          console.error('Failed to load product category:', err);
+        
+        // Extract category from categories array (already included)
+        if (Array.isArray(fullProduct.categories) && fullProduct.categories.length > 0) {
+          categoryName = fullProduct.categories[0].name;
+        } else if (typeof fullProduct.category === 'string') {
+          categoryName = fullProduct.category;
         }
         
         // Extract image URL - priority: images array > primaryImageUrl > imageUrl
@@ -390,25 +367,12 @@ const StoreManager = ({
     setIsAddModalOpen(false);
   };
 
-  const handleProductSelected = async (product: ProductDTO, quantity: number, expirationDate?: string | null) => {
-    await onAddFromInventory(product, quantity, expirationDate);
+  const handleProductSelected = async (product: ProductDTO, quantity: number) => {
+    await onAddFromInventory(product, quantity);
     closeAddModal();
   };
 
   const displayProducts = isSearching ? searchResults : storeProducts;
-  const [page, setPage] = useState(0);
-  const [pageSize, setPageSize] = useState(10);
-
-  useEffect(() => {
-    setPage(0);
-  }, [isSearching, searchTerm]);
-
-  const totalPages = useMemo(() => Math.max(1, Math.ceil(displayProducts.length / pageSize)), [displayProducts.length, pageSize]);
-  const currentPage = Math.min(page, totalPages - 1);
-  const pagedProducts = useMemo(() => {
-    const start = currentPage * pageSize;
-    return displayProducts.slice(start, start + pageSize);
-  }, [currentPage, displayProducts, pageSize]);
 
   return (
     <div className="bg-white rounded-2xl shadow-sm border">
@@ -560,12 +524,13 @@ const StoreManager = ({
 
       {/* Products List */}
       {loading && displayProducts.length === 0 ? (
-        <div className="px-6 py-16 text-center">
+        <div className="p-12 text-center">
+          <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-red-600 mb-3"></div>
           <p className="text-slate-600">Loading products...</p>
         </div>
       ) : displayProducts.length > 0 ? (
         <div className="divide-y divide-slate-200">
-          {pagedProducts.map(product => (
+          {displayProducts.map(product => (
             <div 
               key={product.productId} 
               className="flex items-center gap-4 px-6 py-4 hover:bg-blue-50/50 transition-all duration-200 ease-in-out border-b border-slate-100 last:border-b-0 group"
@@ -671,59 +636,6 @@ const StoreManager = ({
               </div>
             </div>
           ))}
-
-          {/* Pagination */}
-          <div className="px-6 py-4 border-t border-slate-200 bg-white">
-            <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
-              <div className="text-sm text-slate-600">
-                Showing{" "}
-                <span className="font-semibold text-slate-900">
-                  {displayProducts.length === 0 ? 0 : currentPage * pageSize + 1}
-                </span>{" "}
-                to{" "}
-                <span className="font-semibold text-slate-900">
-                  {Math.min((currentPage + 1) * pageSize, displayProducts.length)}
-                </span>{" "}
-                of <span className="font-semibold text-slate-900">{displayProducts.length}</span>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <select
-                  value={pageSize}
-                  onChange={(e) => setPageSize(Number(e.target.value))}
-                  className="px-3 py-2 border border-slate-300 rounded-lg text-sm font-semibold text-slate-700 bg-white hover:bg-slate-50 transition-all"
-                >
-                  {[10, 20, 50].map((s) => (
-                    <option key={s} value={s}>
-                      {s} / page
-                    </option>
-                  ))}
-                </select>
-
-                <button
-                  onClick={() => setPage((p) => Math.max(0, p - 1))}
-                  disabled={currentPage === 0}
-                  className="inline-flex items-center gap-1 px-3 py-2 rounded-lg border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-all text-sm font-semibold"
-                >
-                  <ChevronLeft className="h-4 w-4" />
-                  Prev
-                </button>
-
-                <div className="px-3 py-2 text-sm font-semibold text-slate-700">
-                  Page {currentPage + 1} / {totalPages}
-                </div>
-
-                <button
-                  onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
-                  disabled={currentPage >= totalPages - 1}
-                  className="inline-flex items-center gap-1 px-3 py-2 rounded-lg border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-all text-sm font-semibold"
-                >
-                  Next
-                  <ChevronRight className="h-4 w-4" />
-                </button>
-              </div>
-            </div>
-          </div>
         </div>
       ) : (
         <div className="px-6 py-16 text-center">
@@ -737,6 +649,52 @@ const StoreManager = ({
               Transfer
             </button>
           )}
+        </div>
+      )}
+
+      {/* Pagination Controls */}
+      {!isSearching && onPageChange && (
+        <div className="px-6 py-4 border-t border-slate-200 flex items-center justify-between bg-slate-50/50">
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-slate-600">Rows per page:</span>
+            <select
+              value={itemsPerPage}
+              onChange={(e) => {
+                if (onItemsPerPageChange) {
+                  onItemsPerPageChange(Number(e.target.value));
+                }
+              }}
+              className="px-2.5 py-1.5 text-sm border border-slate-300 rounded-md bg-white hover:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-150 cursor-pointer"
+            >
+              <option value={10}>10</option>
+              <option value={20}>20</option>
+              <option value={50}>50</option>
+              <option value={100}>100</option>
+            </select>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-slate-600">
+              Page {currentPage + 1} of {totalPages} {totalElements > 0 && `(${totalElements} total)`}
+            </span>
+            <div className="inline-flex rounded-lg overflow-hidden border border-slate-300 bg-white shadow-sm">
+              <button
+                onClick={() => onPageChange(Math.max(0, currentPage - 1))}
+                disabled={currentPage === 0}
+                className="px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-blue-50 hover:text-blue-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1"
+                title="Previous page"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+              <button
+                onClick={() => onPageChange(Math.min(totalPages - 1, currentPage + 1))}
+                disabled={currentPage >= totalPages - 1}
+                className="px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-blue-50 hover:text-blue-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent transition-all duration-150 border-l border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1"
+                title="Next page"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
         </div>
       )}
       

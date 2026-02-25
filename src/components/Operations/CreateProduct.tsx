@@ -565,6 +565,7 @@ const [parentType, setParentType] = useState<'select' | 'create'>('select'); // 
               onChange={handleChange}
               inputMode="numeric"
               pattern="[0-9]*"
+              placeholder="Enter product SKU (numbers only)"
               className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
             />
             <p className="mt-1 text-xs text-slate-500">Enter numbers only</p>
