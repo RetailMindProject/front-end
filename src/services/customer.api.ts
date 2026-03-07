@@ -11,6 +11,7 @@ import type {
   Product,
   ProductAvailabilityResponse,
   RecommendationsResponse,
+  RecommendationRows,
   RagChatRequest,
   RagChatResponse,
   OrdersResponse,
@@ -667,16 +668,22 @@ export const customerApi = {
       'CUSTOMER'
     );
     
+    // Map backend row field names once: support forYou | recommendedForYou, popular, offers
+    if (response.data?.rows) {
+      const raw = response.data.rows as unknown as Record<string, unknown>;
+      const recommendedForYou = Array.isArray(raw.recommendedForYou) ? raw.recommendedForYou : Array.isArray(raw.forYou) ? raw.forYou : [];
+      const popular = Array.isArray(raw.popular) ? raw.popular : [];
+      const offers = Array.isArray(raw.offers) ? raw.offers : [];
+      (response.data as RecommendationsResponse).rows = { recommendedForYou, popular, offers };
+    }
+
     console.log('[customerApi.getRecommendations] Response:', {
       status: response.status,
-      hasError: !!response.error,
-      error: response.error,
       hasData: !!response.data,
       dataStatus: response.data?.status,
-      rowsForYou: response.data?.rows?.forYou?.length,
-      rowsPopular: response.data?.rows?.popular?.length,
-      rowsOffers: response.data?.rows?.offers?.length,
-      fullData: response.data,
+      rowsRecommendedForYou: (response.data?.rows as RecommendationRows)?.recommendedForYou?.length,
+      rowsPopular: (response.data?.rows as RecommendationRows)?.popular?.length,
+      rowsOffers: (response.data?.rows as RecommendationRows)?.offers?.length,
     });
     
     // Handle 404 - endpoint not implemented yet
@@ -748,34 +755,25 @@ export const customerApi = {
       };
     }
 
-    // Validate required fields
-    if (!response.data.rows || !response.data.meta) {
-      console.error('[customerApi.getRecommendations] Invalid response structure:', {
-        hasRows: !!response.data.rows,
-        hasMeta: !!response.data.meta,
-        data: response.data,
-      });
-      return { 
-        error: "Invalid response structure",
-        status: response.status
-      };
+    // Validate required fields: rows must have recommendedForYou, popular, offers (arrays)
+    const rows = response.data.rows;
+    if (!rows || !Array.isArray(rows.recommendedForYou) || !Array.isArray(rows.popular) || !Array.isArray(rows.offers)) {
+      console.error('[customerApi.getRecommendations] Invalid response structure:', { hasRows: !!rows, data: response.data });
+      return { error: "Invalid response structure", status: response.status };
     }
 
-    // Check if rows are empty (even with status="success")
-    const forYouCount = response.data.rows.forYou?.length || 0;
-    const popularCount = response.data.rows.popular?.length || 0;
-    const offersCount = response.data.rows.offers?.length || 0;
-    const totalCount = forYouCount + popularCount + offersCount;
+    const numRecommended = rows.recommendedForYou.length;
+    const numPopular = rows.popular.length;
+    const numOffers = rows.offers.length;
+    const totalCount = numRecommended + numPopular + numOffers;
 
-    console.log('[customerApi.getRecommendations] Success! Returning data:', {
+    console.log('[customerApi.getRecommendations] Success!', {
       status: response.data.status,
-      forYouCount,
-      popularCount,
-      offersCount,
+      numRecommendedForYou: numRecommended,
+      numPopular,
+      numOffers,
       totalCount,
-      meta: response.data.meta,
-      isColdStart: response.data.meta.isColdStart,
-      isStale: response.data.meta.isStale,
+      userSegment: response.data.meta?.userSegment,
     });
 
     // Even if rows are empty, return the data so UI can show appropriate message

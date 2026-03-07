@@ -4,7 +4,6 @@ import { useChat } from "../../hooks/useChat";
 import { customerApi } from "../../services/customer.api";
 import { getCurrentToken, clearAllTokens } from "../../services/tokens";
 import { useNavigate } from "react-router-dom";
-import type { DataSource } from "../../types/customer.api";
 
 // Maximum message length (reasonable limit for chat input)
 const MAX_MESSAGE_LENGTH = 2000;
@@ -124,23 +123,6 @@ export default function ChatPanel({ isOpen, onClose }: ChatPanelProps) {
     }
   };
 
-  const getDataSourceBadge = (dataSource?: DataSource) => {
-    if (!dataSource) return null;
-
-    const badges = {
-      POS_LIVE: { text: "Live Data", color: "bg-green-100 text-green-800" },
-      RAG_DOCS: { text: "Knowledge Base", color: "bg-blue-100 text-blue-800" },
-      LLM_GENERAL: { text: "AI Assistant", color: "bg-purple-100 text-purple-800" },
-    };
-
-    const badge = badges[dataSource];
-    return (
-      <span className={`text-xs px-2 py-1 rounded-full ${badge.color} ml-2`}>
-        {badge.text}
-      </span>
-    );
-  };
-
   if (!isOpen) return null;
 
   return (
@@ -222,9 +204,6 @@ export default function ChatPanel({ isOpen, onClose }: ChatPanelProps) {
                 }`}
               >
                 <p className="text-sm whitespace-pre-wrap">{message.text}</p>
-                {message.dataSource && (
-                  <div className="mt-2">{getDataSourceBadge(message.dataSource)}</div>
-                )}
               </div>
             </div>
           ))

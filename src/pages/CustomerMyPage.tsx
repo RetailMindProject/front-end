@@ -36,19 +36,18 @@ export default function CustomerMyPage() {
     return null; // Will redirect to login
   }
 
-  const recommendationsData = recommendations?.rows || {
-    forYou: [],
-    popular: [],
-    offers: [],
-  };
+  const rows = recommendations?.rows;
+  const recommendedForYou = rows?.recommendedForYou ?? [];
+  const popular = rows?.popular ?? [];
+  const offers = rows?.offers ?? [];
 
   return (
     <div className="pt-0">
       <section className="mt-4">
         <RecommendationsSection
-          forYou={recommendationsData.forYou}
-          popular={recommendationsData.popular}
-          offers={recommendationsData.offers}
+          recommendedForYou={recommendedForYou}
+          popular={popular}
+          offers={offers}
           loading={recommendationsLoading}
           meta={recommendations?.meta}
           error={recommendationsError}
