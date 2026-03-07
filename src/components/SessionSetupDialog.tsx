@@ -167,9 +167,12 @@ export default function SessionSetupDialog({
         }
       }
 
-      if (pairResult.data) {
+      if (pairResult.data && !pairResult.error) {
         // Success! Terminal paired
         setPairingResult(pairResult.data);
+        
+        // Dispatch event to notify other components (e.g., TerminalsManagement) that a terminal was paired
+        window.dispatchEvent(new CustomEvent('terminal-paired', { detail: { terminalId: selectedTerminalId } }));
         
         // Save token if we have one
         if (token) {

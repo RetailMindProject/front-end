@@ -1,12 +1,16 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useSearchParams, useNavigate } from "react-router-dom";
 import type { SearchParams, SearchResponse, ProductCard } from "../types/customer.search";
-import { customerSearchService } from "../services/customer.search.mock";
+import { customerBrowseApi } from "../services/customer.browse.api";
+import { clearAllTokens } from "../services/tokens";
+import { normalizeProductImageUrl } from "../utils/imageUrl";
 
 interface UseProductSearchReturn {
   // State
   items: ProductCard[];
   total: number;
+  totalPages: number;
+  currentPage: number;
   loading: boolean;
   error: string | null;
   params: SearchParams;
@@ -16,6 +20,7 @@ interface UseProductSearchReturn {
   setCategory: (categoryId: number | undefined) => void;
   setSubCategory: (subCategoryId: number | undefined) => void;
   setFilter: (key: keyof SearchParams, value: any) => void;
+  setPage: (page: number) => void;
   loadMore: () => void;
   resetFilters: () => void;
   hasMore: boolean;
@@ -25,11 +30,13 @@ const DEFAULT_SIZE = 20;
 
 export function useProductSearch(): UseProductSearchReturn {
   const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
   const [items, setItems] = useState<ProductCard[]>([]);
   const [total, setTotal] = useState(0);
+  const [totalPages, setTotalPages] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [currentPage, setCurrentPage] = useState(1);
+  const [currentPage, setCurrentPage] = useState(0); // Backend uses 0-based pages
   const debounceTimerRef = useRef<number | null>(null);
 
   // Parse URL params to SearchParams
@@ -38,12 +45,11 @@ export function useProductSearch(): UseProductSearchReturn {
       q: searchParams.get("q") || undefined,
       categoryId: searchParams.get("categoryId") ? Number(searchParams.get("categoryId")) : undefined,
       subCategoryId: searchParams.get("subCategoryId") ? Number(searchParams.get("subCategoryId")) : undefined,
-      inStockOnly: searchParams.get("inStockOnly") === "true",
       offersOnly: searchParams.get("offersOnly") === "true",
       minPrice: searchParams.get("minPrice") ? Number(searchParams.get("minPrice")) : undefined,
       maxPrice: searchParams.get("maxPrice") ? Number(searchParams.get("maxPrice")) : undefined,
-      sort: (searchParams.get("sort") as SearchParams["sort"]) || "relevance",
-      page: searchParams.get("page") ? Number(searchParams.get("page")) : 1,
+      sortKey: (searchParams.get("sortKey") as SearchParams["sortKey"]) || "RELEVANCE",
+      page: searchParams.get("page") ? Number(searchParams.get("page")) : 0, // Backend uses 0-based
       size: DEFAULT_SIZE,
     };
   }, [searchParams]);
@@ -73,13 +79,16 @@ export function useProductSearch(): UseProductSearchReturn {
   // Perform search
   const performSearch = useCallback(async (searchParams: SearchParams, append = false) => {
     // Determine if we should show products
+    // Show products if: category/subcategory selected OR search query provided
     const shouldShowProducts = 
+      (searchParams.categoryId !== undefined) || 
       (searchParams.subCategoryId !== undefined) || 
       (searchParams.q !== undefined && searchParams.q.trim() !== "");
 
     if (!shouldShowProducts) {
       setItems([]);
       setTotal(0);
+      setTotalPages(0);
       setLoading(false);
       return;
     }
@@ -88,26 +97,90 @@ export function useProductSearch(): UseProductSearchReturn {
     setError(null);
 
     try {
-      const response: SearchResponse = await customerSearchService.searchProducts(searchParams);
+      // Use categoryId (can be root category or subcategory)
+      const categoryId = searchParams.subCategoryId || searchParams.categoryId;
       
-      if (append) {
-        setItems((prev) => [...prev, ...response.items]);
-      } else {
-        setItems(response.items);
+      const response = await customerBrowseApi.getProducts({
+        page: searchParams.page ?? 0,
+        size: searchParams.size ?? DEFAULT_SIZE,
+        categoryId: categoryId,
+        q: searchParams.q,
+        offersOnly: searchParams.offersOnly,
+        minPrice: searchParams.minPrice,
+        maxPrice: searchParams.maxPrice,
+        sortKey: searchParams.sortKey || "RELEVANCE",
+      });
+      
+      if (response.status === 401 || response.status === 403) {
+        // Session expired - clear tokens and redirect
+        clearAllTokens();
+        navigate("/login");
+        return;
       }
       
-      setTotal(response.total);
-      setCurrentPage(response.page);
+      if (response.status === 400) {
+        // Validation error (minPrice > maxPrice, invalid sortKey)
+        setError(response.error || "Invalid filter parameters");
+        // Keep previous results if available
+        if (items.length === 0) {
+          setItems([]);
+          setTotal(0);
+          setTotalPages(0);
+        }
+        return;
+      }
+      
+      if (response.error) {
+        setError(response.error);
+        setItems([]);
+        setTotal(0);
+        setTotalPages(0);
+        return;
+      }
+      
+      if (response.data) {
+        // Transform backend response to ProductCard format
+        const transformedItems: ProductCard[] = response.data.content.map((item) => {
+          // Normalize image URL for frontend display (from public/picture/)
+          const imageUrl = normalizeProductImageUrl(item.primaryImageUrl);
+          
+          return {
+            id: item.id,
+            sku: item.sku,
+            name: item.name,
+            brand: item.brand,
+            defaultPrice: item.defaultPrice,
+            taxRate: item.taxRate,
+            primaryImageUrl: imageUrl,
+            offer: item.offer,
+            // Legacy fields for backward compatibility
+            price: item.defaultPrice,
+            imageUrl: imageUrl || undefined,
+            hasOffer: item.offer !== null,
+          };
+        });
+        
+        if (append) {
+          setItems((prev) => [...prev, ...transformedItems]);
+        } else {
+          setItems(transformedItems);
+        }
+        
+        setTotal(response.data.totalElements);
+        setTotalPages(response.data.totalPages);
+        setCurrentPage(response.data.page);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to search products");
       setItems([]);
       setTotal(0);
+      setTotalPages(0);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [navigate]);
 
-  // Debounced search
+  // Debounced search (400ms delay)
   const debouncedSearch = useCallback((searchParams: SearchParams) => {
     if (debounceTimerRef.current) {
       clearTimeout(debounceTimerRef.current);
@@ -115,7 +188,7 @@ export function useProductSearch(): UseProductSearchReturn {
 
     debounceTimerRef.current = window.setTimeout(() => {
       performSearch(searchParams, false);
-    }, 300);
+    }, 400);
   }, [performSearch]);
 
   // Initial load and when params change
@@ -123,23 +196,26 @@ export function useProductSearch(): UseProductSearchReturn {
     const currentParams = parseParams();
     
     // Determine if we should show products
+    // Show products if: category/subcategory selected OR search query provided
     const shouldShowProducts = 
+      (currentParams.categoryId !== undefined) || 
       (currentParams.subCategoryId !== undefined) || 
       (currentParams.q !== undefined && currentParams.q.trim() !== "");
 
     if (!shouldShowProducts) {
       setItems([]);
       setTotal(0);
+      setTotalPages(0);
       setLoading(false);
       return;
     }
     
     // If query exists, use debounced search
     if (currentParams.q && currentParams.q.trim()) {
-      debouncedSearch({ ...currentParams, page: 1 });
+      debouncedSearch({ ...currentParams, page: 0 });
     } else {
       // Immediate search for category/subcategory
-      performSearch({ ...currentParams, page: 1 }, false);
+      performSearch({ ...currentParams, page: 0 }, false);
     }
 
     return () => {
@@ -151,23 +227,27 @@ export function useProductSearch(): UseProductSearchReturn {
 
   // Actions
   const setQuery = useCallback((q: string) => {
-    updateUrlParams({ q, page: 1 });
+    updateUrlParams({ q, page: 0 });
   }, [updateUrlParams]);
 
   const setCategory = useCallback((categoryId: number | undefined) => {
     updateUrlParams({ 
       categoryId, 
       subCategoryId: undefined, // Reset subcategory when category changes
-      page: 1 
+      page: 0 
     });
   }, [updateUrlParams]);
 
   const setSubCategory = useCallback((subCategoryId: number | undefined) => {
-    updateUrlParams({ subCategoryId, page: 1 });
+    updateUrlParams({ subCategoryId, page: 0 });
   }, [updateUrlParams]);
 
   const setFilter = useCallback((key: keyof SearchParams, value: any) => {
-    updateUrlParams({ [key]: value, page: 1 });
+    updateUrlParams({ [key]: value, page: 0 });
+  }, [updateUrlParams]);
+
+  const setPage = useCallback((page: number) => {
+    updateUrlParams({ page });
   }, [updateUrlParams]);
 
   const loadMore = useCallback(() => {
@@ -186,6 +266,8 @@ export function useProductSearch(): UseProductSearchReturn {
   return {
     items,
     total,
+    totalPages,
+    currentPage,
     loading,
     error,
     params,
@@ -193,6 +275,7 @@ export function useProductSearch(): UseProductSearchReturn {
     setCategory,
     setSubCategory,
     setFilter,
+    setPage,
     loadMore,
     resetFilters,
     hasMore,

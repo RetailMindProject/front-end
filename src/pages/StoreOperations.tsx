@@ -3,6 +3,7 @@ import StoreManager from '../components/Operations/StoreManager';
 import { storeProductsApi, type StoreProductResponseDTO, type StoreTransferRequestDTO } from '../services/store-products.api';
 import { productsApi, type ProductDTO } from '../services/products.api';
 import PageHeader from "../components/PageHeader";
+import { transferRequestsApi } from "../services/transfer-requests.api";
 
 type UIStoreProduct = StoreProductResponseDTO & {
   imageUrl?: string | null;
@@ -17,6 +18,7 @@ export default function StoreOperations() {
   const [inventoryProducts, setInventoryProducts] = useState<ProductDTO[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [requestToast, setRequestToast] = useState<string | null>(null);
   const [filters, setFilters] = useState({
     brand: '',
     sku: '',
@@ -171,31 +173,34 @@ export default function StoreOperations() {
     }
   };
 
-  const addProductFromInventory = async (product: ProductDTO, quantity: number = 1, expirationDate?: string | null) => {
+  const addProductFromInventory = async (product: ProductDTO, quantity: number = 1, _expirationDate?: string | null) => {
+    // Instead of performing a direct transfer, send a transfer request to Inventory
     setLoading(true);
     setError(null);
     try {
-      const dto: StoreTransferRequestDTO = {
-        productId: typeof product.id === 'string' ? parseInt(product.id) : product.id,
-        quantity: quantity,
-        notes: `Added to store from inventory`,
-        expirationDate: expirationDate || null
-      };
-      
-      console.log('Transferring product to store:', dto);
-      const res = await storeProductsApi.transferToStore(dto);
-      
-      if (res.data) {
-        console.log('Transfer successful, refreshing store products...');
-        // Refresh store products list to show the newly added product
-        await fetchStoreProducts();
-        console.log('Store products refreshed');
-      } else {
-        throw new Error(res.error || 'Failed to add product to store');
+      const productId = typeof product.id === "string" ? parseInt(product.id) : product.id;
+
+      const res = await transferRequestsApi.createRequest({
+        items: [
+          {
+            productId,
+            quantity,
+          },
+        ],
+      });
+
+      if (!res.data) {
+        throw new Error(res.error || "Failed to send transfer request");
       }
+
+      console.log("Transfer request created:", res.data);
+      // No direct stock update here – Inventory will update quantities on approval
+      // Show a lightweight confirmation toast for the Store user
+      setRequestToast("Request sent to Inventory");
     } catch (err) {
-      console.error('Transfer error:', err);
-      setError(err instanceof Error ? err.message : 'Unable to add product to store');
+      console.error("Transfer request error:", err);
+      setError(err instanceof Error ? err.message : "Unable to send transfer request");
+      throw err;
     } finally {
       setLoading(false);
     }
@@ -439,7 +444,29 @@ export default function StoreOperations() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 relative">
+      {requestToast && (
+        <div
+          className="fixed top-4 right-4 z-[100]"
+          style={{ animation: "fade-in 0.3s ease-out, slide-in-from-right 0.3s ease-out" }}
+        >
+          <div className="bg-emerald-50 border border-emerald-300 rounded-lg px-4 py-3 shadow-lg flex items-start gap-3 min-w-[260px] max-w-[360px]">
+            <div className="flex-1 min-w-0">
+              <p className="font-semibold text-emerald-900 text-sm">{requestToast}</p>
+              <p className="text-xs text-emerald-700 mt-1">
+                Inventory Manager will approve or reject this request.
+              </p>
+            </div>
+            <button
+              onClick={() => setRequestToast(null)}
+              className="flex-shrink-0 text-emerald-600 hover:text-emerald-800 transition-colors text-sm font-semibold"
+              aria-label="Dismiss"
+            >
+              ×
+            </button>
+          </div>
+        </div>
+      )}
       <PageHeader
         title="Store Operations"
         icon={<span className="text-2xl">🏪</span>}

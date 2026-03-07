@@ -1,6 +1,7 @@
 import { AlertCircle, Clock, Flame, Percent, ShoppingCart, Sparkles, TrendingUp } from "lucide-react";
 import type { RecommendationItem, RecommendationMeta } from "../../types/customer.api";
 import SectionHeader from "./SectionHeader";
+import { normalizeProductImageUrl } from "../../utils/imageUrl";
 
 interface RecommendationsSectionProps {
   forYou: RecommendationItem[];
@@ -34,28 +35,35 @@ export default function RecommendationsSection({
     const hasDiscount = product.hasOffer && product.offer?.discountPercent;
     const isAvailable = product.available !== false;
 
+    // Normalize image URL for frontend display (from public/picture/)
+    const imageUrl = normalizeProductImageUrl(product.imageUrl);
+
     return (
       <div className="flex-shrink-0 w-[220px] bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-md hover:border-gray-200 transition-all duration-200">
         <div className="aspect-[4/3] bg-gradient-to-br from-gray-50 to-gray-100 relative overflow-hidden">
-          {product.imageUrl ? (
+          {imageUrl ? (
             <img
-              src={product.imageUrl}
+              src={imageUrl}
               alt={product.name}
               className="w-full h-full object-cover"
               onError={(e) => {
                 (e.target as HTMLImageElement).style.display = 'none';
+                const fallback = (e.target as HTMLImageElement).nextElementSibling as HTMLElement;
+                if (fallback) fallback.style.display = 'flex';
               }}
             />
-          ) : (
-            <div className="w-full h-full flex items-center justify-center">
-              <div className="text-center">
-                <div className="w-12 h-12 mx-auto mb-2 rounded-lg bg-gray-200 flex items-center justify-center">
-                  <ShoppingCart className="h-6 w-6 text-gray-400" />
-                </div>
-                <p className="text-xs text-gray-400">No image</p>
+          ) : null}
+          <div
+            className={`w-full h-full flex items-center justify-center ${imageUrl ? "hidden" : ""}`}
+            style={{ display: imageUrl ? "none" : "flex" }}
+          >
+            <div className="text-center">
+              <div className="w-12 h-12 mx-auto mb-2 rounded-lg bg-gray-200 flex items-center justify-center">
+                <ShoppingCart className="h-6 w-6 text-gray-400" />
               </div>
+              <p className="text-xs text-gray-400">No image</p>
             </div>
-          )}
+          </div>
           {showDiscount && hasDiscount && product.offer && (
             <div className="absolute top-3 right-3 bg-red-500 text-white text-xs font-semibold px-2.5 py-1 rounded-full shadow-sm">
               {product.offer.discountPercent}% OFF

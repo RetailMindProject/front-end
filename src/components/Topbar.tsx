@@ -62,9 +62,20 @@ export default function Topbar() {
   const loadUnreadCount = useCallback(async () => {
     // Don't load unread count for CASHIER role (endpoint requires JWT)
     if (currentRole === "CASHIER") return;
-    const result = await messagesApi.getUnreadCount();
-    if (result.data !== undefined) {
-      setUnreadCount(result.data);
+    
+    try {
+      const result = await messagesApi.getUnreadCount();
+      if (result.data !== undefined) {
+        setUnreadCount(result.data);
+      } else if (result.error) {
+        // If endpoint fails (403/500), fallback to 0 and don't block the page
+        console.warn("Failed to fetch unread count:", result.error);
+        setUnreadCount(0);
+      }
+    } catch (error) {
+      // Handle any unexpected errors gracefully
+      console.warn("Error loading unread count:", error);
+      setUnreadCount(0);
     }
   }, [currentRole]);
 
@@ -75,7 +86,9 @@ export default function Topbar() {
     }
 
     loadUnreadCount();
-    const interval = setInterval(loadUnreadCount, 5000);
+    // Use 60 seconds polling for Store Manager, 5 seconds for others
+    const pollingInterval = currentRole === "STORE_MANAGER" ? 60000 : 5000;
+    const interval = setInterval(loadUnreadCount, pollingInterval);
     const onFocus = () => loadUnreadCount();
     const onUpdated = () => loadUnreadCount();
     window.addEventListener("focus", onFocus);

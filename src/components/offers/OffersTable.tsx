@@ -1,5 +1,6 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { Edit, Eye, Ban, Filter as FilterIcon } from "lucide-react";
+import Pagination from "../Pagination";
 import type { OfferType, DiscountType } from "./OfferForm";
 
 export interface Offer {
@@ -68,6 +69,8 @@ function formatDateRange(startAt: string, endAt: string): string {
 export default function OffersTable({ offers, onEdit, onToggleActive, onView }: OffersTableProps) {
   const [typeFilter, setTypeFilter] = useState<OfferTypeFilter>("ALL");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("ALL");
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 20;
 
   const filteredOffers = useMemo(() => {
     return offers.filter((offer) => {
@@ -79,6 +82,19 @@ export default function OffersTable({ offers, onEdit, onToggleActive, onView }: 
       return matchesType && matchesStatus;
     });
   }, [offers, typeFilter, statusFilter]);
+
+  // Reset to page 1 when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [typeFilter, statusFilter]);
+
+  // Pagination logic
+  const totalPages = Math.ceil(filteredOffers.length / pageSize);
+  const paginatedOffers = useMemo(() => {
+    const startIndex = (currentPage - 1) * pageSize;
+    const endIndex = startIndex + pageSize;
+    return filteredOffers.slice(startIndex, endIndex);
+  }, [filteredOffers, currentPage, pageSize]);
 
   return (
     <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
@@ -110,7 +126,7 @@ export default function OffersTable({ offers, onEdit, onToggleActive, onView }: 
             <option value="INACTIVE">Inactive</option>
           </select>
           <div className="ml-auto text-xs text-slate-500">
-            Showing {filteredOffers.length} of {offers.length} offers
+            Showing {paginatedOffers.length > 0 ? (currentPage - 1) * pageSize + 1 : 0}-{Math.min(currentPage * pageSize, filteredOffers.length)} of {filteredOffers.length} offers
           </div>
         </div>
       </div>
@@ -141,14 +157,14 @@ export default function OffersTable({ offers, onEdit, onToggleActive, onView }: 
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
-            {filteredOffers.length === 0 ? (
+            {paginatedOffers.length === 0 ? (
               <tr>
                 <td colSpan={6} className="px-6 py-8 text-center text-slate-500">
                   No offers found
                 </td>
               </tr>
             ) : (
-              filteredOffers.map((offer) => (
+              paginatedOffers.map((offer) => (
                 <tr key={offer.id} className="hover:bg-slate-50/50 transition-colors">
                   <td className="px-6 py-4">
                     <div className="font-medium text-slate-900">{offer.title}</div>
@@ -201,6 +217,17 @@ export default function OffersTable({ offers, onEdit, onToggleActive, onView }: 
           </tbody>
         </table>
       </div>
+
+      {/* Pagination */}
+      {filteredOffers.length > 0 && (
+        <div className="border-t border-slate-200 px-6 py-4">
+          <Pagination
+            currentPage={currentPage}
+            totalPages={totalPages}
+            onPageChange={setCurrentPage}
+          />
+        </div>
+      )}
     </div>
   );
 }
