@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams, useLocation } from "react-router-dom";
 import { ArrowLeft } from "lucide-react";
 import { FEATURES, FEATURE_ICONS, type FeatureKey } from "../config/features";
 
@@ -8,17 +8,37 @@ function isFeatureKey(x: string | undefined): x is FeatureKey {
   return Object.prototype.hasOwnProperty.call(FEATURES, x);
 }
 
+interface CustomCardData {
+  title: string;
+  description: string;
+}
+
 export default function DocsPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { feature } = useParams<{ feature: string }>();
+
+  // Get custom title/description from navigation state if available
+  const customData = location.state as CustomCardData | null;
 
   const data = useMemo(() => {
     if (!isFeatureKey(feature)) return null;
-    return { key: feature, ...FEATURES[feature], Icon: FEATURE_ICONS[feature] };
-  }, [feature]);
+    const featureData = FEATURES[feature];
+    const Icon = FEATURE_ICONS[feature];
+    
+    // Use custom data if provided, otherwise use feature defaults
+    return {
+      key: feature,
+      title: customData?.title || featureData.title,
+      description: customData?.description || featureData.description,
+      bullets: featureData.bullets,
+      usedBy: featureData.usedBy,
+      Icon: Icon,
+    };
+  }, [feature, customData]);
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-blue-50 via-slate-50 to-white">
+    <div className="min-h-screen bg-[#F8FAFC]">
       <div className="mx-auto w-full max-w-[1150px] px-4 sm:px-6 lg:px-8 py-10 sm:py-14">
         <button
           type="button"

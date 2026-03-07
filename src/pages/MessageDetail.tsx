@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
-import { useParams, useNavigate, useLocation } from "react-router-dom";
-import { ArrowLeft, Send } from "lucide-react";
+import { useParams, useNavigate, useLocation, useSearchParams } from "react-router-dom";
+import { ArrowLeft, Send, Bell } from "lucide-react";
 import type { Message, SentMessage } from "../components/messages/types";
 import type { MessageDTO } from "../services/messages.api";
 import MessageContent from "../components/messages/MessageContent";
@@ -74,6 +74,7 @@ export default function MessageDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { pathname } = useLocation();
+  const [searchParams] = useSearchParams();
   const [message, setMessage] = useState<Message | null>(null);
   const [sentMessage, setSentMessage] = useState<SentMessage | null>(null);
   const [isSentMessage, setIsSentMessage] = useState(false);
@@ -82,7 +83,11 @@ export default function MessageDetail() {
   const [replying, setReplying] = useState(false);
   const [fromUserId, setFromUserId] = useState<number | undefined>(undefined);
   const [isCurrentUserSender, setIsCurrentUserSender] = useState(false);
+  const [isSystemNotification, setIsSystemNotification] = useState(false);
   const replyFormRef = useRef<HTMLDivElement>(null);
+  
+  // Check if notification mode is enabled via URL param
+  const isNotificationMode = searchParams.get("mode") === "notification";
 
   useEffect(() => {
     const loadMessage = async () => {
@@ -102,6 +107,36 @@ export default function MessageDetail() {
         }
 
         if (result.data && result.dto) {
+          // Check if this is a TRANSFER_REQUEST message and redirect
+          const isTransferRequest = result.dto.title === "TRANSFER_REQUEST" || 
+                                   result.dto.body?.includes("[TRANSFER_REQUEST]") || 
+                                   result.dto.body?.includes("/requestId");
+          
+          if (isTransferRequest) {
+            const basePath = pathname.split("/").slice(0, 2).join("/");
+            // Extract request ID from message body
+            const requestIdMatch = result.dto.body?.match(/\[TRANSFER_REQUEST\]\s*(\d+)/i) || 
+                                  result.dto.body?.match(/requestId[=:]?\s*(\d+)/i) ||
+                                  result.dto.body?.match(/\/requestId\/(\d+)/i);
+            const requestId = requestIdMatch ? requestIdMatch[1] : null;
+            
+            if (requestId) {
+              navigate(`${basePath}/inventory/transfer-requests/${requestId}`, { replace: true });
+            } else {
+              navigate(`${basePath}/inventory/transfer-requests`, { replace: true });
+            }
+            return;
+          }
+
+          // Detect system notification: fromUser is null OR body contains [LOW_STOCK]
+          const detectedSystemNotification = result.dto.fromUser == null || 
+                                            result.dto.body?.includes("[LOW_STOCK]") ||
+                                            result.dto.title === "Low stock alert";
+          
+          // Use notification mode if explicitly set OR if detected as system notification
+          const shouldUseNotificationMode = isNotificationMode || detectedSystemNotification;
+          setIsSystemNotification(shouldUseNotificationMode);
+
           const currentUserId = getCurrentUserId();
           const senderId = result.dto.fromUser?.id;
           const isSender = currentUserId !== null && senderId !== undefined && String(currentUserId) === String(senderId);
@@ -124,7 +159,8 @@ export default function MessageDetail() {
             setSentMessage(null);
             setFromUserId(result.dto.fromUser?.id);
             
-            if (!result.data.read) {
+            // Only auto-mark as read if NOT a system notification (user must explicitly mark system notifications as read)
+            if (!result.data.read && !shouldUseNotificationMode) {
               await messagesApi.markAsRead(id);
               window.dispatchEvent(new CustomEvent("messages-updated"));
             }
@@ -140,19 +176,26 @@ export default function MessageDetail() {
     };
 
     loadMessage();
-  }, [id, pathname]);
+  }, [id, pathname, navigate]);
 
   useEffect(() => {
-    if (!loading && message && !isSentMessage && !isCurrentUserSender && replyFormRef.current) {
+    // Only scroll to reply form if it's not a system notification
+    if (!loading && message && !isSentMessage && !isCurrentUserSender && !isSystemNotification && replyFormRef.current) {
       setTimeout(() => {
         replyFormRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
         window.scrollTo({ top: window.scrollY + 100, behavior: "smooth" });
       }, 300);
     }
-  }, [loading, message, isSentMessage, isCurrentUserSender]);
+  }, [loading, message, isSentMessage, isCurrentUserSender, isSystemNotification]);
 
   const handleReplySubmit = async (reply: string, files: File[]) => {
     if (!id || !message) return;
+    
+    // Guard: Block sending replies to system notifications
+    if (isSystemNotification) {
+      setError("Cannot reply to system notifications.");
+      return;
+    }
 
     setReplying(true);
     setError("");
@@ -235,8 +278,8 @@ export default function MessageDetail() {
         </button>
 
         <PageHeader
-          title={isSentMessage ? "Sent Message Details" : "Message Details"}
-          icon={<Send className="h-6 w-6 text-white" />}
+          title={isSystemNotification ? "Notification Details" : (isSentMessage ? "Sent Message Details" : "Message Details")}
+          icon={isSystemNotification ? <Bell className="h-6 w-6 text-white" /> : <Send className="h-6 w-6 text-white" />}
         />
 
         <div className="space-y-6">
@@ -250,15 +293,23 @@ export default function MessageDetail() {
           ) : message && !isSentMessage && !isCurrentUserSender ? (
             <>
               <MessageContent message={message} />
-              <div ref={replyFormRef}>
-                <ReplyForm
-                  recipientName={message.fromName}
-                  onSubmit={handleReplySubmit}
-                />
-              </div>
-              {replying && (
+              {/* Only show reply form if NOT a system notification */}
+              {!isSystemNotification && (
+                <div ref={replyFormRef}>
+                  <ReplyForm
+                    recipientName={message.fromName}
+                    onSubmit={handleReplySubmit}
+                  />
+                </div>
+              )}
+              {replying && !isSystemNotification && (
                 <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-700">
                   Sending reply...
+                </div>
+              )}
+              {isSystemNotification && (
+                <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-700">
+                  This is a system notification. Replies are not available.
                 </div>
               )}
             </>

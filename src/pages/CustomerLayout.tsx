@@ -47,6 +47,7 @@ export default function CustomerLayout() {
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50">
       {showHeader && (
         <PageHeader
+          fixed
           title={CUSTOMER_STORE_NAME}
           icon={
             <img
@@ -94,7 +95,7 @@ export default function CustomerLayout() {
         />
       )}
 
-      <main className="max-w-[90rem] mx-auto px-4 sm:px-6 lg:px-8 pb-8">
+      <main className="max-w-[90rem] mx-auto px-4 sm:px-6 lg:px-8 pb-8 pt-24 sm:pt-28">
         <Outlet />
       </main>
 

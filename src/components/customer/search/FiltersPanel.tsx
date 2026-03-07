@@ -26,11 +26,10 @@ export default function FiltersPanel({
   const [isOpen, setIsOpen] = useState(false);
 
   const hasActiveFilters =
-    params.inStockOnly ||
     params.offersOnly ||
     params.minPrice !== undefined ||
     params.maxPrice !== undefined ||
-    params.sort !== "relevance";
+    (params.sortKey !== undefined && params.sortKey !== "RELEVANCE");
 
   return (
     <div className="lg:sticky lg:top-4">
@@ -78,29 +77,19 @@ export default function FiltersPanel({
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-2">Sort by</label>
           <select
-            value={params.sort || "relevance"}
-            onChange={(e) => onFilterChange("sort", e.target.value)}
+            value={params.sortKey || "RELEVANCE"}
+            onChange={(e) => onFilterChange("sortKey", e.target.value as "RELEVANCE" | "PRICE_ASC" | "PRICE_DESC" | "NEWEST")}
             className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
           >
-            <option value="relevance">Relevance</option>
-            <option value="price_asc">Price: Low to High</option>
-            <option value="price_desc">Price: High to Low</option>
-            <option value="newest">Newest First</option>
+            <option value="RELEVANCE">Relevance</option>
+            <option value="PRICE_ASC">Price: Low to High</option>
+            <option value="PRICE_DESC">Price: High to Low</option>
+            <option value="NEWEST">Newest First</option>
           </select>
         </div>
 
         {/* Toggles */}
         <div className="space-y-3">
-          <label className="flex items-center gap-3 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={params.inStockOnly || false}
-              onChange={(e) => onFilterChange("inStockOnly", e.target.checked)}
-              className="w-5 h-5 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-            />
-            <span className="text-sm font-medium text-gray-700">In Stock Only</span>
-          </label>
-
           <label className="flex items-center gap-3 cursor-pointer">
             <input
               type="checkbox"

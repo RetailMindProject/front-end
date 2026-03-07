@@ -20,6 +20,7 @@ import {
   Printer,
   History,
   CheckCircle,
+  AlertCircle,
 } from "lucide-react";
 import { getUserDisplayName, setSessionId, clearSessionId } from "../services/tokens";
 import { logoutForRole } from "../services/auth.api";
@@ -69,6 +70,7 @@ export default function CashierTerminal() {
   const [cart, setCart] = useState<CartItem[]>([]);
   const [currentOrder, setCurrentOrder] = useState<Order | null>(null);
   const [currentSessionId, setCurrentSessionId] = useState<number | null>(null);
+  const [terminalCode, setTerminalCode] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState(false);
   const [showSplitModal, setShowSplitModal] = useState(false);
@@ -126,6 +128,12 @@ export default function CashierTerminal() {
   const [currentCustomer, setCurrentCustomer] = useState<Customer | null>(null);
   const [shouldPromptForCustomer, setShouldPromptForCustomer] = useState(false);
   const [customerFound, setCustomerFound] = useState(false);
+  // Barcode notification state
+  const [barcodeNotFound, setBarcodeNotFound] = useState<string | null>(null);
+  const [searchInputShake, setSearchInputShake] = useState(false);
+  
+  // Payment error notification state
+  const [paymentError, setPaymentError] = useState<{ message: string; details?: string } | null>(null);
 
   // Barcode scanner state
   const [barcodeBuffer, setBarcodeBuffer] = useState("");
@@ -136,6 +144,7 @@ export default function CashierTerminal() {
   const storeName = "My store"; // يمكن جلبها من API لاحقاً
   const redirectToSelectTerminal = (customMessage?: string) => {
     setCurrentSessionId(null);
+    setTerminalCode(null);
     clearSessionId();
     setLoading(false);
     navigate("/select-terminal", {
@@ -181,6 +190,7 @@ export default function CashierTerminal() {
       const session = currentSessionResult.data;
       if (session.status === "OPEN" && session.paired) {
         setCurrentSessionId(session.sessionId);
+        setTerminalCode(session.terminalCode);
         setSessionId(session.sessionId);
         await loadHeldOrders(session.sessionId);
       } else {
@@ -369,9 +379,18 @@ export default function CashierTerminal() {
       if (product) {
         // Add to cart using existing addToCart function
         addToCart(product);
+        // Clear any previous error state
+        setBarcodeNotFound(null);
       } else {
-        // Product not found - could show a message, but silently ignore for now
-        console.warn(`Product with SKU "${barcode}" not found`);
+        // Product not found - show notification and shake effect
+        setBarcodeNotFound(barcode);
+        setSearchInputShake(true);
+        setTimeout(() => {
+          setSearchInputShake(false);
+        }, 500);
+        setTimeout(() => {
+          setBarcodeNotFound(null);
+        }, 3000);
       }
       
       // Clear buffer and input
@@ -417,9 +436,18 @@ export default function CashierTerminal() {
         await addToCart(product);
         // Clear search term after adding
         setSearchTerm("");
+        // Clear any previous error state
+        setBarcodeNotFound(null);
       } else {
-        // Product not found - show message
-        alert("SKU not found");
+        // Product not found - show notification and shake effect
+        setBarcodeNotFound(sku);
+        setSearchInputShake(true);
+        setTimeout(() => {
+          setSearchInputShake(false);
+        }, 500);
+        setTimeout(() => {
+          setBarcodeNotFound(null);
+        }, 3000);
       }
     }
   };
@@ -454,6 +482,20 @@ export default function CashierTerminal() {
           // Add to cart using existing addToCart function
           await addToCart(product);
           // Clear search term after adding
+          setSearchTerm("");
+          // Clear any previous error state
+          setBarcodeNotFound(null);
+        } else {
+          // Product not found - show notification and shake effect
+          setBarcodeNotFound(currentSearchTerm);
+          setSearchInputShake(true);
+          setTimeout(() => {
+            setSearchInputShake(false);
+          }, 500);
+          setTimeout(() => {
+            setBarcodeNotFound(null);
+          }, 3000);
+          // Clear search term
           setSearchTerm("");
         }
       }, 500); // Wait 500ms after last input to process
@@ -1069,7 +1111,21 @@ export default function CashierTerminal() {
       });
 
       if (result.error) {
-        alert(`Payment failed: ${result.error}`);
+        // Show styled payment error notification
+        const errorMessage = result.error;
+        const isInventoryError = errorMessage.toLowerCase().includes("not available") || 
+                                 errorMessage.toLowerCase().includes("inventory") ||
+                                 errorMessage.toLowerCase().includes("quantity");
+        
+        setPaymentError({
+          message: isInventoryError 
+            ? "Payment Failed: Inventory Issue"
+            : "Payment Failed",
+          details: errorMessage
+        });
+        
+        // Auto-dismiss after 5 seconds
+        setTimeout(() => setPaymentError(null), 5000);
       } else if (result.data) {
         // Save order info before clearing
         setPaidOrderId(result.data.id);
@@ -1083,7 +1139,11 @@ export default function CashierTerminal() {
       }
     } catch (error) {
       console.error("Error processing payment:", error);
-      alert("An error occurred while processing payment");
+      setPaymentError({
+        message: "Payment Processing Error",
+        details: "An unexpected error occurred while processing your payment. Please try again."
+      });
+      setTimeout(() => setPaymentError(null), 5000);
     } finally {
       setProcessing(false);
     }
@@ -1137,7 +1197,21 @@ export default function CashierTerminal() {
       });
 
       if (result.error) {
-        alert(`Payment failed: ${result.error}`);
+        // Show styled payment error notification
+        const errorMessage = result.error;
+        const isInventoryError = errorMessage.toLowerCase().includes("not available") || 
+                                 errorMessage.toLowerCase().includes("inventory") ||
+                                 errorMessage.toLowerCase().includes("quantity");
+        
+        setPaymentError({
+          message: isInventoryError 
+            ? "Payment Failed: Inventory Issue"
+            : "Payment Failed",
+          details: errorMessage
+        });
+        
+        // Auto-dismiss after 5 seconds
+        setTimeout(() => setPaymentError(null), 5000);
       } else if (result.data) {
         // Save order info before clearing
         setPaidOrderId(result.data.id);
@@ -1152,7 +1226,11 @@ export default function CashierTerminal() {
       }
     } catch (error) {
       console.error("Error processing split payment:", error);
-      alert("An error occurred while processing payment");
+      setPaymentError({
+        message: "Payment Processing Error",
+        details: "An unexpected error occurred while processing your payment. Please try again."
+      });
+      setTimeout(() => setPaymentError(null), 5000);
     } finally {
       setProcessing(false);
     }
@@ -1594,8 +1672,19 @@ export default function CashierTerminal() {
         <div className="flex items-center gap-2">
           <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-gray-50 border border-gray-200">
             <div className="h-2 w-2 rounded-full bg-green-500"></div>
-            <span className="text-sm font-medium text-gray-800">Session</span>
-            <ChevronDown className="h-4 w-4 text-gray-600" />
+            {currentSessionId && terminalCode ? (
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-medium text-gray-800">
+                  Session #{currentSessionId}
+                </span>
+                <span className="text-gray-400">•</span>
+                <span className="text-sm font-medium text-gray-800">
+                  {terminalCode}
+                </span>
+              </div>
+            ) : (
+              <span className="text-sm font-medium text-gray-800">Session</span>
+            )}
           </div>
         </div>
 
@@ -1642,6 +1731,68 @@ export default function CashierTerminal() {
         </div>
       </header>
 
+      {/* Barcode Not Found Toast Notification */}
+      {barcodeNotFound && (
+        <div 
+          className="fixed top-4 right-4 z-[100]" 
+          style={{ animation: 'fade-in 0.3s ease-out, slide-in-from-right 0.3s ease-out' }}
+        >
+          <div className="bg-red-50 border border-red-300 rounded-lg px-4 py-3 shadow-lg flex items-start gap-3 min-w-[320px] max-w-[400px]">
+            <div className="flex-shrink-0 mt-0.5">
+              <AlertCircle className="h-5 w-5 text-red-600" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="font-semibold text-red-900 text-sm">Product Not Found</p>
+              <p className="text-sm text-red-700 mt-1">
+                The scanned barcode does not match any product.
+              </p>
+              <p className="text-xs text-red-500 mt-1.5 font-mono">
+                {barcodeNotFound}
+              </p>
+            </div>
+            <button
+              onClick={() => setBarcodeNotFound(null)}
+              className="flex-shrink-0 text-red-600 hover:text-red-800 transition-colors mt-0.5"
+              aria-label="Dismiss"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Payment Error Toast Notification */}
+      {paymentError && (
+        <div 
+          className="fixed top-4 right-4 z-[100]" 
+          style={{ animation: 'fade-in 0.3s ease-out, slide-in-from-right 0.3s ease-out' }}
+        >
+          <div className="bg-red-50 border border-red-300 rounded-lg px-4 py-3 shadow-lg flex items-start gap-3 min-w-[360px] max-w-[450px]">
+            <div className="flex-shrink-0 mt-0.5">
+              <CreditCard className="h-5 w-5 text-red-600" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="font-semibold text-red-900 text-sm">{paymentError.message}</p>
+              <p className="text-sm text-red-700 mt-1">
+                {paymentError.details || "Unable to complete the payment transaction."}
+              </p>
+              {paymentError.details?.toLowerCase().includes("inventory") && (
+                <p className="text-xs text-red-600 mt-2 font-medium">
+                  💡 Please check product quantities and try again.
+                </p>
+              )}
+            </div>
+            <button
+              onClick={() => setPaymentError(null)}
+              className="flex-shrink-0 text-red-600 hover:text-red-800 transition-colors mt-0.5"
+              aria-label="Dismiss"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Main Content */}
       <div className="flex-1 flex flex-col overflow-hidden">
         {/* Top Section - Three Columns */}
@@ -1656,11 +1807,24 @@ export default function CashierTerminal() {
                 type="text"
                 placeholder="Search by product name or SKU..."
                 value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
+                onChange={(e) => {
+                  setSearchTerm(e.target.value);
+                  // Clear error when user types again
+                  if (barcodeNotFound) {
+                    setBarcodeNotFound(null);
+                  }
+                }}
                 onKeyDown={handleSearchKeyDown}
                 onFocus={() => setIsTypingInInput(true)}
                 onBlur={() => setIsTypingInInput(false)}
-                className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className={`w-full pl-10 pr-4 py-2 border rounded-lg focus:outline-none focus:ring-2 transition-all ${
+                  barcodeNotFound
+                    ? "border-red-400 focus:ring-red-500 focus:border-red-500 shadow-[0_0_0_3px_rgba(239,68,68,0.1)]"
+                    : "border-gray-200 focus:ring-blue-500"
+                } ${
+                  searchInputShake ? "animate-[shake_0.5s_ease-in-out]" : ""
+                }`}
+                style={searchInputShake ? { animation: 'shake 0.5s ease-in-out' } : undefined}
               />
             </div>
           </div>

@@ -1,3 +1,4 @@
+import React from "react";
 import { AlertCircle, Clock, Flame, Percent, ShoppingCart, Sparkles, TrendingUp } from "lucide-react";
 import type { RecommendationItem, RecommendationMeta } from "../../types/customer.api";
 import { API_BASE_URL } from "../../services/api.client";
@@ -10,7 +11,8 @@ const TITLE_POPULAR = "Popular Right Now";
 const TITLE_OFFERS = "Special Offers";
 
 const BADGE_NEW_USER = "New User Recommendations";
-const TOOLTIP_NEW_USER = "We're still learning your preferences. These recommendations are based on general user trends.";
+const TOOLTIP_NEW_USER =
+  "We're still learning your preferences. These recommendations are based on general user trends.";
 const EMPTY_RECOMMENDED = "Start shopping to get personalized recommendations.";
 const ERROR_INLINE = "Recommendations are temporarily unavailable.";
 
@@ -26,21 +28,26 @@ const PLACEHOLDER_IMAGE =
  * Build the absolute image URL for a recommendation product.
  *
  * Rules (in order):
- *  1. null / undefined / empty → return null (render the icon placeholder instead).
- *  2. Already absolute (starts with "http") → use as-is (avoid double-prefix).
- *  3. Relative path (e.g. "/uploads/products/item.jpg") → prepend API_BASE_URL.
+ *  1. null / undefined / empty → return null.
+ *  2. Already absolute (starts with http/https) → use as-is.
+ *  3. Relative path → prepend API_BASE_URL.
  */
 function buildProductImageUrl(imageUrl: string | null | undefined): string | null {
-  if (!imageUrl) return null;
-  if (imageUrl.startsWith("http://") || imageUrl.startsWith("https://")) return imageUrl;
-  return `${API_BASE_URL}${imageUrl}`;
+  if (!imageUrl || !imageUrl.trim()) return null;
+
+  const trimmed = imageUrl.trim();
+  if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) return trimmed;
+
+  if (trimmed.startsWith("/")) {
+    return `${API_BASE_URL}${trimmed}`;
+  }
+
+  return `${API_BASE_URL}/${trimmed}`;
 }
 
 // ---------------------------------------------------------------------------
 // ProductCard — defined at MODULE LEVEL so React never treats it as a new
-// component type between renders of RecommendationsSection.  Defining it
-// inside the parent caused full unmount + remount of every card on every
-// render, which cancelled in-progress lazy image requests.
+// component type between renders of RecommendationsSection.
 // ---------------------------------------------------------------------------
 interface ProductCardProps {
   product: RecommendationItem;
@@ -49,7 +56,7 @@ interface ProductCardProps {
 
 function ProductCard({ product, showDiscount = false }: ProductCardProps) {
   const displayPrice = product.price ?? 0;
-  const hasDiscount = product.hasOffer && product.offer?.discountPercent;
+  const hasDiscount = Boolean(product.hasOffer && product.offer?.discountPercent);
   const isAvailable = product.available !== false;
   const resolvedImageUrl = buildProductImageUrl(product.imageUrl);
   const altText = product.imageAlt || product.name;
@@ -64,9 +71,6 @@ function ProductCard({ product, showDiscount = false }: ProductCardProps) {
             className="w-full h-full object-cover"
             loading="lazy"
             onError={(e) => {
-              // Prevent infinite loop: clear the handler BEFORE changing src.
-              // Without this, if PLACEHOLDER_IMAGE itself ever fails the
-              // browser would fire onError again indefinitely.
               e.currentTarget.onerror = null;
               e.currentTarget.src = PLACEHOLDER_IMAGE;
             }}
@@ -81,22 +85,26 @@ function ProductCard({ product, showDiscount = false }: ProductCardProps) {
             </div>
           </div>
         )}
+
         {showDiscount && hasDiscount && product.offer && (
           <div className="absolute top-3 right-3 bg-red-500 text-white text-xs font-semibold px-2.5 py-1 rounded-full shadow-sm">
             {product.offer.discountPercent}% OFF
           </div>
         )}
+
         {!isAvailable && (
           <div className="absolute top-3 left-3 bg-gray-900/80 text-white text-xs font-semibold px-2.5 py-1 rounded-full shadow-sm">
             Out of Stock
           </div>
         )}
       </div>
+
       <div className="p-4">
         <div className="mb-3">
           <h3 className="font-medium text-sm text-gray-900 line-clamp-2 leading-snug mb-1">{product.name}</h3>
           <p className="text-xs text-gray-500">{product.categoryName}</p>
         </div>
+
         {displayPrice > 0 && (
           <p className="text-lg font-semibold text-gray-900 mb-3">${displayPrice.toFixed(2)}</p>
         )}
@@ -106,7 +114,7 @@ function ProductCard({ product, showDiscount = false }: ProductCardProps) {
 }
 
 // ---------------------------------------------------------------------------
-// ProductRow — also at module level for the same stability reason.
+// ProductRow — also at module level for stability.
 // ---------------------------------------------------------------------------
 interface ProductRowProps {
   title: string;
@@ -116,7 +124,13 @@ interface ProductRowProps {
   emptyMessage?: string;
 }
 
-function ProductRow({ title, products, icon, showNewUserBadge = false, emptyMessage }: ProductRowProps) {
+function ProductRow({
+  title,
+  products,
+  icon,
+  showNewUserBadge = false,
+  emptyMessage,
+}: ProductRowProps) {
   const resolvedEmpty =
     emptyMessage ??
     (title === TITLE_OFFERS
@@ -140,6 +154,7 @@ function ProductRow({ title, products, icon, showNewUserBadge = false, emptyMess
           ) : null
         }
       />
+
       {products.length === 0 ? (
         <div className="mt-4 bg-gray-50 border border-gray-200 rounded-xl p-7 text-center">
           <p className="text-gray-600 text-sm leading-relaxed">{resolvedEmpty}</p>
@@ -205,22 +220,38 @@ export default function RecommendationsSection({
 }: RecommendationsSectionProps) {
   // Determine segment ONLY from meta.userSegment (do NOT infer from list lengths)
   const userSegment = meta?.userSegment ?? null;
-  const isNewUser = userSegment === "new"; // "existing" or other => no badge, "Recommended For You"
+  const isNewUser = userSegment === "new";
   const isError = status === "error";
   const titleRecommended = isNewUser ? TITLE_RECOMMENDED_NEW : TITLE_RECOMMENDED;
 
-  // --- DIAGNOSTIC Step 2: title + badge + triggering condition ---
-  const historyLen = meta?.historyLen;
+  // Optional diagnostics kept from one branch, but harmless.
   console.log("─── [RecommendationsSection][DIAG] ──────────────────────────────────");
   console.log("  status              :", status);
   console.log("  meta.userSegment    :", userSegment, " (raw meta.userSegment =", meta?.userSegment, ")");
-  console.log("  meta.historyLen     :", historyLen);
-  console.log("  isNewUser           :", isNewUser, "← ONLY from (meta.userSegment === \"new\"), NOT from list length");
+  console.log("  meta.historyLen     :", meta?.historyLen);
+  console.log('  isNewUser           :', isNewUser, '← ONLY from (meta.userSegment === "new")');
   console.log("  TITLE rendered      :", titleRecommended);
   console.log("  BADGE rendered      :", isNewUser ? `"${BADGE_NEW_USER}"` : "none");
-  console.log("  Condition triggered :", isNewUser ? 'meta.userSegment === "new" → NEW USER path' : userSegment === "existing" ? 'meta.userSegment === "existing" → EXISTING USER path' : `meta.userSegment = "${userSegment}" (unrecognised) → EXISTING USER path`);
-  console.log("  recommendedForYou.length:", recommendedForYou.length, "| popular.length:", popular.length, "| offers.length:", offers.length);
-  console.log("  allEmpty            :", recommendedForYou.length === 0 && popular.length === 0 && offers.length === 0);
+  console.log(
+    "  Condition triggered :",
+    isNewUser
+      ? 'meta.userSegment === "new" → NEW USER path'
+      : userSegment === "existing"
+        ? 'meta.userSegment === "existing" → EXISTING USER path'
+        : `meta.userSegment = "${userSegment}" (unrecognised) → EXISTING USER path`
+  );
+  console.log(
+    "  recommendedForYou.length:",
+    recommendedForYou.length,
+    "| popular.length:",
+    popular.length,
+    "| offers.length:",
+    offers.length
+  );
+  console.log(
+    "  allEmpty            :",
+    recommendedForYou.length === 0 && popular.length === 0 && offers.length === 0
+  );
   console.log("─────────────────────────────────────────────────────────────────────");
 
   if (loading) {
@@ -236,16 +267,19 @@ export default function RecommendationsSection({
         showNewUserBadge={isNewUser}
         emptyMessage={EMPTY_RECOMMENDED}
       />
+
       <ProductRow
         title={TITLE_POPULAR}
         products={popular}
         icon={<Flame className="h-5 w-5 text-white" />}
       />
+
       <ProductRow
         title={TITLE_OFFERS}
         products={offers}
         icon={<Percent className="h-5 w-5 text-white" />}
       />
+
       {meta?.isStale && (
         <div className="flex items-center justify-center gap-2 text-xs text-gray-400 pt-2">
           <Clock className="h-3 w-3" />
@@ -270,16 +304,21 @@ export default function RecommendationsSection({
     );
   }
 
-  // Show welcome/empty-state ONLY when ALL THREE arrays are empty (do not show if recommendedForYou exists)
+  // Show welcome/empty-state ONLY when ALL THREE arrays are empty
   const allEmpty = recommendedForYou.length === 0 && popular.length === 0 && offers.length === 0;
+
   if (status === "success" && allEmpty && !error) {
     return (
       <div className="text-center py-12 bg-gray-50 rounded-lg border-2 border-dashed border-gray-200">
         <div className="max-w-md mx-auto">
           <p className="text-2xl mb-2">👋 Welcome to our store!</p>
           <p className="text-gray-600 mb-4">{EMPTY_RECOMMENDED}</p>
+
           {isNewUser && (
-            <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-blue-100 text-blue-800 text-xs font-medium rounded-full" title={TOOLTIP_NEW_USER}>
+            <span
+              className="inline-flex items-center gap-1.5 px-3 py-1 bg-blue-100 text-blue-800 text-xs font-medium rounded-full"
+              title={TOOLTIP_NEW_USER}
+            >
               <TrendingUp className="h-3 w-3" />
               {BADGE_NEW_USER}
             </span>
@@ -299,6 +338,7 @@ export default function RecommendationsSection({
             <p className="text-xs text-amber-700 mt-1">{error}</p>
           </div>
         </div>
+
         <div className="text-center py-12 bg-gray-50 rounded-lg border-2 border-dashed border-gray-200">
           <p className="text-gray-600">{EMPTY_RECOMMENDED}</p>
         </div>

@@ -1,18 +1,27 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Search, X } from "lucide-react";
 
 interface SearchBarProps {
   value: string;
   onChange: (value: string) => void;
+  onSearch?: () => void;
   placeholder?: string;
 }
 
-export default function SearchBar({ value, onChange, placeholder = "Search products..." }: SearchBarProps) {
+export default function SearchBar({ value, onChange, onSearch, placeholder = "Search products..." }: SearchBarProps) {
   const [localValue, setLocalValue] = useState(value);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     setLocalValue(value);
   }, [value]);
+
+  // Auto focus on load
+  useEffect(() => {
+    if (inputRef.current) {
+      inputRef.current.focus();
+    }
+  }, []);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const newValue = e.target.value;
@@ -23,6 +32,21 @@ export default function SearchBar({ value, onChange, placeholder = "Search produ
   const handleClear = () => {
     setLocalValue("");
     onChange("");
+    if (inputRef.current) {
+      inputRef.current.focus();
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      if (onSearch) {
+        onSearch();
+      }
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      handleClear();
+    }
   };
 
   return (
@@ -31,11 +55,13 @@ export default function SearchBar({ value, onChange, placeholder = "Search produ
         <Search className="h-5 w-5" />
       </div>
       <input
+        ref={inputRef}
         type="text"
         value={localValue}
         onChange={handleChange}
+        onKeyDown={handleKeyDown}
         placeholder={placeholder}
-        className="w-full pl-12 pr-12 py-4 text-lg border-2 border-gray-200 rounded-xl focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none transition-all bg-white shadow-sm"
+        className="w-full h-[52px] pl-12 pr-12 text-lg border-2 border-gray-200 rounded-xl focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition-all bg-white shadow-md hover:shadow-lg"
       />
       {localValue && (
         <button

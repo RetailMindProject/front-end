@@ -43,3 +43,4 @@ export { default as FormInput } from "./forms/FormInput";
 export { default as FormSelect } from "./forms/FormSelect";
 export { default as RichTextEditor } from "./forms/RichTextEditor";
 export { default as FileUpload } from "./forms/FileUpload";
+export { default as Pagination } from "./Pagination";

@@ -5,6 +5,7 @@ import PageHeader from "../components/PageHeader";
 import TerminalsTable from "../components/terminals/TerminalsTable";
 import TerminalModal from "../components/terminals/TerminalModal";
 import { terminalApi, type TerminalManagementResponse, type CreateTerminalRequest, type UpdateTerminalRequest } from "../services/terminal.api";
+import { sessionsApi } from "../services/sessions.api";
 
 export default function TerminalsManagement() {
   const [terminals, setTerminals] = useState<TerminalManagementResponse[]>([]);
@@ -17,21 +18,90 @@ export default function TerminalsManagement() {
 
   useEffect(() => {
     loadTerminals();
+    // Refresh terminals every 10 seconds to keep Active Session status up to date
+    const interval = setInterval(loadTerminals, 10000);
+    return () => clearInterval(interval);
   }, []);
 
   const loadTerminals = async () => {
     setLoading(true);
     setError(null);
 
-    const result = await terminalApi.getAllTerminals();
+    // Fetch terminals and active sessions in parallel
+    const [terminalsResult, activeSessionsResult] = await Promise.all([
+      terminalApi.getAllTerminals(),
+      sessionsApi.fetchActiveSessions()
+    ]);
 
-    if (result.error) {
-      setError(result.error);
+    if (terminalsResult.error) {
+      setError(terminalsResult.error);
       setTerminals([]);
-    } else if (result.data) {
-      setTerminals(result.data);
+      setLoading(false);
+      return;
     }
 
+    if (!terminalsResult.data) {
+      setTerminals([]);
+      setLoading(false);
+      return;
+    }
+
+    // Create a map of terminal IDs that have active sessions
+    const terminalsWithActiveSessions = new Set<number>();
+    
+    // Use available terminals endpoint to get hasActiveSession
+    // This endpoint correctly returns hasActiveSession for all terminals it returns
+    const terminalSessionStatusMap = new Map<number, boolean>();
+    try {
+      const availableTerminalsResult = await terminalApi.getAvailableTerminals();
+      if (availableTerminalsResult.data) {
+        // Available terminals endpoint returns terminals with correct hasActiveSession
+        // Note: It may filter some terminals, but it provides accurate session status
+        availableTerminalsResult.data.forEach(terminal => {
+          terminalSessionStatusMap.set(terminal.id, terminal.hasActiveSession);
+        });
+      }
+    } catch (err) {
+      console.warn("Could not fetch available terminals for session status:", err);
+    }
+    
+    // For terminals with active sessions, we need to identify them
+    // If a terminal is active but not in available terminals, it might have an active session
+    // However, the most reliable way is to use the backend's hasActiveSession value if provided
+    // Since available terminals only includes terminals without active sessions (or inactive),
+    // terminals with active sessions won't be in that list
+
+    // Enrich terminals with active session status
+    const enrichedTerminals = terminalsResult.data.map(terminal => {
+      // Priority for determining hasActiveSession:
+      // 1. Use session status from available terminals if terminal is in that list
+      // 2. Use backend-provided hasActiveSession if explicitly set
+      // 3. For active terminals not in available list: likely has active session (but not certain)
+      // 4. Default to false
+      
+      let hasActiveSession = false;
+      
+      if (terminalSessionStatusMap.has(terminal.id)) {
+        // Terminal is in available terminals list - use its hasActiveSession value
+        hasActiveSession = terminalSessionStatusMap.get(terminal.id)!;
+      } else if (terminal.hasActiveSession !== undefined && terminal.hasActiveSession !== null) {
+        // Backend provided hasActiveSession - use it
+        hasActiveSession = terminal.hasActiveSession;
+      } else if (terminal.isActive) {
+        // Terminal is active but not in available list
+        // This could mean it has an active session, but we can't be certain
+        // So we'll default to false unless backend says otherwise
+        // Note: This is a limitation - ideally backend should provide this
+        hasActiveSession = false;
+      }
+      
+      return {
+        ...terminal,
+        hasActiveSession
+      };
+    });
+
+    setTerminals(enrichedTerminals);
     setLoading(false);
   };
 

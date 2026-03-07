@@ -5,10 +5,16 @@ import {
   FileText,
   History,
   LineChart,
+  Mail,
   MessagesSquare,
   Package,
+  Shield,
   Sparkles,
   Terminal,
+  ShoppingBag,
+  UserRound,
+  Store,
+  Cookie,
 } from "lucide-react";
 
 export type FeatureKey =
@@ -20,7 +26,14 @@ export type FeatureKey =
   | "payments"
   | "reports"
   | "messages"
-  | "history";
+  | "history"
+  | "customers"
+  | "cashiers"
+  | "managers"
+  | "email"
+  | "privacy"
+  | "terms"
+  | "cookies";
 
 export const FEATURES: Record<
   FeatureKey,
@@ -129,6 +142,92 @@ export const FEATURES: Record<
     ],
     usedBy: ["Manager", "Inventory"],
   },
+  customers: {
+    title: "Customers",
+    description:
+      "Empower your customers with personalized shopping experiences, product recommendations, and seamless order management.",
+    bullets: [
+      "Browse products with AI-powered recommendations tailored to preferences.",
+      "Search and filter products by category, price, and availability.",
+      "Track order history and manage account settings easily.",
+      "Receive personalized offers and promotions based on shopping behavior.",
+    ],
+    usedBy: ["Customer"],
+  },
+  cashiers: {
+    title: "Cashiers",
+    description:
+      "Streamlined POS interface for fast and accurate checkout, payment processing, and order management.",
+    bullets: [
+      "Quick barcode scanning and product lookup for efficient checkout.",
+      "Support for multiple payment methods including cash and card.",
+      "Real-time inventory updates and low stock alerts.",
+      "Session management with opening and closing workflows.",
+    ],
+    usedBy: ["Cashier"],
+  },
+  managers: {
+    title: "Managers",
+    description:
+      "Comprehensive dashboard for store operations, analytics, inventory management, and team oversight.",
+    bullets: [
+      "Real-time sales analytics and performance metrics.",
+      "Inventory management with low stock alerts and movement tracking.",
+      "Terminal and session management across multiple devices.",
+      "Staff management and access control for secure operations.",
+    ],
+    usedBy: ["Manager"],
+  },
+  email: {
+    title: "Email Communication",
+    description:
+      "Integrated email system for sending receipts, promotions, and customer service messages.",
+    bullets: [
+      "Send digital receipts directly to customers.",
+      "Automate promotional emails based on purchase history.",
+      "Handle customer inquiries efficiently.",
+    ],
+    usedBy: ["Customer", "Cashier", "Manager"],
+  },
+  privacy: {
+    title: "Privacy Policy",
+    description:
+      "Your privacy is important to us. This policy explains how we collect, use, and protect your personal information when you use RetailMind POS.",
+    bullets: [
+      "We collect only necessary information to provide and improve our services.",
+      "Your data is encrypted and stored securely with industry-standard protections.",
+      "We never sell your personal information to third parties.",
+      "You have the right to access, update, or delete your personal data at any time.",
+      "We comply with applicable data protection regulations including GDPR and local privacy laws.",
+    ],
+    usedBy: ["Customer", "Cashier", "Manager", "Inventory"],
+  },
+  terms: {
+    title: "Terms of Service",
+    description:
+      "These terms govern your use of RetailMind POS. By using our platform, you agree to comply with these terms and conditions.",
+    bullets: [
+      "You must be authorized to use the system and maintain account security.",
+      "You are responsible for all activities that occur under your account.",
+      "We reserve the right to suspend or terminate accounts that violate these terms.",
+      "The platform is provided 'as is' with reasonable efforts to ensure reliability.",
+      "We may update these terms periodically, and continued use constitutes acceptance.",
+    ],
+    usedBy: ["Customer", "Cashier", "Manager", "Inventory"],
+  },
+  cookies: {
+    title: "Cookie Policy",
+    description:
+      "We use cookies and similar technologies to enhance your experience, analyze usage, and improve our services.",
+    bullets: [
+      "Essential cookies are required for the platform to function properly.",
+      "Analytics cookies help us understand how you use our services.",
+      "You can control cookie preferences through your browser settings.",
+      "Some features may not work correctly if cookies are disabled.",
+      "We do not use cookies to track you across other websites.",
+    ],
+    usedBy: ["Customer", "Cashier", "Manager", "Inventory"],
+  },
 };
 
 export const FEATURE_ICONS: Record<FeatureKey, LucideIcon> = {
@@ -141,5 +240,12 @@ export const FEATURE_ICONS: Record<FeatureKey, LucideIcon> = {
   reports: FileText,
   messages: MessagesSquare,
   history: History,
+  customers: ShoppingBag,
+  cashiers: UserRound,
+  managers: Store,
+  email: Mail,
+  privacy: Shield,
+  terms: FileText,
+  cookies: Cookie,
 };
 

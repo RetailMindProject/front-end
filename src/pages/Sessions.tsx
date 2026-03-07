@@ -4,6 +4,7 @@ import { Plus } from "lucide-react";
 import PageHeader from "../components/PageHeader";
 import SessionsFilters from "../components/sessions/SessionsFilters";
 import CashiersList from "../components/sessions/CashiersList";
+import Pagination from "../components/Pagination";
 import { sessionsApi } from "../services/sessions.api";
 import type { SessionListItem } from "../services/sessions.api";
 import { getCurrentRole, getRoleFromToken, getCurrentToken } from "../services/tokens";
@@ -39,6 +40,8 @@ export default function Sessions() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [accessDenied, setAccessDenied] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 10;
 
   // Check if user has access (CEO or STORE_MANAGER only)
   useEffect(() => {
@@ -162,6 +165,19 @@ export default function Sessions() {
     return [...cashiers];
   }, [cashiers]);
 
+  // Pagination logic
+  const totalPages = Math.ceil(filteredCashiers.length / pageSize);
+  const paginatedCashiers = useMemo(() => {
+    const startIndex = (currentPage - 1) * pageSize;
+    const endIndex = startIndex + pageSize;
+    return filteredCashiers.slice(startIndex, endIndex);
+  }, [filteredCashiers, currentPage, pageSize]);
+
+  // Reset to page 1 when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [nameFilter, dateFilter, timeFilter, statusFilter]);
+
   const handleCashierClick = (_cashierId: string, sessionId?: string) => {
     // Navigate using sessionId if available
     // Note: The API requires sessionId to fetch cashier details
@@ -215,11 +231,20 @@ export default function Sessions() {
           <p className="text-red-600">Error: {error}</p>
         </div>
       ) : (
-        <CashiersList
-          cashiers={filteredCashiers}
-          onCashierClick={handleCashierClick}
-          fmtMoney={fmtMoney}
-        />
+        <>
+          <CashiersList
+            cashiers={paginatedCashiers}
+            onCashierClick={handleCashierClick}
+            fmtMoney={fmtMoney}
+          />
+          {filteredCashiers.length > 0 && (
+            <Pagination
+              currentPage={currentPage}
+              totalPages={totalPages}
+              onPageChange={setCurrentPage}
+            />
+          )}
+        </>
       )}
     </div>
   );
