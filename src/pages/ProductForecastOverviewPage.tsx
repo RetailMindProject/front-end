@@ -206,12 +206,47 @@ export default function ProductForecastOverviewPage() {
   const [totalPages, setTotalPages] = useState(0);
   const [totalElements, setTotalElements] = useState(0);
   
+  // Store all products for search navigation
+  const [allProducts, setAllProducts] = useState<ProductDTO[]>([]);
+  
   // Loading and error states
   const [loadingProducts, setLoadingProducts] = useState(true);
   const [loadingStockSummary, setLoadingStockSummary] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [runningBatchForecast, setRunningBatchForecast] = useState(false);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+
+  // Fetch all products on mount for search navigation
+  useEffect(() => {
+    const fetchAllProducts = async () => {
+      try {
+        const allProductsList: ProductDTO[] = [];
+        let currentPage = 0;
+        let hasMore = true;
+        
+        while (hasMore) {
+          const response = await productsApi.filter({
+            page: currentPage,
+            size: 1000,
+          });
+          
+          if (response.data && response.data.content) {
+            allProductsList.push(...response.data.content);
+            hasMore = currentPage < response.data.totalPages - 1;
+            currentPage++;
+          } else {
+            hasMore = false;
+          }
+        }
+        
+        setAllProducts(allProductsList);
+      } catch (err) {
+        console.error('Failed to fetch all products for search navigation:', err);
+      }
+    };
+    
+    fetchAllProducts();
+  }, []);
 
   // Debounce search term
   useEffect(() => {
@@ -444,7 +479,30 @@ export default function ProductForecastOverviewPage() {
                     type="text"
                     placeholder="Search by SKU, name, or brand..."
                     value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      setSearchTerm(value);
+                      
+                      // Navigate to page containing matching product if allProducts available
+                      if (value.trim() && allProducts.length > 0) {
+                        const searchLower = value.toLowerCase().trim();
+                        const matchingProduct = allProducts.find(p => 
+                          p.name?.toLowerCase().includes(searchLower) ||
+                          p.sku?.toLowerCase().includes(searchLower) ||
+                          p.brand?.toLowerCase().includes(searchLower)
+                        );
+                        
+                        if (matchingProduct) {
+                          const productIndex = allProducts.findIndex(p => p.id === matchingProduct.id);
+                          const targetPage = Math.floor(productIndex / pageSize);
+                          setPage(targetPage);
+                        } else {
+                          setPage(0);
+                        }
+                      } else {
+                        setPage(0);
+                      }
+                    }}
                     className="w-full pl-11 pr-4 py-3 border border-slate-300/50 rounded-xl text-sm text-slate-900 placeholder-slate-400 bg-white/60 backdrop-blur-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-all duration-200 shadow-sm hover:shadow-md"
                   />
                 </div>
@@ -478,7 +536,7 @@ export default function ProductForecastOverviewPage() {
 
               {/* Products Table */}
               <div className="flex-1 border border-slate-200/50 rounded-xl overflow-hidden bg-white/40 backdrop-blur-sm shadow-inner min-h-0 flex flex-col">
-                <div className="flex-1 overflow-auto custom-scrollbar">
+                <div className="flex-1 overflow-auto custom-scrollbar min-h-[400px]">
                   <table className="w-full text-sm">
                     <thead className="bg-gradient-to-r from-slate-50 to-slate-100/50 sticky top-0 border-b border-slate-200/50 backdrop-blur-sm z-10">
                       <tr>
@@ -571,8 +629,7 @@ export default function ProductForecastOverviewPage() {
               </div>
 
               {/* Pagination */}
-              {totalPages > 1 && (
-                <div className="flex items-center justify-between pt-5 border-t border-slate-200/50">
+              <div className="flex items-center justify-between pt-5 border-t border-slate-200/50">
                   <div className="text-sm text-slate-600 font-medium">
                     Showing{" "}
                     <span className="font-bold text-slate-900">
@@ -610,7 +667,6 @@ export default function ProductForecastOverviewPage() {
                     </button>
                   </div>
                 </div>
-              )}
             </div>
           </div>
         </div>

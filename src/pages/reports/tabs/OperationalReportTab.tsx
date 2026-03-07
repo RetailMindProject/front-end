@@ -530,7 +530,7 @@ export default function OperationalReportTab() {
           <div className="p-8 text-center text-slate-600">No transfer records found</div>
         ) : (
           <>
-            <div className="overflow-x-auto max-h-[400px] overflow-y-auto">
+            <div className="overflow-x-auto min-h-[400px] max-h-[400px] overflow-y-auto">
               <table className="w-full">
                 <thead className="bg-slate-50 border-b border-slate-200 sticky top-0">
                   <tr>
@@ -558,8 +558,7 @@ export default function OperationalReportTab() {
                 </tbody>
               </table>
             </div>
-            {transferTotalPages > 1 && (
-              <div className="p-4 border-t border-slate-200 flex items-center justify-between">
+            <div className="p-4 border-t border-slate-200 flex items-center justify-between">
                 <p className="text-sm text-slate-600">
                   Page {transferPage + 1} of {transferTotalPages} {transferRecords.length > 0 && `(${transferRecords.length} total)`}
                 </p>
@@ -594,12 +593,11 @@ export default function OperationalReportTab() {
                   </button>
                 </div>
               </div>
-            )}
-          </>
-        )}
-      </div>
+            </>
+          )}
+        </div>
 
-      {/* Restocking Reports */}
+        {/* Restocking Reports */}
       <div className="bg-white rounded-lg shadow-sm border border-slate-200">
         <div className="p-4 border-b border-slate-200 flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -632,7 +630,7 @@ export default function OperationalReportTab() {
           <div className="p-8 text-center text-slate-600">No restocking records found</div>
         ) : (
           <>
-            <div className="overflow-x-auto max-h-[400px] overflow-y-auto">
+            <div className="overflow-x-auto min-h-[400px] max-h-[400px] overflow-y-auto">
               <table className="w-full">
                 <thead className="bg-slate-50 border-b border-slate-200 sticky top-0">
                   <tr>
@@ -658,8 +656,7 @@ export default function OperationalReportTab() {
                 </tbody>
               </table>
             </div>
-            {restockTotalPages > 1 && (
-              <div className="p-4 border-t border-slate-200 flex items-center justify-between">
+            <div className="p-4 border-t border-slate-200 flex items-center justify-between">
                 <p className="text-sm text-slate-600">
                   Page {restockPage + 1} of {restockTotalPages} {restockingRecords.length > 0 && `(${restockingRecords.length} total)`}
                 </p>
@@ -694,7 +691,6 @@ export default function OperationalReportTab() {
                   </button>
                 </div>
               </div>
-            )}
           </>
         )}
       </div>
@@ -732,7 +728,7 @@ export default function OperationalReportTab() {
           <div className="p-8 text-center text-slate-600">No cashier performance data found</div>
         ) : (
           <>
-            <div className="overflow-x-auto max-h-[400px] overflow-y-auto">
+            <div className="overflow-x-auto min-h-[400px] max-h-[400px] overflow-y-auto">
               <table className="w-full">
                 <thead className="bg-slate-50 border-b border-slate-200 sticky top-0">
                   <tr>
@@ -760,8 +756,7 @@ export default function OperationalReportTab() {
                 </tbody>
               </table>
             </div>
-            {cashierTotalPages > 1 && (
-              <div className="p-4 border-t border-slate-200 flex items-center justify-between">
+            <div className="p-4 border-t border-slate-200 flex items-center justify-between">
                 <p className="text-sm text-slate-600">
                   Page {cashierPage + 1} of {cashierTotalPages} {cashierPerformance.length > 0 && `(${cashierPerformance.length} total)`}
                 </p>
@@ -796,7 +791,6 @@ export default function OperationalReportTab() {
                   </button>
                 </div>
               </div>
-            )}
           </>
         )}
       </div>
@@ -848,7 +842,7 @@ export default function OperationalReportTab() {
           <div className="p-8 text-center text-slate-600">No activity records found</div>
         ) : (
           <>
-            <div className="overflow-x-auto max-h-[400px] overflow-y-auto">
+            <div className="overflow-x-auto min-h-[400px] max-h-[400px] overflow-y-auto">
               <table className="w-full">
                 <thead className="bg-slate-50 border-b border-slate-200 sticky top-0">
                   <tr>
@@ -883,8 +877,7 @@ export default function OperationalReportTab() {
                 </tbody>
               </table>
             </div>
-            {activityTotalPages > 1 && (
-              <div className="p-4 border-t border-slate-200 flex items-center justify-between">
+            <div className="p-4 border-t border-slate-200 flex items-center justify-between">
                 <p className="text-sm text-slate-600">
                   Page {activityPage + 1} of {activityTotalPages} {activityRecords.length > 0 && `(${activityRecords.length} total)`}
                 </p>
@@ -919,7 +912,6 @@ export default function OperationalReportTab() {
                   </button>
                 </div>
               </div>
-            )}
           </>
         )}
       </div>

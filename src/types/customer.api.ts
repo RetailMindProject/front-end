@@ -159,26 +159,36 @@ export interface RecommendationItem {
   // Additional fields for offers row only
   baseScore?: number | null; // Pure recommendation strength (offers row only)
   offerBoost?: number | null; // Offer effect boost (offers row only)
+  // Image fields (now returned directly by the recommendation API)
+  imageUrl?: string | null;  // Relative path, e.g. "/uploads/products/item.jpg". Null if product has no image.
+  imageAlt?: string | null;  // Accessible alt text. Defaults to product name when null.
   // Frontend-only fields (from product catalog if needed)
-  price?: number; // Current price (from product catalog)
+  price?: number;     // Current price (from product catalog)
   available?: boolean; // Availability (from product catalog)
-  imageUrl?: string; // Product image URL (from product catalog)
 }
 
+/** API response rows: always present (arrays may be empty). */
 export interface RecommendationRows {
-  forYou: RecommendationItem[]; // Personalized recommendations (camelCase)
-  popular: RecommendationItem[]; // Trending / popular items (camelCase)
-  offers: RecommendationItem[]; // Items with strong offers (camelCase)
+  recommendedForYou: RecommendationItem[];
+  popular: RecommendationItem[];
+  offers: RecommendationItem[];
 }
 
 export interface RecommendationMeta {
   topK: number;
-  numForYou: number;
-  numPopular: number;
-  numOffers: number;
-  isColdStart: boolean;
-  isStale: boolean;
-  userSegment: string | null; // e.g., "frequent_buyer", "cold_start", "warm", etc.
+  numRecommendedForYou?: number;
+  numPopular?: number;
+  numOffers?: number;
+  isColdStart?: boolean;
+  isStale?: boolean;
+  /**
+   * User segment from backend. Determine segment ONLY from this field.
+   * - "existing" = sufficient history; personalized "Recommended For You"; no new-user badge.
+   * - "new" = new or low-history; "Recommended Picks For New Users" + badge.
+   */
+  userSegment: string | null;
+  /** Optional: history length or threshold (for debug logging). */
+  historyLen?: number;
 }
 
 export interface RecommendationsResponse {

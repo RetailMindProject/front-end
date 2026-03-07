@@ -3,18 +3,33 @@
 
 export type UserRole = 'STORE_MANAGER' | 'INVENTORY_MANAGER' | 'CEO' | 'CASHIER' | 'CUSTOMER';
 
+// Use sessionStorage so each tab keeps its own active role (avoids cross-tab overwrite).
 const ACTIVE_ROLE_KEY = "activeRole";
 
 export function setActiveRole(role: UserRole): void {
-  localStorage.setItem(ACTIVE_ROLE_KEY, role);
+  try {
+    sessionStorage.setItem(ACTIVE_ROLE_KEY, role);
+  } catch {
+    // Fallback for private/restricted sessionStorage
+    localStorage.setItem(ACTIVE_ROLE_KEY, role);
+  }
 }
 
 export function clearActiveRole(): void {
-  localStorage.removeItem(ACTIVE_ROLE_KEY);
+  try {
+    sessionStorage.removeItem(ACTIVE_ROLE_KEY);
+  } catch {
+    localStorage.removeItem(ACTIVE_ROLE_KEY);
+  }
 }
 
 export function getActiveRole(): UserRole | null {
-  const raw = localStorage.getItem(ACTIVE_ROLE_KEY);
+  let raw: string | null = null;
+  try {
+    raw = sessionStorage.getItem(ACTIVE_ROLE_KEY);
+  } catch {
+    raw = localStorage.getItem(ACTIVE_ROLE_KEY);
+  }
   if (!raw) return null;
   const role = raw.toUpperCase();
   if (role === 'STORE_MANAGER' || role === 'INVENTORY_MANAGER' || role === 'CEO' || role === 'CASHIER' || role === 'CUSTOMER') {

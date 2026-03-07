@@ -1,20 +1,34 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { Download, Filter, X, Calendar, List, BarChart3, ChevronLeft, ChevronRight } from 'lucide-react';
 import { productsApi, type CategoryDTO, type ProductDTO } from '../../../services/products.api';
+import { ordersApi } from '../../../services/orders.api';
+import { sessionsApi } from '../../../services/sessions.api';
+import { reportsApi } from '../../../services/reports.api';
 
 interface SalesRow {
   date: string;
+  time: string;
   invoiceId: string;
   cashier: string;
-  productName?: string;
-  productId?: number;
-  category?: string;
+  cashierId?: number;
+  customerName: string | null;
+  customerPhone: string | null;
   itemsCount: number;
   subtotal: number;
   discount: number;
   tax: number;
   total: number;
   paymentMethod: string;
+  status: string;
+  orderId: number;
+  sessionId: number;
+  paidAt: string | null;
+  createdAt: string;
+  notes?: string | null;
+  // Keep these for summary view compatibility
+  productName?: string;
+  productId?: number;
+  category?: string;
 }
 
 interface ProductSummary {
@@ -43,6 +57,7 @@ export default function SalesReportTab() {
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(10);
   const [totalPages, setTotalPages] = useState(0);
+  const [totalOrders, setTotalOrders] = useState(0);
   const [viewMode, setViewMode] = useState<ViewMode>('summary');
   
   // Pagination for summary tables
@@ -56,6 +71,8 @@ export default function SalesReportTab() {
   const [dateTo, setDateTo] = useState<string>('');
   const [selectedCategory, setSelectedCategory] = useState<string>('');
   const [productSearch, setProductSearch] = useState<string>('');
+  const [selectedCashier, setSelectedCashier] = useState<string>('');
+  const [cashiers, setCashiers] = useState<{ id: number; name: string }[]>([]);
 
   // Data
   const [categories, setCategories] = useState<CategoryDTO[]>([]);
@@ -69,7 +86,9 @@ export default function SalesReportTab() {
     totalOrders: 0,
     avgOrderValue: 0,
     discounts: 0,
+    totalTax: 0,
     refunds: 0,
+    mostPopularProduct: null as { productId: number; productName: string; totalQuantity: number; totalRevenue: number } | null,
   });
 
   // Calculate date ranges for presets
@@ -101,9 +120,29 @@ export default function SalesReportTab() {
     }
   };
 
+  // Fetch cashiers for filter dropdown
+  const fetchCashiers = async () => {
+    try {
+      const sessions = await sessionsApi.fetchSessions();
+      if (sessions) {
+        // Extract unique cashiers
+        const cashierMap = new Map<number, string>();
+        sessions.forEach(session => {
+          if (session.cashierId && !cashierMap.has(session.cashierId)) {
+            cashierMap.set(session.cashierId, `${session.firstName} ${session.lastName}`);
+          }
+        });
+        setCashiers(Array.from(cashierMap.entries()).map(([id, name]) => ({ id, name })));
+      }
+    } catch (err) {
+      console.error('Failed to fetch cashiers:', err);
+    }
+  };
+
   useEffect(() => {
     fetchCategories();
     fetchProducts();
+    fetchCashiers();
   }, []);
 
   useEffect(() => {
@@ -114,13 +153,67 @@ export default function SalesReportTab() {
     }
   }, [datePreset]);
 
-  useEffect(() => {
-    fetchSalesData();
-  }, [page, pageSize, dateFrom, dateTo, selectedCategory, productSearch, products]);
+  // Fetch summary from API - gracefully handle if endpoint doesn't exist yet
+  const fetchSummary = useCallback(async () => {
+    try {
+      const dateRange = getDateRange(datePreset);
+      const fromDate = dateRange.from || dateFrom;
+      const toDate = dateRange.to || dateTo;
+
+      const result = await reportsApi.getSummary({
+        from: fromDate || undefined,
+        to: toDate || undefined,
+      });
+
+      if (result.data) {
+        setSummary({
+          totalSales: result.data.totalSales || 0,
+          totalOrders: result.data.totalOrders || 0,
+          avgOrderValue: result.data.averageOrderValue || 0,
+          discounts: result.data.totalDiscount || 0,
+          totalTax: result.data.totalTax || 0,
+          refunds: 0, // TODO: Add refunds to backend response
+          mostPopularProduct: result.data.mostPopularProduct || null,
+        });
+      } else {
+        // If API fails, calculate from allFilteredData as fallback
+        // This ensures the page still works even if the summary endpoint doesn't exist
+        console.warn('Summary API not available, calculating from order data');
+        if (allFilteredData.length > 0) {
+          const totals = allFilteredData.reduce((acc, row) => {
+            acc.totalSales += row.total;
+            acc.totalOrders += 1;
+            acc.discounts += row.discount;
+            acc.totalTax += row.tax;
+            return acc;
+          }, { totalSales: 0, totalOrders: 0, discounts: 0, totalTax: 0 });
+
+          setSummary({
+            totalSales: totals.totalSales,
+            totalOrders: totals.totalOrders,
+            avgOrderValue: totals.totalOrders > 0 ? totals.totalSales / totals.totalOrders : 0,
+            discounts: totals.discounts,
+            totalTax: totals.totalTax,
+            refunds: 0,
+            mostPopularProduct: null,
+          });
+        }
+      }
+    } catch (err) {
+      console.error('Failed to fetch summary:', err);
+      // Don't set defaults here - let it use existing summary state
+      // This prevents clearing the summary if there's a temporary network error
+    }
+  }, [datePreset, dateFrom, dateTo, allFilteredData]);
 
   useEffect(() => {
-    calculateSummary();
-  }, [allFilteredData]);
+    fetchSalesData();
+  }, [page, pageSize, dateFrom, dateTo, datePreset, selectedCategory, productSearch, selectedCashier, viewMode]);
+
+  // Fetch summary from API
+  useEffect(() => {
+    fetchSummary();
+  }, [fetchSummary]);
 
   const fetchCategories = async () => {
     try {
@@ -178,127 +271,127 @@ export default function SalesReportTab() {
     }
   };
 
-  // Helper function to extract category name from product
-  const getCategoryName = (product: ProductDTO | undefined): string => {
-    if (!product) return 'Uncategorized';
-    
-    // Check categories array first (most common structure)
-    if (Array.isArray(product.categories) && product.categories.length > 0) {
-      return product.categories[0].name;
-    }
-    
-    // Check productCategory.category
-    if (product.productCategory?.category) {
-      return product.productCategory.category.name;
-    }
-    
-    // Check if category is a string
-    if (typeof product.category === 'string') {
-      return product.category;
-    }
-    
-    // Check if category is a CategoryDTO object
-    if (product.category && typeof product.category === 'object' && 'name' in product.category) {
-      return (product.category as any).name;
-    }
-    
-    return 'Uncategorized';
-  };
 
   const fetchSalesData = async () => {
     setLoading(true);
     try {
-      // TODO: Replace with actual sales/orders API endpoint
-      // Mock sales data - will be replaced with actual API
-      const mockData: SalesRow[] = Array.from({ length: 100 }).map((_, idx) => {
-        const product = products[idx % products.length];
-        const productId = product?.id ? (typeof product.id === 'string' ? parseInt(product.id) : product.id) : idx;
-        return {
-          date: new Date(Date.now() - idx * 86400000).toISOString().split('T')[0],
-          invoiceId: `INV-${10000 + idx}`,
-          cashier: idx % 3 === 0 ? 'Moath' : idx % 3 === 1 ? 'Sara' : 'Ahmed',
-          productName: product?.name || `Product ${idx}`,
-          productId: productId,
-          category: getCategoryName(product),
-          itemsCount: 1 + (idx % 5),
-          subtotal: 100 + idx * 10,
-          discount: idx % 4 === 0 ? 5 : 0,
-          tax: 7,
-          total: 100 + idx * 10 - (idx % 4 === 0 ? 5 : 0) + 7,
-          paymentMethod: idx % 2 === 0 ? 'CASH' : 'CARD',
-        };
+      // Get date range from preset or custom dates
+      const dateRange = getDateRange(datePreset);
+      const fromDate = dateRange.from || dateFrom;
+      const toDate = dateRange.to || dateTo;
+
+      // Extract cashier name if selected
+      const cashierName = selectedCashier.includes(':') 
+        ? selectedCashier.split(':')[1] 
+        : selectedCashier;
+
+      // Call the new backend endpoint
+      const result = await ordersApi.getOrdersReport({
+        from: fromDate || undefined,
+        to: toDate || undefined,
+        cashierName: cashierName || undefined,
+        status: 'PAID',
+        limit: pageSize,
+        offset: page * pageSize,
+        orderBy: 'date',
+        orderDirection: 'DESC',
       });
 
-      // Apply filters
-      let filtered = mockData;
-
-      // Date filter
-      if (dateFrom || dateTo) {
-        filtered = filtered.filter((row) => {
-          const rowDate = new Date(row.date);
-          if (dateFrom && rowDate < new Date(dateFrom)) return false;
-          if (dateTo && rowDate > new Date(dateTo + 'T23:59:59')) return false;
-          return true;
-        });
+      if (result.error) {
+        console.error('Failed to fetch sales data:', result.error);
+        setSalesData([]);
+        setAllFilteredData([]);
+        setTotalPages(0);
+        return;
       }
 
-      // Category filter
-      if (selectedCategory) {
-        filtered = filtered.filter((row) => {
-          const rowCategory = row.category || '';
-          return rowCategory.toLowerCase().includes(selectedCategory.toLowerCase());
-        });
+      if (!result.data) {
+        setSalesData([]);
+        setAllFilteredData([]);
+        setTotalPages(0);
+        return;
       }
 
-      // Product search - search by product name, SKU, or ID
-      if (productSearch.trim()) {
-        const searchLower = productSearch.toLowerCase().trim();
-        filtered = filtered.filter((row) => {
-          const nameMatch = row.productName?.toLowerCase().includes(searchLower);
-          const categoryMatch = row.category?.toLowerCase().includes(searchLower);
-          const productMatch = products.some(p => {
-            const productIdMatch = String(p.id).includes(searchLower);
-            const skuMatch = p.sku?.toLowerCase().includes(searchLower);
-            const productNameMatch = p.name?.toLowerCase().includes(searchLower);
-            return (productIdMatch || skuMatch || productNameMatch) && row.productName === p.name;
-          });
-          return nameMatch || categoryMatch || productMatch;
+      // Map OrderReportItem to SalesRow format
+      const salesRows: SalesRow[] = result.data.items.map(item => ({
+        date: item.date,
+        time: item.time,
+        invoiceId: item.orderNumber,
+        cashier: item.cashierName,
+        cashierId: item.cashierId,
+        customerName: item.customerName,
+        customerPhone: item.customerPhone,
+        itemsCount: item.itemCount,
+        subtotal: item.subtotal,
+        discount: item.discountAmount,
+        tax: item.taxAmount,
+        total: item.grandTotal,
+        paymentMethod: item.paymentMethod,
+        status: item.status,
+        orderId: item.orderId,
+        sessionId: item.sessionId,
+        paidAt: item.paidAt,
+        createdAt: item.createdAt,
+        notes: item.notes || null,
+      }));
+
+      // For product/category summaries, we still need all order data
+      // But summary KPIs come from the reports API endpoint
+      if (viewMode === 'summary') {
+        // Fetch all data for product/category summaries (still needed for those tables)
+        const allDataResult = await ordersApi.getOrdersReport({
+          from: fromDate || undefined,
+          to: toDate || undefined,
+          cashierName: cashierName || undefined,
+          status: 'PAID',
+          limit: 10000, // Large limit to get all data for product/category summaries
+          offset: 0,
+          orderBy: 'date',
+          orderDirection: 'DESC',
         });
+
+        if (allDataResult.data) {
+          const allRows: SalesRow[] = allDataResult.data.items.map(item => ({
+            date: item.date,
+            time: item.time,
+            invoiceId: item.orderNumber,
+            cashier: item.cashierName,
+            cashierId: item.cashierId,
+            customerName: item.customerName,
+            customerPhone: item.customerPhone,
+            itemsCount: item.itemCount,
+            subtotal: item.subtotal,
+            discount: item.discountAmount,
+            tax: item.taxAmount,
+            total: item.grandTotal,
+            paymentMethod: item.paymentMethod,
+            status: item.status,
+            orderId: item.orderId,
+            sessionId: item.sessionId,
+            paidAt: item.paidAt,
+            createdAt: item.createdAt,
+            notes: item.notes || null,
+          }));
+          setAllFilteredData(allRows);
+        }
+      } else {
+        // For detail view, just use current page data
+        setAllFilteredData(salesRows);
       }
 
-      // Store all filtered data for summary calculation
-      setAllFilteredData(filtered);
-
-      // Pagination
-      const startIndex = page * pageSize;
-      const endIndex = startIndex + pageSize;
-      const paginated = filtered.slice(startIndex, endIndex);
-
-      setSalesData(paginated);
-      setTotalPages(Math.ceil(filtered.length / pageSize));
+      setSalesData(salesRows);
+      setTotalOrders(result.data.total);
+      setTotalPages(Math.ceil(result.data.total / pageSize));
     } catch (err) {
       console.error('Failed to fetch sales data:', err);
+      setSalesData([]);
+      setAllFilteredData([]);
+      setTotalPages(0);
     } finally {
       setLoading(false);
     }
   };
 
-  const calculateSummary = () => {
-    const totals = allFilteredData.reduce((acc, row) => {
-      acc.totalSales += row.total;
-      acc.totalOrders += 1;
-      acc.discounts += row.discount;
-      return acc;
-    }, { totalSales: 0, totalOrders: 0, discounts: 0 });
-
-    setSummary({
-      totalSales: totals.totalSales,
-      totalOrders: totals.totalOrders,
-      avgOrderValue: totals.totalOrders > 0 ? totals.totalSales / totals.totalOrders : 0,
-      discounts: totals.discounts,
-      refunds: 0, // TODO: Get from API
-    });
-  };
 
   // Calculate product summaries
   const productSummaries = useMemo(() => {
@@ -417,6 +510,7 @@ export default function SalesReportTab() {
     setDateTo('');
     setSelectedCategory('');
     setProductSearch('');
+    setSelectedCashier('');
     setPage(0);
   };
 
@@ -521,63 +615,41 @@ export default function SalesReportTab() {
   };
 
   // Export Transaction Details
-  const handleExportTransactionDetails = () => {
-    const headers = ['Date', 'Invoice ID', 'Cashier', 'Product', 'Category', 'Items', 'Subtotal', 'Discount', 'Tax', 'Total', 'Payment Method'];
-    
-    // Calculate totals for price columns
-    const totals = allFilteredData.reduce((acc, row) => {
-      acc.items += row.itemsCount;
-      acc.subtotal += row.subtotal;
-      acc.discount += row.discount;
-      acc.tax += row.tax;
-      acc.total += row.total;
-      return acc;
-    }, { items: 0, subtotal: 0, discount: 0, tax: 0, total: 0 });
-    
-    const rows = allFilteredData.map((row) => {
-      return [
-        row.date,
-        row.invoiceId,
-        row.cashier,
-        row.productName || '',
-        row.category || '',
-        row.itemsCount,
-        row.subtotal.toFixed(2),
-        row.discount.toFixed(2),
-        row.tax.toFixed(2),
-        row.total.toFixed(2),
-        row.paymentMethod,
-      ];
-    });
-    
-    // Add totals row
-    const totalsRow = [
-      '',
-      '',
-      '',
-      'TOTAL',
-      '',
-      totals.items,
-      totals.subtotal.toFixed(2),
-      totals.discount.toFixed(2),
-      totals.tax.toFixed(2),
-      totals.total.toFixed(2),
-      '',
-    ];
+  const handleExportTransactionDetails = async () => {
+    try {
+      const dateRange = getDateRange(datePreset);
+      const fromDate = dateRange.from || dateFrom;
+      const toDate = dateRange.to || dateTo;
+      
+      const cashierName = selectedCashier.includes(':') 
+        ? selectedCashier.split(':')[1] 
+        : selectedCashier;
 
-    const csvContent = [
-      headers.join(','),
-      ...rows.map((row) => row.map((cell) => `"${cell}"`).join(',')),
-      totalsRow.map((cell) => `"${cell}"`).join(','),
-    ].join('\n');
+      const result = await reportsApi.exportReport({
+        from: fromDate || undefined,
+        to: toDate || undefined,
+        cashierName: cashierName || undefined,
+        status: 'PAID',
+      });
 
-    const blob = new Blob([csvContent], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `transaction-details-${new Date().toISOString().split('T')[0]}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+      if (result.error) {
+        console.error('Export failed:', result.error);
+        alert('Failed to export report. Please try again.');
+        return;
+      }
+
+      if (result.url) {
+        const a = document.createElement('a');
+        a.href = result.url;
+        a.download = 'order-report.csv';
+        a.click();
+        // Clean up the URL after a delay
+        setTimeout(() => URL.revokeObjectURL(result.url!), 100);
+      }
+    } catch (err) {
+      console.error('Export error:', err);
+      alert('Failed to export report. Please try again.');
+    }
   };
 
   return (
@@ -657,7 +729,25 @@ export default function SalesReportTab() {
         )}
 
         {/* Other Filters */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Cashier</label>
+            <select
+              value={selectedCashier}
+              onChange={(e) => {
+                setSelectedCashier(e.target.value);
+                setPage(0);
+              }}
+              className="w-full px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="">All Cashiers</option>
+              {cashiers.map((cashier) => (
+                <option key={cashier.id} value={`${cashier.id}:${cashier.name}`}>
+                  {cashier.name}
+                </option>
+              ))}
+            </select>
+          </div>
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">Category</label>
             <select
@@ -711,8 +801,8 @@ export default function SalesReportTab() {
           <p className="text-2xl font-bold text-yellow-600">${summary.discounts.toFixed(2)}</p>
         </div>
         <div className="bg-white rounded-lg shadow-sm border border-slate-200 p-4">
-          <p className="text-sm text-slate-600 mb-1">Refunds</p>
-          <p className="text-2xl font-bold text-red-600">${summary.refunds.toFixed(2)}</p>
+          <p className="text-sm text-slate-600 mb-1">Total Tax</p>
+          <p className="text-2xl font-bold text-slate-600">${summary.totalTax.toFixed(2)}</p>
         </div>
       </div>
 
@@ -803,7 +893,7 @@ export default function SalesReportTab() {
               <div className="p-8 text-center text-slate-600">No sales data available</div>
             ) : (
               <>
-                <div className="overflow-x-auto max-h-[400px] overflow-y-auto">
+                <div className="overflow-x-auto min-h-[400px] max-h-[400px] overflow-y-auto">
                   <table className="w-full">
                     <thead className="bg-slate-50 border-b border-slate-200 sticky top-0">
                       <tr>
@@ -833,8 +923,7 @@ export default function SalesReportTab() {
                 </div>
                 
                 {/* Pagination */}
-                {productsTotalPages > 1 && (
-                  <div className="p-4 border-t border-slate-200 flex items-center justify-between">
+                <div className="p-4 border-t border-slate-200 flex items-center justify-between">
                     <p className="text-sm text-slate-600">
                       Page {productsPage + 1} of {productsTotalPages} {productSummaries.length > 0 && `(${productSummaries.length} total)`}
                     </p>
@@ -876,7 +965,6 @@ export default function SalesReportTab() {
                       </button>
                     </div>
                   </div>
-                )}
               </>
             )}
           </div>
@@ -899,7 +987,7 @@ export default function SalesReportTab() {
               <div className="p-8 text-center text-slate-600">No category data available</div>
             ) : (
               <>
-                <div className="overflow-x-auto max-h-[400px] overflow-y-auto">
+                <div className="overflow-x-auto min-h-[400px] max-h-[400px] overflow-y-auto">
                   <table className="w-full">
                     <thead className="bg-slate-50 border-b border-slate-200 sticky top-0">
                       <tr>
@@ -935,8 +1023,7 @@ export default function SalesReportTab() {
                 </div>
                 
                 {/* Pagination */}
-                {categoriesTotalPages > 1 && (
-                  <div className="p-4 border-t border-slate-200 flex items-center justify-between">
+                <div className="p-4 border-t border-slate-200 flex items-center justify-between">
                     <p className="text-sm text-slate-600">
                       Page {categoriesPage + 1} of {categoriesTotalPages} {categorySummaries.length > 0 && `(${categorySummaries.length} total)`}
                     </p>
@@ -978,7 +1065,6 @@ export default function SalesReportTab() {
                       </button>
                     </div>
                   </div>
-                )}
               </>
             )}
           </div>
@@ -1005,37 +1091,69 @@ export default function SalesReportTab() {
             <div className="p-8 text-center text-slate-600">No sales data found for selected filters</div>
           ) : (
             <>
-              <div className="overflow-x-auto">
+              <div className="overflow-x-auto min-h-[400px] max-h-[400px] overflow-y-auto">
                 <table className="w-full">
-                  <thead className="bg-slate-50 border-b border-slate-200">
+                  <thead className="bg-slate-50 border-b border-slate-200 sticky top-0">
                     <tr>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-slate-700 uppercase">Date</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-slate-700 uppercase">Invoice ID</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-slate-700 uppercase">Date/Time</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-slate-700 uppercase">Order #</th>
                       <th className="px-4 py-3 text-left text-xs font-medium text-slate-700 uppercase">Cashier</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-slate-700 uppercase">Product</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-slate-700 uppercase">Category</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-slate-700 uppercase">Customer</th>
                       <th className="px-4 py-3 text-center text-xs font-medium text-slate-700 uppercase">Items</th>
                       <th className="px-4 py-3 text-right text-xs font-medium text-slate-700 uppercase">Subtotal</th>
                       <th className="px-4 py-3 text-right text-xs font-medium text-slate-700 uppercase">Discount</th>
                       <th className="px-4 py-3 text-right text-xs font-medium text-slate-700 uppercase">Tax</th>
                       <th className="px-4 py-3 text-right text-xs font-medium text-slate-700 uppercase">Total</th>
                       <th className="px-4 py-3 text-left text-xs font-medium text-slate-700 uppercase">Payment</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-slate-700 uppercase">Status</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-200">
                     {salesData.map((row, idx) => (
                       <tr key={idx} className="hover:bg-slate-50">
-                        <td className="px-4 py-3 text-sm text-slate-600">{row.date}</td>
+                        <td className="px-4 py-3 text-sm text-slate-600">
+                          <div>{row.date}</div>
+                          <div className="text-xs text-slate-500">{row.time}</div>
+                        </td>
                         <td className="px-4 py-3 text-sm font-medium text-slate-800">{row.invoiceId}</td>
                         <td className="px-4 py-3 text-sm text-slate-600">{row.cashier}</td>
-                        <td className="px-4 py-3 text-sm text-slate-800">{row.productName || '-'}</td>
-                        <td className="px-4 py-3 text-sm text-slate-600">{row.category || '-'}</td>
+                        <td className="px-4 py-3 text-sm text-slate-600">
+                          {row.customerName ? (
+                            <div>
+                              <div>{row.customerName}</div>
+                              {row.customerPhone && (
+                                <div className="text-xs text-slate-500">{row.customerPhone}</div>
+                              )}
+                            </div>
+                          ) : (
+                            <span className="text-slate-400">-</span>
+                          )}
+                        </td>
                         <td className="px-4 py-3 text-sm text-center text-slate-800">{row.itemsCount}</td>
                         <td className="px-4 py-3 text-sm text-right text-slate-800">${row.subtotal.toFixed(2)}</td>
                         <td className="px-4 py-3 text-sm text-right text-yellow-600">${row.discount.toFixed(2)}</td>
                         <td className="px-4 py-3 text-sm text-right text-slate-600">${row.tax.toFixed(2)}</td>
                         <td className="px-4 py-3 text-sm text-right font-medium text-slate-800">${row.total.toFixed(2)}</td>
-                        <td className="px-4 py-3 text-sm text-slate-600">{row.paymentMethod}</td>
+                        <td className="px-4 py-3 text-sm text-slate-600">
+                          <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+                            row.paymentMethod === 'CASH' 
+                              ? 'bg-green-100 text-green-800' 
+                              : row.paymentMethod === 'CARD'
+                              ? 'bg-blue-100 text-blue-800'
+                              : 'bg-purple-100 text-purple-800'
+                          }`}>
+                            {row.paymentMethod}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-sm text-slate-600">
+                          <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+                            row.status === 'PAID' 
+                              ? 'bg-green-100 text-green-800' 
+                              : 'bg-gray-100 text-gray-800'
+                          }`}>
+                            {row.status}
+                          </span>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -1061,10 +1179,9 @@ export default function SalesReportTab() {
                       <option value={100}>100</option>
                     </select>
                   </div>
-                  {totalPages > 1 && (
-                    <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2">
                       <span className="text-sm text-slate-600">
-                        Page {page + 1} of {totalPages} {allFilteredData.length > 0 && `(${allFilteredData.length} total)`}
+                        Page {page + 1} of {totalPages} {totalOrders > 0 && `(${totalOrders} total)`}
                       </span>
                       <button
                         onClick={() => setPage(Math.max(0, page - 1))}
@@ -1083,7 +1200,6 @@ export default function SalesReportTab() {
                         <ChevronRight className="w-4 h-4" />
                       </button>
                     </div>
-                  )}
                 </div>
               )}
             </>
