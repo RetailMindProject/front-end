@@ -91,13 +91,13 @@ export default function Footer() {
               © {currentYear} RetailMind POS • All rights reserved.
             </p>
             <div className="flex items-center gap-5 text-xs text-slate-500">
-              <Link to="/docs/history" className="hover:text-blue-700 transition-colors">
+              <Link to="/docs/privacy" className="hover:text-blue-700 transition-colors">
                 Privacy
               </Link>
-              <Link to="/docs/history" className="hover:text-blue-700 transition-colors">
+              <Link to="/docs/terms" className="hover:text-blue-700 transition-colors">
                 Terms
               </Link>
-              <Link to="/docs/history" className="hover:text-blue-700 transition-colors">
+              <Link to="/docs/cookies" className="hover:text-blue-700 transition-colors">
                 Cookies
               </Link>
             </div>

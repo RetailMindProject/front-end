@@ -4,9 +4,10 @@ import type { ProductCard as ProductCardType } from "../../../types/customer.sea
 interface ProductGridProps {
   products: ProductCardType[];
   loading?: boolean;
+  onProductClick?: (product: ProductCardType) => void;
 }
 
-export default function ProductGrid({ products, loading }: ProductGridProps) {
+export default function ProductGrid({ products, loading, onProductClick }: ProductGridProps) {
   if (loading && products.length === 0) {
     return (
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
@@ -31,7 +32,11 @@ export default function ProductGrid({ products, loading }: ProductGridProps) {
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
       {products.map((product) => (
-        <ProductCard key={product.id} product={product} />
+        <ProductCard 
+          key={product.id} 
+          product={product} 
+          onClick={() => onProductClick?.(product)}
+        />
       ))}
     </div>
   );

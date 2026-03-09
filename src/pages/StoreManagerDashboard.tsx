@@ -13,7 +13,7 @@ import {
 } from "../components";
 import Sessions from "./Sessions";
 import CashierDetail from "./CashierDetail";
-import { LineChart as LineChartIcon, LayoutDashboard, Package, Percent, Monitor, UserCheck, MessageSquare } from "lucide-react";
+import { LineChart as LineChartIcon, LayoutDashboard, Package, Percent, Monitor, UserCheck, MessageSquare, AlertTriangle, ExternalLink } from "lucide-react";
 import StoreOperations from "./StoreOperations";
 import StoreManagerOffersPage from "./StoreManagerOffersPage";
 import CreateAccountPage from "./CreateAccountPage";
@@ -22,9 +22,11 @@ import MessageBox from "./MessageBox";
 import Compose from "./Compose";
 import TerminalsManagement from "./TerminalsManagement";
 import PairingRequests from "./PairingRequests";
-import { Routes, Route, Navigate } from "react-router-dom";
+import { Routes, Route, Navigate, useNavigate } from "react-router-dom";
 import { dashboardApi, type DashboardSummary, type SalesTrendItem, type CategoryCount, type TopProduct, type RecentDaily } from "../services/dashboard.api";
 import PageHeader from "../components/PageHeader";
+import { messagesApi } from "../services/messages.api";
+import type { Message } from "../components/messages/types";
 
 // -------- Mock Data --------
 const salesTrend = [
@@ -61,6 +63,7 @@ const recentDaily = [
 const fmt = new Intl.NumberFormat(undefined, { style: "currency", currency: "USD", maximumFractionDigits: 0 });
 
 export default function StoreManager() {
+  const navigate = useNavigate();
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [dashboardData, setDashboardData] = useState<DashboardSummary | null>(null);
   const [salesTrendData, setSalesTrendData] = useState<SalesTrendItem[] | null>(null);
@@ -69,6 +72,8 @@ export default function StoreManager() {
   const [recentDailyData, setRecentDailyData] = useState<RecentDaily[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [lowStockAlerts, setLowStockAlerts] = useState<Message[]>([]);
+  const [loadingAlerts, setLoadingAlerts] = useState(true);
 
   useEffect(() => {
     const fetchDashboardData = async () => {
@@ -112,6 +117,45 @@ export default function StoreManager() {
     };
 
     fetchDashboardData();
+  }, []);
+
+  // Load Low Stock Alerts
+  useEffect(() => {
+    const loadLowStockAlerts = async () => {
+      setLoadingAlerts(true);
+      try {
+        const result = await messagesApi.getInboxMessages();
+        if (result.error || !result.data) return;
+        const list = result.data;
+  
+        // Show all messages where title === "Low stock alert" (not only unread)
+        // Keep sorting newest first
+        const alerts = list
+          .filter((msg) => msg.title === "Low stock alert")
+          .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+          .slice(0, 5);
+  
+        setLowStockAlerts(alerts);
+      } catch (err) {
+        console.error("Failed to load low stock alerts:", err);
+        setLowStockAlerts([]);
+      } finally {
+        setLoadingAlerts(false);
+      }
+    };
+  
+    loadLowStockAlerts();
+  
+    const handleMessagesUpdated = () => loadLowStockAlerts();
+    const handleFocus = () => loadLowStockAlerts();
+  
+    window.addEventListener("messages-updated", handleMessagesUpdated as any);
+    window.addEventListener("focus", handleFocus);
+  
+    return () => {
+      window.removeEventListener("messages-updated", handleMessagesUpdated as any);
+      window.removeEventListener("focus", handleFocus);
+    };
   }, []);
 
   // Use API data if available, otherwise fall back to mock data
@@ -249,6 +293,108 @@ export default function StoreManager() {
                   <Card padded>
                     <h2 className="mb-3 text-lg font-medium leading-none tracking-tight">Recent Daily Amount & Orders</h2>
                     <RecentDailyTable rows={recentDailyData || recentDaily} />
+                  </Card>
+                </section>
+
+                {/* Low Stock Alerts Section */}
+                <section className="mt-6">
+                  <Card padded>
+                    <h2 className="mb-4 text-lg font-semibold leading-none tracking-tight flex items-center gap-2">
+                      <AlertTriangle className="h-5 w-5 text-orange-500" />
+                      Low Stock Alerts
+                    </h2>
+                    {loadingAlerts ? (
+                      <div className="py-8 text-center">
+                        <div className="inline-block animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+                        <p className="text-sm text-slate-600 mt-2">Loading alerts...</p>
+                      </div>
+                    ) : lowStockAlerts.length === 0 ? (
+                      <div className="py-8 text-center">
+                        <p className="text-slate-600">No low stock alerts</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        {lowStockAlerts.map((alert) => {
+                          // Extract first line or trim body for display
+                          const displayText = alert.message.split('\n')[0].trim() || alert.message.substring(0, 100);
+                          const truncatedText = displayText.length > 100 ? displayText.substring(0, 100) + '...' : displayText;
+                          const isUnread = alert.status === "SENT" && alert.readAt == null;
+                          const formatTime = (dateStr: string) => {
+                            try {
+                              const date = new Date(dateStr);
+                              return date.toLocaleString("en-US", {
+                                month: "short",
+                                day: "numeric",
+                                hour: "2-digit",
+                                minute: "2-digit",
+                              });
+                            } catch {
+                              return dateStr;
+                            }
+                          };
+                          
+                          return (
+                            <div
+                              key={alert.id}
+                              className={`flex items-start gap-3 p-4 border rounded-lg transition-colors ${
+                                isUnread 
+                                  ? "bg-red-50 border-red-200 hover:bg-red-100" 
+                                  : "bg-gray-50 border-gray-200 hover:bg-gray-100"
+                              }`}
+                            >
+                              <div className="flex-shrink-0 mt-0.5">
+                                <AlertTriangle className={`h-5 w-5 ${isUnread ? "text-red-600" : "text-gray-400"}`} />
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <p className={`text-sm font-medium mb-1 ${isUnread ? "text-red-900" : "text-gray-700"}`}>
+                                  {truncatedText}
+                                </p>
+                                <p className={`text-xs ${isUnread ? "text-red-600" : "text-gray-500"}`}>
+                                  {formatTime(alert.createdAt)}
+                                </p>
+                              </div>
+                              <div className="flex-shrink-0 flex items-center gap-2">
+                                {isUnread ? (
+                                  <button
+                                    onClick={async () => {
+                                      try {
+                                        await messagesApi.markAsRead(alert.id);
+                                        // Update local state
+                                        setLowStockAlerts(prev =>
+                                          prev.map(a =>
+                                            a.id === alert.id
+                                              ? { ...a, read: true, status: "READ" as const, readAt: new Date().toISOString() }
+                                              : a
+                                          )
+                                        );
+                                        // Trigger refresh
+                                        window.dispatchEvent(new Event("messages-updated"));
+                                      } catch (err) {
+                                        console.error("Failed to mark as read:", err);
+                                      }
+                                    }}
+                                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-red-700 bg-white border border-red-300 rounded-lg hover:bg-red-50 transition-colors"
+                                  >
+                                    Mark as read
+                                  </button>
+                                ) : (
+                                  <span className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-500 bg-white border border-gray-300 rounded-lg">
+                                    Read
+                                  </span>
+                                )}
+                                <button
+                                  onClick={() => navigate(`/dashboard/message/${alert.id}?mode=notification`)}
+                                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-red-700 bg-white border border-red-300 rounded-lg hover:bg-red-50 transition-colors"
+                                >
+                                  Open
+                                  <ExternalLink className="h-3 w-3" />
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
                   </Card>
                 </section>
                   </>

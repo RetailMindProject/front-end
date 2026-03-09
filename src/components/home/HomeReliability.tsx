@@ -1,16 +1,52 @@
-import { Cloud, Globe, KeyRound, MonitorSmartphone } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import { FEATURES, type FeatureKey } from "../../config/features";
+import { KeyRound, MonitorSmartphone, Mail, LucideIcon } from "lucide-react";
+import { type FeatureKey } from "../../config/features";
 
-const ITEMS = [
-  { icon: KeyRound, label: "Secure Authentication", key: "sessions" as FeatureKey },
-  { icon: MonitorSmartphone, label: "Multi-Terminal Support", key: "sessions" as FeatureKey },
-  { icon: Cloud, label: "Cloud Ready", key: "reports" as FeatureKey },
-  { icon: Globe, label: "Language Sync", key: "messages" as FeatureKey },
-] as const;
+interface CardConfig {
+  id: string;
+  title: string;
+  description: string;
+  icon: LucideIcon;
+  featureKey: FeatureKey;
+}
+
+const CARDS: CardConfig[] = [
+  {
+    id: "secure-auth",
+    title: "Secure Authentication",
+    description: "Advanced security measures to protect your POS system and user data with encrypted sessions and secure access controls.",
+    icon: KeyRound,
+    featureKey: "sessions",
+  },
+  {
+    id: "multi-terminal",
+    title: "Multi-Terminal Support",
+    description: "Seamlessly manage multiple POS terminals across your store with real-time synchronization and conflict prevention.",
+    icon: MonitorSmartphone,
+    featureKey: "sessions",
+  },
+  {
+    id: "email",
+    title: "Email Communication",
+    description: "Integrated email system for sending receipts, promotions, and customer service messages.",
+    icon: Mail,
+    featureKey: "email",
+  },
+];
 
 export default function HomeReliability() {
   const navigate = useNavigate();
+
+  const handleCardClick = (card: CardConfig) => {
+    // Navigate to docs page with custom title/description in state
+    navigate(`/docs/${card.featureKey}`, {
+      state: {
+        title: card.title,
+        description: card.description,
+      },
+    });
+  };
+
   return (
     <section className="relative overflow-hidden">
       <div className="bg-gradient-to-r from-slate-950 via-slate-900 to-blue-950">
@@ -28,20 +64,20 @@ export default function HomeReliability() {
 
           <div className="mt-10 flex justify-center">
             <div className="w-full rounded-3xl bg-white/10 backdrop-blur border border-white/10 shadow-[0_14px_45px_rgba(0,0,0,0.25)] px-5 py-6">
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-                {ITEMS.map((it) => (
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                {CARDS.map((card) => (
                   <button
-                    key={it.label}
+                    key={card.id}
                     type="button"
-                    onClick={() => navigate(`/docs/${it.key}`)}
-                    aria-label={FEATURES[it.key].title}
-                    className="rounded-2xl bg-white/5 border border-white/10 px-4 py-4 flex items-center gap-3"
+                    onClick={() => handleCardClick(card)}
+                    aria-label={card.title}
+                    className="rounded-2xl bg-white/5 border border-white/10 px-4 py-4 flex items-center gap-3 hover:bg-white/10 transition-colors"
                   >
                     <div className="h-10 w-10 rounded-2xl bg-white/10 ring-1 ring-white/10 grid place-items-center">
-                      <it.icon className="h-5 w-5 text-white/90" aria-hidden="true" />
+                      <card.icon className="h-5 w-5 text-white/90" aria-hidden="true" />
                     </div>
                     <div className="text-sm font-semibold text-white/90 leading-snug">
-                      {it.label}
+                      {card.title}
                     </div>
                   </button>
                 ))}

@@ -195,9 +195,11 @@ export const messagesApi = {
       return { error: "Invalid response format from server" };
     }
     
+    // Allow system messages: only require id and toUser (fromUser can be null)
     const validMessages = messagesArray.filter(dto => {
       if (!dto || !dto.id) return false;
-      if (!dto.fromUser || !dto.toUser) return false;
+      if (!dto.toUser) return false;
+      // fromUser can be null for system messages
       return true;
     });
     
@@ -270,17 +272,22 @@ export const messagesApi = {
 };
 
 function convertMessageDTOToMessage(dto: MessageDTO): Message {
-  const isRead = dto.readAt !== null && dto.readAt !== undefined;
+  // read = dto.readAt != null
+  const isRead = dto.readAt != null;
   
+  // Support system messages: fromUser can be null
   if (!dto.fromUser || !dto.fromUser.role) {
     return {
       id: dto.id.toString(),
-      subject: dto.title || "",
+      subject: dto.title || "", // Legacy field
+      title: dto.title || "", // API field
       message: dto.body || "",
-      from: "Inventory Manager",
-      fromName: dto.fromUser ? `${dto.fromUser.firstName || ""} ${dto.fromUser.lastName || ""}`.trim() || "Unknown" : "Unknown",
-      createdAt: formatDateTime(dto.createdAt),
+      from: "Inventory Manager", // Default role for system messages
+      fromName: "System", // System messages have fromName = "System"
+      createdAt: dto.createdAt, // Keep as ISO string, do NOT format
       read: isRead,
+      status: dto.status, // API field
+      readAt: dto.readAt, // API field
       attachments: dto.attachments?.filter(att => att && att.id).map(att => ({
         id: att.id.toString(),
         fileName: att.fileName || "Unknown file",
@@ -315,12 +322,15 @@ function convertMessageDTOToMessage(dto: MessageDTO): Message {
   
   return {
     id: dto.id.toString(),
-    subject: dto.title || "",
+    subject: dto.title || "", // Legacy field
+    title: dto.title || "", // API field
     message: dto.body || "",
     from: normalizedFrom,
     fromName: `${dto.fromUser.firstName || ""} ${dto.fromUser.lastName || ""}`.trim() || "Unknown",
-    createdAt: formatDateTime(dto.createdAt),
+    createdAt: dto.createdAt, // Keep as ISO string, do NOT format
     read: isRead,
+    status: dto.status, // API field
+    readAt: dto.readAt, // API field
     attachments: dto.attachments?.filter(att => att && att.id).map(att => ({
       id: att.id.toString(),
       fileName: att.fileName || "Unknown file",

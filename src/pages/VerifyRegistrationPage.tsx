@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
 import { CheckCircle2, XCircle, Loader2, ArrowRight } from "lucide-react";
 import { customerApi } from "../services/customer.api";
@@ -11,14 +11,20 @@ export default function VerifyRegistrationPage() {
   const [status, setStatus] = useState<"loading" | "success" | "error">("loading");
   const [message, setMessage] = useState("");
   const [countdown, setCountdown] = useState(3);
+  // Prevent React StrictMode from firing the verification API call twice.
+  // StrictMode mounts → unmounts → remounts in development, which would
+  // consume the single-use token on the first call and fail on the second.
+  const hasVerified = useRef(false);
 
   useEffect(() => {
+    if (hasVerified.current) return;
+    hasVerified.current = true;
+
     const token = searchParams.get("token");
     const fullUrl = window.location.href;
     const safeUrl = fullUrl.replace(/token=([^&]+)/i, "token=***");
 
     console.log('[VerifyRegistrationPage] ===== PAGE LOADED =====');
-    // Never log tokens. Mask querystring.
     console.log('[VerifyRegistrationPage] Full URL (masked):', safeUrl);
     console.log('[VerifyRegistrationPage] Token from URL:', token ? `present (length: ${token.length})` : 'MISSING');
 
@@ -133,7 +139,7 @@ export default function VerifyRegistrationPage() {
             </div>
           )}
 
-          {status === "error" && (
+          {status === "error" && message && (
             <div className="text-center py-6">
               <div className="mb-6">
                 <div className="mx-auto w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mb-4">

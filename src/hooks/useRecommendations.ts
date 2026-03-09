@@ -63,10 +63,9 @@ export function useRecommendations(
       
       // Handle HTTP 200 with status="error" (Recommendation Service down/timeout)
       if (result.data && result.data.status === "error") {
-        // Still set data so UI can show error message non-blockingly
         setRecommendations(result.data);
         setIsAvailable(true);
-        setError(result.data.message || "Recommendation service is temporarily unavailable");
+        setError(result.data.message || "Recommendation service temporarily unavailable");
         setLoading(false);
         return;
       }
@@ -92,35 +91,35 @@ export function useRecommendations(
         return;
       }
       
-      // Success case
+      // Success case: normalize rows once (backend may send forYou or recommendedForYou) and use ONLY mapped object
       if (result.data && result.data.status === "success") {
-        const forYouCount = result.data.rows.forYou?.length || 0;
-        const popularCount = result.data.rows.popular?.length || 0;
-        const offersCount = result.data.rows.offers?.length || 0;
-        const totalCount = forYouCount + popularCount + offersCount;
-        
-        console.log('[useRecommendations] Success!', {
-          forYou: forYouCount,
-          popular: popularCount,
-          offers: offersCount,
-          total: totalCount,
-          meta: result.data.meta,
-          isColdStart: result.data.meta.isColdStart,
-          isStale: result.data.meta.isStale,
-        });
-        
-        // Set recommendations even if empty - UI will show appropriate message
-        setRecommendations(result.data);
+        const raw = result.data.rows as Record<string, unknown> | undefined;
+
+        // --- DIAGNOSTIC: log raw field names actually present on rows ---
+        console.log('[useRecommendations][DIAG] raw rows keys:', raw ? Object.keys(raw) : 'rows is null/undefined');
+        console.log('[useRecommendations][DIAG] has "recommendedForYou":', Array.isArray(raw?.recommendedForYou), '| has "forYou":', Array.isArray((raw as Record<string,unknown>)?.forYou));
+
+        const recommendedForYou = Array.isArray(raw?.recommendedForYou)
+          ? raw.recommendedForYou
+          : Array.isArray((raw as Record<string,unknown>)?.forYou)
+          ? (raw as Record<string,unknown>).forYou
+          : [];
+        const popular = Array.isArray(raw?.popular) ? raw.popular : [];
+        const offers = Array.isArray(raw?.offers) ? raw.offers : [];
+        const rows = { recommendedForYou, popular, offers };
+
+        const meta = result.data.meta;
+        const historyLen = meta?.historyLen;
+
+        // --- DIAGNOSTIC Step 1: full response + meta + lengths ---
+        console.log('[useRecommendations][DIAG] FULL RESPONSE:', JSON.parse(JSON.stringify(result.data)));
+        console.log('[useRecommendations][DIAG] meta.userSegment:', meta?.userSegment, '| meta.historyLen:', historyLen);
+        console.log('[useRecommendations][DIAG] LENGTHS after mapping → recommendedForYou:', (recommendedForYou as unknown[]).length, '| popular:', (popular as unknown[]).length, '| offers:', (offers as unknown[]).length);
+        console.log('[useRecommendations][DIAG] Row source used: "recommendedForYou"?', Array.isArray(raw?.recommendedForYou), '| fallback "forYou"?', !Array.isArray(raw?.recommendedForYou) && Array.isArray((raw as Record<string,unknown>)?.forYou));
+
+        setRecommendations({ ...result.data, rows });
         setIsAvailable(true);
-        
-        // Only set error if rows are completely empty (might indicate an issue)
-        if (totalCount === 0) {
-          console.warn('[useRecommendations] Success but no recommendations returned. Meta:', result.data.meta);
-          // Don't set error - let UI show empty state message
-          setError(null);
-        } else {
-          setError(null);
-        }
+        setError(null);
       } else {
         // Unexpected state
         console.log('[useRecommendations] Unexpected state:', result);

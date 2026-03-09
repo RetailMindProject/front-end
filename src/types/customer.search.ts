@@ -1,28 +1,44 @@
 // Types for Customer Search Feature
-// TODO: Replace with real API types when backend is ready
+// Matches backend API responses
 
 export interface Category {
   id: number;
   name: string;
-  iconUrl?: string;
+  hasChildren: boolean;
+  iconUrl?: string; // Optional UI enhancement
 }
 
 export interface SubCategory {
   id: number;
   name: string;
-  categoryId: number;
+  parentId: number;
+  categoryId?: number; // For backward compatibility
+}
+
+export interface ProductOffer {
+  id: number;
+  title: string;
+  discountType: "PERCENTAGE" | "FIXED";
+  discountValue: number;
 }
 
 export interface ProductCard {
   id: number;
+  sku: string;
   name: string;
-  price: number;
+  brand: string | null;
+  defaultPrice: number;
+  taxRate: number;
+  primaryImageUrl: string | null;
+  offer: ProductOffer | null;
+  // Legacy fields for backward compatibility (will be removed)
+  price?: number;
   imageUrl?: string;
-  categoryId: number;
-  categoryName: string;
-  subCategoryId: number;
-  subCategoryName: string;
-  inStock: boolean;
+  categoryId?: number;
+  categoryName?: string;
+  subCategoryId?: number;
+  subCategoryName?: string;
+  inStock?: boolean;
   hasOffer?: boolean;
 }
 
@@ -30,11 +46,10 @@ export interface SearchParams {
   q?: string;
   categoryId?: number;
   subCategoryId?: number;
-  inStockOnly?: boolean;
   offersOnly?: boolean;
   minPrice?: number;
   maxPrice?: number;
-  sort?: "relevance" | "price_asc" | "price_desc" | "newest";
+  sortKey?: "RELEVANCE" | "PRICE_ASC" | "PRICE_DESC" | "NEWEST";
   page?: number;
   size?: number;
 }

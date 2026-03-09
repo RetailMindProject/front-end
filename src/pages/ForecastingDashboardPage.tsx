@@ -13,6 +13,7 @@ import { productsApi, type ProductDTO } from "../services/products.api";
 import { forecastingApi } from "../services/forecasting.api";
 import type { ProductStockForecastSummary } from "../types/forecasting.dto";
 import PageHeader from "../components/PageHeader";
+import { addRestockNotifications } from "../services/restockNotifications.store";
 
 type Urgency = "critical" | "high" | "medium" | "low" | "unknown";
 
@@ -221,6 +222,35 @@ export default function ForecastingDashboardPage() {
       .sort((a, b) => urgencyRank[b.urgency] - urgencyRank[a.urgency])
       .slice(0, 12);
   }, [productRows]);
+
+  // Auto-create restock notifications for critical/high items once data is loaded.
+  // addRestockNotifications deduplicates by (productId + expectedStockoutDate) so
+  // re-renders and page revisits never produce duplicate notifications.
+  useEffect(() => {
+    if (loadingProducts || loadingSummaries) return;
+    if (productRows.length === 0) return;
+
+    const inputs = productRows
+      .filter(
+        (r) =>
+          r.summary &&
+          (r.summary.recommendedReorderQty ?? 0) > 0 &&
+          (r.urgency === "critical" || r.urgency === "high")
+      )
+      .map((r) => ({
+        productId: r.productId,
+        productName: r.product.name ?? "",
+        currentStock: r.summary!.currentStock,
+        reorderQty: r.summary!.recommendedReorderQty,
+        urgency: r.urgency,
+        expectedStockoutDate: r.summary!.expectedStockoutDate ?? null,
+        avgDailyDemand: r.summary!.avgDailyDemand,
+      }));
+
+    if (inputs.length > 0) {
+      addRestockNotifications(inputs);
+    }
+  }, [productRows, loadingProducts, loadingSummaries]);
 
   const hasFilters = searchTerm || brandFilter || activeFilter !== undefined;
 

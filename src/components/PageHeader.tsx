@@ -5,15 +5,19 @@ export default function PageHeader({
   icon,
   right,
   className,
+  fixed,
 }: {
   title: string;
   icon?: ReactNode;
   right?: ReactNode;
   className?: string;
+  fixed?: boolean;
 }) {
+  const positionClasses = fixed ? "fixed top-0 left-0 right-0 z-50" : "";
+
   return (
     <header
-      className={`border-b border-indigo-200/50 bg-white/80 backdrop-blur-md shadow-sm mb-6 sm:mb-8 ${className || ""}`}
+      className={`${positionClasses} border-b border-indigo-200/50 bg-white/80 backdrop-blur-md shadow-sm ${className || ""}`}
     >
       <div className="h-0.5 bg-gradient-to-r from-indigo-500 via-blue-500 to-indigo-500" />
       <div className="px-4 sm:px-6 py-5 sm:py-6">

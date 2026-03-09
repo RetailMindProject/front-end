@@ -3,9 +3,10 @@ import type { ProductCard as ProductCardType } from "../../../types/customer.sea
 
 interface ProductCardProps {
   product: ProductCardType;
+  onClick?: () => void;
 }
 
-export default function ProductCard({ product }: ProductCardProps) {
+export default function ProductCard({ product, onClick }: ProductCardProps) {
   const formatPrice = (price: number) => {
     return new Intl.NumberFormat("en-US", {
       style: "currency",
@@ -23,13 +24,28 @@ export default function ProductCard({ product }: ProductCardProps) {
       .slice(0, 2);
   };
 
+  const formatDiscount = (offer: ProductCardType["offer"]) => {
+    if (!offer) return "";
+    if (offer.discountType === "PERCENTAGE") {
+      return `${offer.discountValue}% OFF`;
+    } else {
+      return `$${offer.discountValue.toFixed(2)} OFF`;
+    }
+  };
+
+  // Use primaryImageUrl (already normalized to /picture/ format)
+  const imageUrl = product.primaryImageUrl || product.imageUrl;
+
   return (
-    <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-md hover:border-gray-200 transition-all duration-200 flex flex-col">
+    <div 
+      className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-md hover:border-gray-200 transition-all duration-200 flex flex-col cursor-pointer"
+      onClick={onClick}
+    >
       {/* Image */}
       <div className="aspect-[4/3] bg-gradient-to-br from-gray-50 to-gray-100 relative overflow-hidden">
-        {product.imageUrl ? (
+        {imageUrl ? (
           <img
-            src={product.imageUrl}
+            src={imageUrl}
             alt={product.name}
             className="w-full h-full object-cover"
             onError={(e) => {
@@ -40,8 +56,8 @@ export default function ProductCard({ product }: ProductCardProps) {
           />
         ) : null}
         <div
-          className={`w-full h-full flex items-center justify-center ${product.imageUrl ? "hidden" : ""}`}
-          style={{ display: product.imageUrl ? "none" : "flex" }}
+          className={`w-full h-full flex items-center justify-center ${imageUrl ? "hidden" : ""}`}
+          style={{ display: imageUrl ? "none" : "flex" }}
         >
           <div className="w-20 h-20 rounded-full bg-gradient-to-br from-blue-400 to-indigo-500 flex items-center justify-center text-white text-2xl font-bold">
             {getInitials(product.name)}
@@ -49,17 +65,10 @@ export default function ProductCard({ product }: ProductCardProps) {
         </div>
         
         {/* Offer Badge */}
-        {product.hasOffer && (
+        {product.offer && (
           <div className="absolute top-2 right-2 bg-red-500 text-white px-2 py-1 rounded-lg text-xs font-semibold flex items-center gap-1">
             <Percent className="h-3 w-3" />
-            Offer
-          </div>
-        )}
-
-        {/* Stock Badge */}
-        {!product.inStock && (
-          <div className="absolute top-2 left-2 bg-gray-800 text-white px-2 py-1 rounded-lg text-xs font-semibold">
-            Out of Stock
+            {formatDiscount(product.offer)}
           </div>
         )}
       </div>
@@ -68,20 +77,25 @@ export default function ProductCard({ product }: ProductCardProps) {
       <div className="p-4 flex-1 flex flex-col">
         <div className="mb-2">
           <h3 className="font-semibold text-gray-900 mb-1 line-clamp-2">{product.name}</h3>
-          <div className="flex flex-wrap gap-1 mb-2">
-            <span className="px-2 py-0.5 bg-blue-50 text-blue-700 text-xs rounded-md font-medium">
-              {product.categoryName}
-            </span>
-            <span className="px-2 py-0.5 bg-indigo-50 text-indigo-700 text-xs rounded-md font-medium">
-              {product.subCategoryName}
-            </span>
-          </div>
+          {product.brand && (
+            <p className="text-sm text-gray-600 mb-2">{product.brand}</p>
+          )}
         </div>
 
         <div className="mt-auto pt-2">
           <div className="flex items-center justify-between">
-            <span className="text-xl font-bold text-gray-900">{formatPrice(product.price)}</span>
+            <div>
+              <span className="text-xl font-bold text-gray-900">
+                {formatPrice(product.defaultPrice || product.price || 0)}
+              </span>
+              {product.taxRate > 0 && (
+                <span className="text-xs text-gray-500 ml-2">+ {product.taxRate}% tax</span>
+              )}
+            </div>
           </div>
+          {product.sku && (
+            <p className="text-xs text-gray-500 mt-1">SKU: {product.sku}</p>
+          )}
         </div>
       </div>
     </div>

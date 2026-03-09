@@ -48,17 +48,17 @@ export default function HomeRoles() {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-5">
         <RoleCard
           title="Customers"
-          featureKey="recommendation"
+          featureKey="customers"
           icon={<ShoppingBag className="h-8 w-8 text-slate-600" aria-hidden="true" />}
         />
         <RoleCard
           title="Cashiers"
-          featureKey="payments"
+          featureKey="cashiers"
           icon={<UserRound className="h-8 w-8 text-slate-600" aria-hidden="true" />}
         />
         <RoleCard
           title="Managers"
-          featureKey="reports"
+          featureKey="managers"
           icon={<Store className="h-8 w-8 text-slate-600" aria-hidden="true" />}
         />
       </div>

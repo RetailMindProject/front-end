@@ -8,12 +8,15 @@ export type MessageAttachment = {
 
 export type Message = {
   id: string;
-  subject: string;
+  subject: string; // Legacy field, use title instead
+  title: string; // API field: title
   message: string;
   from: "CEO" | "Store Manager" | "Inventory Manager";
   fromName: string;
   createdAt: string;
-  read?: boolean;
+  read?: boolean; // Legacy field, use status and readAt instead
+  status?: "SENT" | "DELIVERED" | "READ"; // API field: status
+  readAt?: string | null; // API field: readAt
   attachments?: MessageAttachment[];
 };
 
