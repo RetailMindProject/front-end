@@ -75,8 +75,7 @@ const ProductList = ({
   onFiltersChange,
   onApplyFilters,
   onResetFilters,
-  isFiltering = false,
-  allProducts
+  isFiltering = false
 }: ProductListProps) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [searchResults, setSearchResults] = useState<Product[]>([]);
@@ -86,6 +85,7 @@ const ProductList = ({
   const [deleteConfirm, setDeleteConfirm] = useState({ isOpen: false, productId: null as string | number | null, productName: '' });
   const [openMenuId, setOpenMenuId] = useState<string | number | null>(null);
   const menuRefs = useRef<Map<string | number, HTMLDivElement>>(new Map());
+  const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Close menu when clicking outside
   useEffect(() => {
@@ -106,78 +106,45 @@ const ProductList = ({
     }
   }, [openMenuId]);
 
-  // Debounced search function
-  const performSearch = async (searchValue: string) => {
-    if (!searchValue.trim()) {
-      setSearchResults([]);
-      setIsSearching(false);
-      return;
-    }
-    
-    setIsSearching(true);
-    try {
-      // Use API search to fetch only matching products
-      const res = await productsApi.search({
-        q: searchValue.trim(),
-        page: 0,
-        size: 1000 // Get a large number to show all search results
-      });
-      
-      if (res.data) {
-        let content: Product[] = [];
-        if (typeof res.data === 'object' && 'content' in res.data) {
-          content = (res.data as any).content || [];
-        } else if (Array.isArray(res.data)) {
-          content = res.data;
-        }
-        
-        // Fetch quantities for search results
-        const { storeProductsApi } = await import('../../services/store-products.api');
-        const normalized: Product[] = await Promise.all(
-          content.map(async (p) => {
-            let warehouseQuantity = 0;
-            let storeQuantity = 0;
-            if (p.id) {
-              try {
-                const productId = typeof p.id === 'string' ? parseInt(p.id) : p.id;
-                const stockRes = await storeProductsApi.getByProductId(productId);
-                if (stockRes.data) {
-                  warehouseQuantity = (stockRes.data as any).warehouseQty || (stockRes.data as any).warehouseQuantity || 0;
-                  storeQuantity = (stockRes.data as any).storeQty || (stockRes.data as any).storeQuantity || 0;
-                }
-              } catch (err) {
-                // ignore
-              }
-            }
-            
-            return {
-              ...p,
-              warehouseQuantity,
-              storeQuantity,
-            };
-          })
-        );
-        
-        setSearchResults(normalized);
-      } else {
-        setSearchResults([]);
+  // Cleanup debounce timer on unmount
+  useEffect(() => {
+    return () => {
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current);
       }
-    } catch (err) {
-      console.error('Search failed:', err);
-      setSearchResults([]);
-    }
-  };
+    };
+  }, []);
 
   const handleSearchChange = (e: ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
     setSearchTerm(value);
     
-    if (value.trim()) {
-      performSearch(value);
-    } else {
-      setSearchResults([]);
-      setIsSearching(false);
+    // Clear existing timer
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
     }
+    
+    // Set new timer for debounced search (300ms)
+    debounceTimerRef.current = setTimeout(() => {
+      if (value.trim()) {
+        const searchLower = value.toLowerCase().trim();
+        const results = products.filter(product => {
+          // Search by name
+          const nameMatch = product.name.toLowerCase().includes(searchLower);
+          // Search by SKU
+          const skuMatch = product.sku && product.sku.toLowerCase().includes(searchLower);
+          // Search by ID (convert both to string for comparison)
+          const idMatch = String(product.id).includes(searchLower);
+          
+          return nameMatch || skuMatch || idMatch;
+        });
+        setSearchResults(results);
+        setIsSearching(true);
+      } else {
+        setSearchResults([]);
+        setIsSearching(false);
+      }
+    }, 300);
   };
 
 
@@ -209,25 +176,23 @@ const ProductList = ({
     // Fetch full product details from database to ensure all info is up-to-date
     try {
       const { productsApi } = await import('../../services/products.api');
-      const productRes = await productsApi.getById(product.id!);
+      // ✅ OPTIMIZED: Request stock and categories in the same call
+      const productRes = await productsApi.getById(product.id!, {
+        includeStock: true,
+        includeCategories: true
+      });
       
       if (productRes.data) {
         const fullProduct = productRes.data;
         
-        // Fetch category from product categories endpoint
-        let categoryName: string | undefined = typeof fullProduct.category === 'string' 
-          ? fullProduct.category 
-          : undefined;
+        // ✅ OPTIMIZED: Categories are already in response, no separate API call needed
+        let categoryName: string | undefined = undefined;
         
-        if (!categoryName && fullProduct.id) {
-          try {
-            const catRes = await productsApi.getProductCategories(fullProduct.id);
-            if (catRes.data && catRes.data.length > 0) {
-              categoryName = catRes.data[0].name;
-            }
-          } catch (err) {
-            console.error('Failed to load product category:', err);
-          }
+        // Extract category from categories array (already included)
+        if (Array.isArray(fullProduct.categories) && fullProduct.categories.length > 0) {
+          categoryName = fullProduct.categories[0].name;
+        } else if (typeof fullProduct.category === 'string') {
+          categoryName = fullProduct.category;
         }
         
         // Extract category from nested structure if needed
@@ -447,7 +412,10 @@ const ProductList = ({
 
       {/* Products List */}
       {loading ? (
-        <div className="px-6 py-8 text-center text-slate-600">Loading products...</div>
+        <div className="p-12 text-center">
+          <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-red-600 mb-3"></div>
+          <p className="text-slate-600">Loading products...</p>
+        </div>
       ) : displayProducts.length > 0 ? (
         <div className="divide-y divide-slate-200 min-h-[400px]">
           {displayProducts.map(product => (

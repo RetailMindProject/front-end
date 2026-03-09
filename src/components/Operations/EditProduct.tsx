@@ -117,8 +117,11 @@ const EditProduct = ({ products, productId, onUpdate, onCancel, loading = false 
     if (productId) {
         setLoadingProduct(true);
         try {
-          // Fetch product directly from API to get the latest data from database
-          const productRes = await productsApi.getById(productId);
+          // ✅ OPTIMIZED: Fetch product with stock and categories in one call
+          const productRes = await productsApi.getById(productId, {
+            includeStock: true,
+            includeCategories: true
+          });
           console.log('Product API Response:', {
             status: productRes.status,
             error: productRes.error,
@@ -825,7 +828,11 @@ const EditProduct = ({ products, productId, onUpdate, onCancel, loading = false 
         try {
           await new Promise(resolve => setTimeout(resolve, 500));
           
-          const productRes = await productsApi.getById(productId);
+          // ✅ OPTIMIZED: Request stock and categories
+          const productRes = await productsApi.getById(productId, {
+            includeStock: true,
+            includeCategories: true
+          });
           if (productRes.data) {
             const product = productRes.data;
             const productImages = product.images && Array.isArray(product.images) ? product.images : [];
@@ -983,7 +990,11 @@ const EditProduct = ({ products, productId, onUpdate, onCancel, loading = false 
       try {
         await new Promise(resolve => setTimeout(resolve, 300));
         
-        const productRes = await productsApi.getById(productId);
+        // ✅ OPTIMIZED: Request stock and categories
+        const productRes = await productsApi.getById(productId, {
+          includeStock: true,
+          includeCategories: true
+        });
         if (productRes.data) {
           const product = productRes.data;
           const productImages = product.images && Array.isArray(product.images) ? product.images : [];

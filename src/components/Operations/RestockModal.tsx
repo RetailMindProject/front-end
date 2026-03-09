@@ -86,7 +86,10 @@ const RestockModal = ({ isOpen, onClose, productId, productName, onRestockSucces
       
       // If not found in store products, try to get basic product info from products API
       // This handles the case where product was just created but not yet added to inventory
-      const productRes = await productsApi.getById(id);
+      // ✅ OPTIMIZED: Request stock data (though it will be 0 for new products)
+      const productRes = await productsApi.getById(id, {
+        includeStock: true
+      });
       if (productRes.data) {
         // Create a mock StoreProductResponseDTO from ProductDTO
         const product = productRes.data;
@@ -109,7 +112,10 @@ const RestockModal = ({ isOpen, onClose, productId, productName, onRestockSucces
       console.error('Failed to find product:', err);
       // Try fallback to products API
       try {
-        const productRes = await productsApi.getById(id);
+        // ✅ OPTIMIZED: Request stock data
+        const productRes = await productsApi.getById(id, {
+          includeStock: true
+        });
         if (productRes.data) {
           const product = productRes.data;
           const mockStoreProduct: StoreProductResponseDTO = {

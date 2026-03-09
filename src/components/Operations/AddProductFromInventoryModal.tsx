@@ -1,8 +1,7 @@
-import { useMemo, useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import type { ChangeEvent } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import type { ProductDTO } from '../../services/products.api';
-import { storeProductsApi } from '../../services/store-products.api';
 import { productsApi } from '../../services/products.api';
 import AuthenticatedImage from './AuthenticatedImage';
 
@@ -50,6 +49,7 @@ const AddProductFromInventoryModal = ({
   const [quantity, setQuantity] = useState<string>('1');
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const scrollPositionRef = useRef<number>(0);
+  const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Track pending transfer quantities (productId -> quantity to transfer)
   const [pendingQuantities, setPendingQuantities] = useState<Map<number | string, number>>(new Map());
   // Track quantity input values for each product (productId -> input value string)
@@ -60,35 +60,42 @@ const AddProductFromInventoryModal = ({
   const [hasExpirationDate, setHasExpirationDate] = useState<Map<number | string, boolean>>(new Map());
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(10);
-
+  const [totalPages, setTotalPages] = useState(0);
+  const [totalElements, setTotalElements] = useState(0);
+  
+  // ✅ Backend pagination: Use products directly from API response (no client-side pagination)
   const displayProducts = isSearching ? searchResults : availableProducts;
-  const totalPages = useMemo(() => Math.max(1, Math.ceil(displayProducts.length / pageSize)), [displayProducts.length, pageSize]);
-  const currentPage = Math.min(page, totalPages - 1);
-  const pagedProducts = useMemo(() => {
-    const start = currentPage * pageSize;
-    return displayProducts.slice(start, start + pageSize);
-  }, [currentPage, displayProducts, pageSize]);
+  const currentPage = page;
 
   useEffect(() => {
     if (isOpen) {
-      loadAvailableProducts();
+      setPage(0); // Reset to first page when modal opens
+      setSearchTerm('');
+      setSearchResults([]);
+      setIsSearching(false);
       // Clear pending quantities, inputs, and expiration dates when modal opens
       setPendingQuantities(new Map());
       setQuantityInputs(new Map());
       setExpirationDates(new Map());
       setHasExpirationDate(new Map());
-      setPage(0); // Reset to first page when modal opens
-      setSearchTerm('');
-      setSearchResults([]);
-      setIsSearching(false);
+      // Load products with backend pagination
+      loadAvailableProducts(false, 0, pageSize);
     }
   }, [isOpen, inventoryProducts]);
 
+  // Cleanup debounce timer on unmount
   useEffect(() => {
-    setPage(0);
-  }, [isSearching, searchTerm, pageSize]);
+    return () => {
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current);
+      }
+    };
+  }, []);
 
-  const loadAvailableProducts = async (preserveScroll = false) => {
+  // Note: Page size changes are handled in the select onChange handler
+  // This useEffect is not needed as page size changes trigger reload directly
+
+  const loadAvailableProducts = async (preserveScroll = false, pageOverride?: number, sizeOverride?: number) => {
     // Save scroll position before loading
     if (preserveScroll && scrollContainerRef.current) {
       scrollPositionRef.current = scrollContainerRef.current.scrollTop;
@@ -96,99 +103,100 @@ const AddProductFromInventoryModal = ({
     
     setLoading(true);
     try {
-      let products: (ProductDTO & { warehouseQuantity?: number; storeQuantity?: number })[] = [];
+      const currentPage = pageOverride !== undefined ? pageOverride : page;
+      const currentSize = sizeOverride !== undefined ? sizeOverride : pageSize;
       
       if (getAvailableInventoryProducts) {
-        // Use the provided function to get products with warehouseQuantity > 0 from stocks_snapshot
-        products = await getAvailableInventoryProducts() as (ProductDTO & { warehouseQuantity?: number; storeQuantity?: number })[];
+        // Use the provided function - but this should ideally also support pagination
+        // For now, we'll use it but note that it might not be paginated
+        const products = await getAvailableInventoryProducts() as (ProductDTO & { warehouseQuantity?: number; storeQuantity?: number })[];
+        setAvailableProducts(products);
+        setTotalPages(1);
+        setTotalElements(products.length);
       } else {
-        // Fallback: Get all products and check their warehouse quantities
-        try {
-          const { productsApi } = await import('../../services/products.api');
-          const allProductsRes = await productsApi.filter({
-            page: 0,
-            size: 1000,
-            isActive: true
+        // ✅ OPTIMIZED: Use backend pagination, filtering, and sorting
+        const { productsApi } = await import('../../services/products.api');
+        const res = await productsApi.filter({
+          page: currentPage,
+          size: currentSize,
+          isActive: true,
+          // Removed minWarehouseQuantity: 1 to show all products (including zero stock)
+          sort: 'warehouseQuantity_with_zero_last',  // ✅ Backend sorting: products with stock first, zero stock at bottom
+          includeStock: true,        // Request stock quantities in the same call
+          includeCategories: true     // Request categories in the same call
+        });
+        
+        if (res.data) {
+          // Handle paginated response
+          let content: ProductDTO[] = [];
+          let totalPagesValue = 0;
+          let totalElementsValue = 0;
+          
+          if (typeof res.data === 'object' && 'content' in res.data) {
+            const pageData = res.data as { content: ProductDTO[]; totalPages: number; totalElements: number; number: number; size: number };
+            content = pageData.content || [];
+            totalPagesValue = pageData.totalPages || 0;
+            totalElementsValue = pageData.totalElements || 0;
+          } else if (Array.isArray(res.data)) {
+            content = res.data as ProductDTO[];
+            totalPagesValue = 1;
+            totalElementsValue = content.length;
+          } else {
+            content = (res.data as any).content || [];
+            totalPagesValue = (res.data as any).totalPages || 0;
+            totalElementsValue = (res.data as any).totalElements || 0;
+          }
+          
+          setTotalPages(totalPagesValue);
+          setTotalElements(totalElementsValue);
+          
+          // ✅ OPTIMIZED: Data is already filtered and sorted by backend
+          // Map to add category names and normalize data
+          const productsWithCategories = content.map((p) => {
+            const warehouseQty = (p as any).warehouseQuantity ?? (p as any).warehouseQty ?? 0;
+            const storeQty = (p as any).storeQuantity ?? (p as any).storeQty ?? 0;
+            
+            // ✅ FIXED: Extract category like InventoryOperations (use first category, not subcategory)
+            let categoryName: string | undefined;
+            if (Array.isArray(p.categories) && p.categories.length > 0) {
+              categoryName = p.categories[0].name;
+            } else if (typeof p.category === 'string' && p.category.trim()) {
+              categoryName = p.category;
+            } else if (p.category && typeof p.category === 'object') {
+              const catObj = p.category as any;
+              categoryName = catObj.name || (catObj.category?.name);
+            }
+            
+            return {
+              ...p,
+              warehouseQuantity: warehouseQty,
+              storeQuantity: storeQty,
+              category: categoryName,
+            };
           });
           
-          if (allProductsRes.data) {
-            const allProducts = Array.isArray((allProductsRes.data as unknown as ProductDTO[]))
-              ? (allProductsRes.data as unknown as ProductDTO[])
-              : allProductsRes.data.content || [];
+          // ✅ CLIENT-SIDE SORTING: Products with warehouseQuantity > 0 first, then zero stock at bottom
+          // This ensures zero stock products appear at the bottom even if backend doesn't sort correctly
+          const sortedProducts = [...productsWithCategories].sort((a, b) => {
+            const aQty = a.warehouseQuantity || 0;
+            const bQty = b.warehouseQuantity || 0;
             
-            // Check warehouse quantity for each product
-            for (const product of allProducts) {
-              try {
-                const stockRes = await storeProductsApi.getByProductId(product.id);
-                if (stockRes.data && (stockRes.data.warehouseQuantity ?? 0) > 0) {
-                  products.push({
-                    ...product,
-                    warehouseQuantity: stockRes.data.warehouseQuantity,
-                    storeQuantity: stockRes.data.storeQuantity
-                  });
-                }
-              } catch (err) {
-                // If product not found in stock_snapshot, skip it
-                continue;
-              }
+            // If both have stock or both are zero, maintain backend order (or sort by quantity DESC)
+            if ((aQty > 0 && bQty > 0) || (aQty === 0 && bQty === 0)) {
+              return bQty - aQty; // Higher quantity first
             }
-          }
-        } catch (err) {
-          console.error('Failed to load products from API:', err);
+            
+            // Products with stock come before products with zero stock
+            return bQty > 0 ? 1 : -1;
+          });
+          
+          setAvailableProducts(sortedProducts);
+        } else {
+          setAvailableProducts([]);
+          setTotalPages(0);
+          setTotalElements(0);
         }
       }
-      
-      // Sort products by warehouseQuantity descending (highest first)
-      products.sort((a, b) => {
-        const aQty = a.warehouseQuantity || 0;
-        const bQty = b.warehouseQuantity || 0;
-        return bQty - aQty; // Descending order
-      });
-      
-      // Fetch categories for all products in parallel
-      const productsWithCategories = await Promise.all(
-        products.map(async (p) => {
-          let categoryName: string | undefined = typeof p.category === 'string' 
-            ? p.category 
-            : undefined;
-          
-          // Fetch category from product categories endpoint if not already available
-          if (!categoryName && p.id) {
-            try {
-              const catRes = await productsApi.getProductCategories(p.id);
-              if (catRes.data && catRes.data.length > 0) {
-                // Sort categories by ID for consistency
-                const sortedCategories = [...catRes.data].sort((a, b) => a.id - b.id);
-                // Find subcategory (one with parentId) or use first one
-                const subCategory = sortedCategories.find(cat => cat.parentId !== null && cat.parentId !== undefined) || sortedCategories[0];
-                categoryName = subCategory.name;
-              }
-            } catch (err) {
-              console.error(`Failed to load category for product ${p.id}:`, err);
-            }
-          }
-          
-          // Extract category from nested structure if needed
-          if (!categoryName && p.category && typeof p.category === 'object') {
-            const catObj = p.category as any;
-            categoryName = catObj.name || catObj.title;
-          }
-          
-          return {
-            ...p,
-            category: categoryName,
-          };
-        })
-      );
-      
-      // Add originalIndex to maintain order during updates
-      const productsWithIndex = productsWithCategories.map((p, index) => ({
-        ...p,
-        originalIndex: index
-      }));
-      
-      // Show ALL products with warehouse stock (no filtering by store quantity)
-      setAvailableProducts(productsWithIndex);
       
       // Restore scroll position after a brief delay to allow DOM to update
       if (preserveScroll) {
@@ -201,6 +209,8 @@ const AddProductFromInventoryModal = ({
     } catch (err) {
       console.error('Failed to load available products:', err);
       setAvailableProducts([]);
+      setTotalPages(0);
+      setTotalElements(0);
     } finally {
       setLoading(false);
     }
@@ -209,90 +219,129 @@ const AddProductFromInventoryModal = ({
   if (!isOpen) return null;
 
   // Debounced search function
-  const performSearch = async (searchValue: string) => {
+  const performSearch = async (searchValue: string, pageOverride?: number, sizeOverride?: number) => {
     if (!searchValue.trim()) {
       setSearchResults([]);
       setIsSearching(false);
-      setCurrentPage(0);
+      setPage(0);
       return;
     }
     
     setIsSearching(true);
+    setLoading(true);
     try {
-      // Use API search to fetch only matching products
-      const res = await productsApi.search({
-        q: searchValue.trim(),
-        page: 0,
-        size: 1000 // Get a large number to show all search results
-      });
+      // ✅ OPTIMIZED: Use backend search with pagination (no client-side filtering)
+      const searchTerm = searchValue.trim();
+      const currentPage = pageOverride !== undefined ? pageOverride : page;
+      const currentSize = sizeOverride !== undefined ? sizeOverride : pageSize;
+      
+      // Use backend search parameter - backend handles case-insensitive search
+      const filterParams = {
+        page: currentPage,
+        size: currentSize,
+        isActive: true,
+        search: searchTerm,  // ✅ Backend search: search by name or SKU (case-insensitive on backend)
+        // Removed minWarehouseQuantity: 1 to show all products in search (including zero stock)
+        sort: 'warehouseQuantity_with_zero_last',  // ✅ Backend sorting: products with stock first, zero stock at bottom
+        includeStock: true,        // Request stock quantities in the same call
+        includeCategories: true    // Request categories in the same call
+      };
+      
+      console.log('🔍 Search API call params:', filterParams);
+      const res = await productsApi.filter(filterParams);
+      console.log('🔍 Search API response:', res);
+      console.log('🔍 Search API response.data:', res.data);
+      console.log('🔍 Search API response.data type:', typeof res.data);
+      console.log('🔍 Search API response.data keys:', res.data ? Object.keys(res.data) : 'no data');
       
       if (res.data) {
+        // Handle paginated response
         let content: ProductDTO[] = [];
-        if (typeof res.data === 'object' && 'content' in res.data) {
-          content = (res.data as any).content || [];
+        let totalPagesValue = 0;
+        let totalElementsValue = 0;
+        
+        // Check if data is an empty object (backend returns {} when no results)
+        if (typeof res.data === 'object' && Object.keys(res.data).length === 0) {
+          console.log('🔍 Empty response object detected, setting empty results');
+          content = [];
+          totalPagesValue = 0;
+          totalElementsValue = 0;
+        } else if (typeof res.data === 'object' && 'content' in res.data) {
+          const pageData = res.data as { content: ProductDTO[]; totalPages: number; totalElements: number; number: number; size: number };
+          content = pageData.content || [];
+          totalPagesValue = pageData.totalPages || 0;
+          totalElementsValue = pageData.totalElements || 0;
+          console.log('🔍 Paginated response - content:', content.length, 'totalPages:', totalPagesValue, 'totalElements:', totalElementsValue);
         } else if (Array.isArray(res.data)) {
-          content = res.data;
+          content = res.data as ProductDTO[];
+          totalPagesValue = 1;
+          totalElementsValue = content.length;
+          console.log('🔍 Array response - content:', content.length);
+        } else {
+          content = (res.data as any).content || [];
+          totalPagesValue = (res.data as any).totalPages || 0;
+          totalElementsValue = (res.data as any).totalElements || 0;
+          console.log('🔍 Fallback response - content:', content.length);
         }
         
-        // Filter products that have warehouse quantity > 0 and fetch their quantities
-        const productsWithInventory: (ProductDTO & { warehouseQuantity?: number; storeQuantity?: number })[] = [];
+        setTotalPages(totalPagesValue);
+        setTotalElements(totalElementsValue);
         
-        for (const product of content) {
-          try {
-            const productId = typeof product.id === 'string' ? parseInt(product.id) : product.id;
-            const stockRes = await storeProductsApi.getByProductId(productId);
-            if (stockRes.data && (stockRes.data.warehouseQty || stockRes.data.warehouseQuantity || 0) > 0) {
-              // Fetch category
-              let categoryName: string | undefined = typeof product.category === 'string' 
-                ? product.category 
-                : undefined;
-              
-              if (!categoryName && product.id) {
-                try {
-                  const catRes = await productsApi.getProductCategories(product.id);
-                  if (catRes.data && catRes.data.length > 0) {
-                    const sortedCategories = [...catRes.data].sort((a, b) => a.id - b.id);
-                    const subCategory = sortedCategories.find(cat => cat.parentId !== null && cat.parentId !== undefined) || sortedCategories[0];
-                    categoryName = subCategory.name;
-                  }
-                } catch (err) {
-                  // ignore
-                }
-              }
-              
-              if (!categoryName && product.category && typeof product.category === 'object') {
-                const catObj = product.category as any;
-                categoryName = catObj.name || catObj.title;
-              }
-              
-              productsWithInventory.push({
-                ...product,
-                warehouseQuantity: stockRes.data.warehouseQty || stockRes.data.warehouseQuantity || 0,
-                storeQuantity: stockRes.data.storeQty || stockRes.data.storeQuantity || 0,
-                category: categoryName,
-              });
-            }
-          } catch (err) {
-            // Skip products without inventory
-            continue;
+        // ✅ OPTIMIZED: Data is already filtered, sorted, and paginated by backend
+        // Map to add category names and normalize data
+        const productsWithInventory = content.map((p) => {
+          const warehouseQty = (p as any).warehouseQuantity ?? (p as any).warehouseQty ?? 0;
+          const storeQty = (p as any).storeQuantity ?? (p as any).storeQty ?? 0;
+          
+          // ✅ FIXED: Extract category like InventoryOperations (use first category, not subcategory)
+          let categoryName: string | undefined;
+          if (Array.isArray(p.categories) && p.categories.length > 0) {
+            categoryName = p.categories[0].name;
+          } else if (typeof p.category === 'string' && p.category.trim()) {
+            categoryName = p.category;
+          } else if (p.category && typeof p.category === 'object') {
+            const catObj = p.category as any;
+            categoryName = catObj.name || (catObj.category?.name);
           }
-        }
-        
-        // Sort by warehouseQuantity descending (highest first)
-        productsWithInventory.sort((a, b) => {
-          const aQty = a.warehouseQuantity || 0;
-          const bQty = b.warehouseQuantity || 0;
-          return bQty - aQty;
+          
+          return {
+            ...p,
+            warehouseQuantity: warehouseQty,
+            storeQuantity: storeQty,
+            category: categoryName,
+          };
         });
         
-        setSearchResults(productsWithInventory);
-        setCurrentPage(0); // Reset to first page when search results change
+        // ✅ CLIENT-SIDE SORTING: Products with warehouseQuantity > 0 first, then zero stock at bottom
+        // This ensures zero stock products appear at the bottom even if backend doesn't sort correctly
+        const sortedSearchResults = [...productsWithInventory].sort((a, b) => {
+          const aQty = a.warehouseQuantity || 0;
+          const bQty = b.warehouseQuantity || 0;
+          
+          // If both have stock or both are zero, maintain backend order (or sort by quantity DESC)
+          if ((aQty > 0 && bQty > 0) || (aQty === 0 && bQty === 0)) {
+            return bQty - aQty; // Higher quantity first
+          }
+          
+          // Products with stock come before products with zero stock
+          return bQty > 0 ? 1 : -1;
+        });
+        
+        setSearchResults(sortedSearchResults);
+        console.log('🔍 Search results set:', productsWithInventory.length, 'products');
       } else {
+        console.warn('🔍 Search API returned no data. Error:', res.error);
         setSearchResults([]);
+        setTotalPages(0);
+        setTotalElements(0);
       }
     } catch (err) {
-      console.error('Search failed:', err);
+      console.error('🔍 Search failed with exception:', err);
       setSearchResults([]);
+      setTotalPages(0);
+      setTotalElements(0);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -300,13 +349,25 @@ const AddProductFromInventoryModal = ({
     const value = e.target.value;
     setSearchTerm(value);
     
-    if (value.trim()) {
-      performSearch(value);
-    } else {
-      setSearchResults([]);
-      setIsSearching(false);
-      setCurrentPage(0);
+    // Clear existing timer
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
     }
+    
+    // Set new timer for debounced search
+    debounceTimerRef.current = setTimeout(() => {
+      if (value.trim()) {
+        setPage(0); // Reset to first page when searching
+        setIsSearching(true);
+        performSearch(value, 0, pageSize);
+      } else {
+        setSearchResults([]);
+        setIsSearching(false);
+        setPage(0);
+        // Reload available products when search is cleared
+        loadAvailableProducts(false, 0, pageSize);
+      }
+    }, 300); // 300ms debounce delay
   };
 
   const handleSelect = async (product: ProductDTO & { warehouseQuantity?: number; storeQuantity?: number }, qtyOverride?: number) => {
@@ -571,13 +632,14 @@ const AddProductFromInventoryModal = ({
           </div>
 
               {loading ? (
-                <div className="text-center py-12">
+                <div className="p-12 text-center">
+                  <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-red-600 mb-3"></div>
                   <p className="text-slate-600">Loading available products...</p>
                 </div>
               ) : displayProducts.length > 0 ? (
                 <div className="flex-1 flex flex-col overflow-hidden">
                   <div ref={scrollContainerRef} className="flex-1 overflow-y-auto space-y-3 pr-2">
-                    {pagedProducts.map(product => {
+                    {displayProducts.map(product => {
                     const imageUrl = product.imageUrl || product.primaryImageUrl || 
                       (product.images && product.images.length > 0 ? product.images[0].url : null);
                     const warehouseQty = product.warehouseQuantity || 0;
@@ -618,14 +680,7 @@ const AddProductFromInventoryModal = ({
                           <h4 className="text-sm font-semibold text-slate-800 mb-0.5">{product.name || 'Unknown Product'}</h4>
                           <div className="flex items-center gap-3 text-xs text-slate-600 mb-1.5">
                             <span>
-                              {(() => {
-                                if (typeof product.category === 'string') return product.category;
-                                if (product.category && typeof product.category === 'object') {
-                                  const cat = product.category as any;
-                                  return cat.name || cat.title || 'No category';
-                                }
-                                return 'No category';
-                              })()}
+                              {product.category || 'No category'}
                             </span>
                             <span className="font-medium text-blue-600">
                               ${((product.price || product.defaultPrice || 0) > 0 ? (product.price || product.defaultPrice || 0) : 0).toFixed(2)}
@@ -739,53 +794,73 @@ const AddProductFromInventoryModal = ({
                   })}
                   </div>
 
-                  <div className="pt-3 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-3">
-                    <div className="text-sm text-slate-600">
-                      Showing{" "}
-                      <span className="font-semibold text-slate-900">
-                        {displayProducts.length === 0 ? 0 : currentPage * pageSize + 1}
-                      </span>{" "}
-                      to{" "}
-                      <span className="font-semibold text-slate-900">
-                        {Math.min((currentPage + 1) * pageSize, displayProducts.length)}
-                      </span>{" "}
-                      of <span className="font-semibold text-slate-900">{displayProducts.length}</span>
-                    </div>
-
-                    <div className="flex items-center gap-2">
-                      <select
-                        value={pageSize}
-                        onChange={(e) => setPageSize(Number(e.target.value))}
-                        className="px-3 py-2 border border-slate-300 rounded-lg text-sm font-semibold text-slate-700 bg-white hover:bg-slate-50 transition-all"
-                      >
-                        {[10, 20, 50].map((s) => (
-                          <option key={s} value={s}>
-                            {s} / page
-                          </option>
-                        ))}
-                      </select>
-
-                      <button
-                        onClick={() => setPage((p) => Math.max(0, p - 1))}
-                        disabled={currentPage === 0}
-                        className="inline-flex items-center gap-1 px-3 py-2 rounded-lg border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-all text-sm font-semibold"
-                      >
-                        Prev
-                      </button>
-
-                      <div className="px-3 py-2 text-sm font-semibold text-slate-700">
-                        Page {currentPage + 1} / {totalPages}
+                  {/* Pagination Controls */}
+                  {(
+                    <div className="px-6 py-4 border-t border-slate-200 flex items-center justify-between bg-slate-50/50">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm text-slate-600">Rows per page:</span>
+                        <select
+                          value={pageSize}
+                          onChange={(e) => {
+                            const newSize = Number(e.target.value);
+                            setPageSize(newSize);
+                            setPage(0);
+                            // Reload with new page size
+                            if (isSearching && searchTerm.trim()) {
+                              performSearch(searchTerm, 0, newSize);
+                            } else {
+                              loadAvailableProducts(false, 0, newSize);
+                            }
+                          }}
+                          className="px-2.5 py-1.5 text-sm border border-slate-300 rounded-md bg-white hover:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-150 cursor-pointer"
+                        >
+                          <option value={10}>10</option>
+                          <option value={20}>20</option>
+                          <option value={50}>50</option>
+                          <option value={100}>100</option>
+                        </select>
                       </div>
-
-                      <button
-                        onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
-                        disabled={currentPage >= totalPages - 1}
-                        className="inline-flex items-center gap-1 px-3 py-2 rounded-lg border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-all text-sm font-semibold"
-                      >
-                        Next
-                      </button>
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm text-slate-600">
+                          Page {currentPage + 1} of {totalPages} {totalElements > 0 && `(${totalElements} total)`}
+                        </span>
+                        <div className="inline-flex rounded-lg overflow-hidden border border-slate-300 bg-white shadow-sm">
+                          <button
+                            onClick={() => {
+                              const newPage = Math.max(0, page - 1);
+                              setPage(newPage);
+                              if (isSearching && searchTerm.trim()) {
+                                performSearch(searchTerm, newPage, pageSize);
+                              } else {
+                                loadAvailableProducts(false, newPage, pageSize);
+                              }
+                            }}
+                            disabled={currentPage === 0}
+                            className="px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-blue-50 hover:text-blue-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1"
+                            title="Previous page"
+                          >
+                            <ChevronLeft className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => {
+                              const newPage = Math.min(totalPages - 1, page + 1);
+                              setPage(newPage);
+                              if (isSearching && searchTerm.trim()) {
+                                performSearch(searchTerm, newPage, pageSize);
+                              } else {
+                                loadAvailableProducts(false, newPage, pageSize);
+                              }
+                            }}
+                            disabled={currentPage >= totalPages - 1}
+                            className="px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-blue-50 hover:text-blue-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent transition-all duration-150 border-l border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1"
+                            title="Next page"
+                          >
+                            <ChevronRight className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
                     </div>
-                  </div>
+                  )}
                 </div>
           ) : (
             <div className="text-center py-12">

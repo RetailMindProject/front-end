@@ -7,7 +7,6 @@ import EditProduct from '../components/Operations/EditProduct';
 import RestockModal from '../components/Operations/RestockModal';
 import { productsApi, type ProductDTO, type ProductCreateDTO } from '../services/products.api';
 import { useToast } from '../contexts/ToastContext';
-import PageHeader from "../components/PageHeader";
 
 type UIProduct = Omit<ProductDTO, 'category'> & { 
   category?: string;
@@ -31,7 +30,6 @@ export default function InventoryOperations() {
   };
 
   const [products, setProducts] = useState<UIProduct[]>([]);
-  const [allProducts, setAllProducts] = useState<UIProduct[]>([]); // Keep unfiltered products for stats
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [filters, setFilters] = useState(initialFilters);
@@ -74,16 +72,29 @@ export default function InventoryOperations() {
     try {
       setLoading(true);
       setError(null);
-      const res = await productsApi.filter({
+      const filterParams = {
         page: page,
         size: size,
         brand: activeFilters.brand || undefined,
         sku: activeFilters.sku || undefined,
         minPrice: activeFilters.minPrice ? Number(activeFilters.minPrice) : undefined,
         maxPrice: activeFilters.maxPrice ? Number(activeFilters.maxPrice) : undefined,
-        isActive: activeFilters.isActive === '' ? undefined : activeFilters.isActive === 'true'
-      });
+        isActive: activeFilters.isActive === '' ? undefined : activeFilters.isActive === 'true',
+        includeStock: true,        // Request stock quantities in the same call
+        includeCategories: true    // Request categories in the same call
+      };
+      
+      console.log('Fetching products with params:', filterParams);
+      const res = await productsApi.filter(filterParams);
+      
       if (res.data) {
+        console.log('API Response received:', {
+          hasData: !!res.data,
+          dataType: typeof res.data,
+          isArray: Array.isArray(res.data),
+          hasContent: 'content' in (res.data as any),
+          firstProduct: Array.isArray(res.data) ? res.data[0] : (res.data as any).content?.[0]
+        });
         // Handle paginated response
         let content: ProductDTO[] = [];
         let totalPagesValue = 0;
@@ -108,88 +119,63 @@ export default function InventoryOperations() {
         
         setTotalPages(totalPagesValue);
         setTotalElements(totalElementsValue);
-        // Fetch categories and quantities for all products in parallel
-        const { storeProductsApi } = await import('../services/store-products.api');
-        const normalized: UIProduct[] = await Promise.all(
-          content.map(async (p) => {
-            // Extract category: prefer expanded categories list (sub + parent) from backend
-            let categoryName: string | undefined;
-            if (Array.isArray((p as any).categories) && (p as any).categories.length > 0) {
-              const firstCat = (p as any).categories[0];
-              categoryName = firstCat?.name;
-            } else if (typeof p.category === 'string' && p.category.trim()) {
-              categoryName = p.category;
-            } else if (p.category && typeof p.category === 'object') {
-              const catObj = p.category as any;
-              categoryName = catObj.name || (catObj.category?.name);
-            } else if ((p as any).productCategory?.category?.name) {
-              categoryName = (p as any).productCategory.category.name;
-            } else if (Array.isArray((p as any).productCategories) && (p as any).productCategories.length > 0) {
-              const firstPC = (p as any).productCategories[0];
-              categoryName = firstPC?.category?.name;
-            } else if (p.id) {
-              // fallback call
-              try {
-                const catRes = await productsApi.getProductCategories(p.id);
-                if (catRes.data && catRes.data.length > 0) {
-                  const firstCat = catRes.data[0];
-                  categoryName = firstCat.name;
-                }
-              } catch (err) {
-                // ignore
-              }
+        
+        // ✅ OPTIMIZED: Data is already in response (stock and categories included), no individual API calls needed
+        const normalized: UIProduct[] = content.map((p) => {
+          // Extract category from response (already included)
+          let categoryName: string | undefined;
+          if (Array.isArray(p.categories) && p.categories.length > 0) {
+            categoryName = p.categories[0].name;
+          } else if (typeof p.category === 'string' && p.category.trim()) {
+            categoryName = p.category;
+          } else if (p.category && typeof p.category === 'object') {
+            const catObj = p.category as any;
+            categoryName = catObj.name || (catObj.category?.name);
+          }
+          
+          // Extract image URL
+          let imageUrl: string | null | undefined = null;
+          if (p.images && Array.isArray(p.images) && p.images.length > 0) {
+            const primaryImage = p.images.find(img => img.isPrimary) || p.images[0];
+            if (primaryImage?.url) {
+              imageUrl = productsApi.normalizeImageUrl(primaryImage.url, p.id);
             }
-            
-            // Extract image URL from primaryImageUrl, images array, or imageUrl
-            // Priority: images array (from media table) > primaryImageUrl > imageUrl
-            let imageUrl: string | null | undefined = null;
-            if (p.images && Array.isArray(p.images) && p.images.length > 0) {
-              // Get primary image or first image from media table
-              const primaryImage = p.images.find(img => img.isPrimary) || p.images[0];
-              if (primaryImage?.url) {
-                // Normalize the URL using the helper function
-                imageUrl = productsApi.normalizeImageUrl(primaryImage.url, p.id);
-              }
-            }
-            if (!imageUrl && p.primaryImageUrl) {
-              imageUrl = productsApi.normalizeImageUrl(p.primaryImageUrl, p.id);
-            }
-            if (!imageUrl && p.imageUrl) {
-              imageUrl = productsApi.normalizeImageUrl(p.imageUrl, p.id);
-            }
-            
-            // Fetch warehouse and store quantities
-            let warehouseQuantity = 0;
-            let storeQuantity = 0;
-            if (p.id) {
-              try {
-                const productId = typeof p.id === 'string' ? parseInt(p.id) : p.id;
-                const stockRes = await storeProductsApi.getByProductId(productId);
-                if (stockRes.data) {
-                  warehouseQuantity = (stockRes.data as any).warehouseQty || (stockRes.data as any).warehouseQuantity || 0;
-                  storeQuantity = (stockRes.data as any).storeQty || (stockRes.data as any).storeQuantity || 0;
-                }
-              } catch (err) {
-                // If product not found in stock_snapshot, quantities remain 0
-                console.warn(`No stock data for product ${p.id}:`, err);
-              }
-            }
-            
-            return {
-              ...p,
-              category: categoryName,
-              price: p.price ?? p.defaultPrice ?? 0,
-              imageUrl: imageUrl || p.imageUrl, // Ensure imageUrl is set
-              warehouseQuantity,
-              storeQuantity,
-            };
-          })
-        );
+          }
+          if (!imageUrl && p.primaryImageUrl) {
+            imageUrl = productsApi.normalizeImageUrl(p.primaryImageUrl, p.id);
+          }
+          if (!imageUrl && p.imageUrl) {
+            imageUrl = productsApi.normalizeImageUrl(p.imageUrl, p.id);
+          }
+          
+          // ✅ Stock quantities are already in response
+          // Check both field name variations (backend might use warehouseQty/storeQty or warehouseQuantity/storeQuantity)
+          const warehouseQuantity = (p as any).warehouseQuantity ?? (p as any).warehouseQty ?? 0;
+          const storeQuantity = (p as any).storeQuantity ?? (p as any).storeQty ?? 0;
+          
+          // Debug: Log first product to verify data structure
+          if (content.indexOf(p) === 0) {
+            console.log('First product from API:', {
+              id: p.id,
+              name: p.name,
+              warehouseQuantity: warehouseQuantity,
+              storeQuantity: storeQuantity,
+              rawProduct: p
+            });
+          }
+          
+          return {
+            ...p,
+            category: categoryName,
+            price: p.price ?? p.defaultPrice ?? 0,
+            imageUrl: imageUrl || p.imageUrl,
+            warehouseQuantity,  // Already included from API
+            storeQuantity,       // Already included from API
+            sales: (p as any).sales ?? 0, // Preserve sales if available
+          };
+        });
+        
         setProducts(normalized);
-        // Store unfiltered products for stats when fetching without filters
-        if (!activeFilters.brand && !activeFilters.sku && !activeFilters.minPrice && !activeFilters.maxPrice && activeFilters.isActive === '') {
-          setAllProducts(normalized);
-        }
       } else {
         // Provide more context for 403 errors
         if (res.status === 403) {
@@ -392,11 +378,7 @@ export default function InventoryOperations() {
           imageUrl = productsApi.normalizeImageUrl(created.imageUrl, created.id);
         }
         
-        // Add quantity to warehouse if provided, then fetch store product details
-        let warehouseQuantity = 0;
-        let storeQuantity = 0;
-        let sales = 0;
-        
+        // Add quantity to warehouse if provided
         if (quantity && quantity > 0 && created.id) {
           try {
             const { storeProductsApi } = await import('../services/store-products.api');
@@ -407,32 +389,11 @@ export default function InventoryOperations() {
               expirationDate: expirationDate || null
             });
             console.log(`Added ${quantity} units to warehouse for product ${created.id}`);
-            
-            // Fetch store product details to get actual quantities and sales
-            const productId = typeof created.id === 'string' ? parseInt(created.id) : created.id;
-            const stockRes = await storeProductsApi.getByProductId(productId);
-            if (stockRes.data) {
-              warehouseQuantity = (stockRes.data as any).warehouseQty || (stockRes.data as any).warehouseQuantity || 0;
-              storeQuantity = (stockRes.data as any).storeQty || (stockRes.data as any).storeQuantity || 0;
-              sales = (stockRes.data as any).sales || 0;
-            }
           } catch (err) {
             console.error('Failed to add quantity to warehouse:', err);
             // Don't fail the whole operation if quantity add fails, but log it
           }
         }
-        
-        const normalized: UIProduct = { 
-          ...created, 
-          category: categoryName || payload.category,
-          price: created.price ?? created.defaultPrice ?? payload.price ?? 0,
-          imageUrl: imageUrl || null,
-          warehouseQuantity,
-          storeQuantity,
-          sales
-        };
-        // NOTE: normalized is prepared for future UI insert; current flow refreshes list from API.
-        void normalized;
         
         // Refresh the list to show the new product (go to page 0 to see it)
         setCurrentPage(0);
@@ -764,129 +725,60 @@ export default function InventoryOperations() {
     }
   }, [searchParams]);
 
-  // Calculate statistics from allProducts (unfiltered)
-  const calculateStats = () => {
-    // Only calculate stats when allProducts is fully loaded and matches totalElements
-    // This prevents numbers from flickering/changing
-    if (allProducts.length > 0 && totalElements > 0 && allProducts.length === totalElements) {
-      const active = allProducts.filter(p => p.isActive !== false).length;
-      const low = allProducts.filter(p => {
-        const total = (p.warehouseQuantity || 0) + (p.storeQuantity || 0);
-        return total > 0 && total < 10; // threshold
-      }).length;
-      const out = allProducts.filter(p => {
-        const total = (p.warehouseQuantity || 0) + (p.storeQuantity || 0);
-        return total === 0;
-      }).length;
-      setStats({
-        totalProducts: totalElements, // Use API totalElements for accuracy
-        activeProducts: active,
-        lowStock: low,
-        outOfStock: out
-      });
-    }
-    // Don't set partial stats - wait until everything is ready
-  };
-
-  // Update stats only when allProducts is fully loaded
+  // Fetch statistics from backend API
   useEffect(() => {
-    if (currentView === 'list') {
-      calculateStats();
-    }
-  }, [allProducts.length, totalElements, currentView]); // Only trigger when lengths match
-
-  // Load all products for stats calculation on mount
-  useEffect(() => {
-    // Fetch all products across all pages for accurate stats
-    const fetchAllForStats = async () => {
+    const fetchStats = async () => {
+      if (currentView !== 'list') return;
+      
       try {
-        const { storeProductsApi } = await import('../services/store-products.api');
-        const allProductsList: UIProduct[] = [];
-        let currentPage = 0;
-        let hasMore = true;
-        let totalElementsFromAPI = 0;
+        const statsRes = await productsApi.getStats({
+          brand: filters.brand || undefined,
+          sku: filters.sku || undefined,
+          minPrice: filters.minPrice ? Number(filters.minPrice) : undefined,
+          maxPrice: filters.maxPrice ? Number(filters.maxPrice) : undefined,
+          isActive: filters.isActive === '' ? undefined : filters.isActive === 'true'
+        });
         
-        while (hasMore) {
-          const res = await productsApi.filter({
-            page: currentPage,
-            size: 1000,
+        if (statsRes.data) {
+          setStats({
+            totalProducts: statsRes.data.totalProducts,
+            activeProducts: statsRes.data.activeProducts,
+            lowStock: statsRes.data.lowStock,
+            outOfStock: statsRes.data.outOfStock
           });
-          
-          if (res.data) {
-            let content: ProductDTO[] = [];
-            if (typeof res.data === 'object' && 'content' in res.data) {
-              const pageData = res.data as { content: ProductDTO[]; totalPages: number; totalElements: number };
-              content = pageData.content || [];
-              totalElementsFromAPI = pageData.totalElements || 0;
-              hasMore = currentPage < pageData.totalPages - 1;
-            } else if (Array.isArray(res.data)) {
-              content = res.data;
-              hasMore = false;
-            } else {
-              hasMore = false;
-            }
-            
-            const normalized: UIProduct[] = await Promise.all(
-              content.map(async (p) => {
-                let categoryName: string | undefined;
-                if (Array.isArray((p as any).categories) && (p as any).categories.length > 0) {
-                  categoryName = (p as any).categories[0]?.name;
-                } else if (typeof p.category === 'string' && p.category.trim()) {
-                  categoryName = p.category;
-                }
-                
-                let warehouseQuantity = 0;
-                let storeQuantity = 0;
-                if (p.id) {
-                  try {
-                    const productId = typeof p.id === 'string' ? parseInt(p.id) : p.id;
-                    const stockRes = await storeProductsApi.getByProductId(productId);
-                    if (stockRes.data) {
-                      warehouseQuantity = (stockRes.data as any).warehouseQty || (stockRes.data as any).warehouseQuantity || 0;
-                      storeQuantity = (stockRes.data as any).storeQty || (stockRes.data as any).storeQuantity || 0;
-                    }
-                  } catch (err) {
-                    // ignore
-                  }
-                }
-                
-                return {
-                  ...p,
-                  category: categoryName,
-                  price: p.price ?? p.defaultPrice ?? 0,
-                  warehouseQuantity,
-                  storeQuantity,
-                };
-              })
-            );
-            allProductsList.push(...normalized);
-            currentPage++;
-          } else {
-            hasMore = false;
-          }
-        }
-        
-        // Only set allProducts once all pages are loaded
-        setAllProducts(allProductsList);
-        // Update totalElements if we got it from API
-        if (totalElementsFromAPI > 0 && totalElementsFromAPI !== totalElements) {
-          setTotalElements(totalElementsFromAPI);
         }
       } catch (err) {
-        console.error('Failed to fetch all products for stats:', err);
+        console.error('Failed to fetch stats:', err);
       }
     };
     
-    fetchAllForStats();
+    fetchStats();
+  }, [filters, currentView]);
+
+  // Initial load
+  useEffect(() => {
     fetchProducts();
   }, []); // initial load
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50">
-      <PageHeader
-        title="Inventory Operations"
-        icon={<span className="text-2xl">📦</span>}
-      />
+      {/* Header Section */}
+      <header className="border-b border-indigo-200/50 bg-white/80 backdrop-blur-md shadow-sm">
+        <div className="h-0.5 bg-gradient-to-r from-indigo-500 via-blue-500 to-indigo-500"></div>
+        <div className="px-6 py-6">
+          <div className="flex items-center gap-4">
+            <div className="grid h-12 w-12 place-items-center rounded-xl bg-gradient-to-br from-indigo-500 to-blue-600 shadow-lg ring-2 ring-white/20">
+              <span className="text-2xl">📦</span>
+            </div>
+            <div>
+              <h1 className="text-3xl font-bold bg-gradient-to-r from-indigo-600 via-blue-600 to-purple-600 bg-clip-text text-transparent">
+                Inventory Operations
+              </h1>
+              <p className="text-sm text-slate-600 mt-1">Manage your product inventory</p>
+            </div>
+          </div>
+        </div>
+      </header>
 
       {/* Main Content */}
       <div className="container mx-auto px-4 sm:px-6 py-6 max-w-7xl">
@@ -1046,8 +938,6 @@ export default function InventoryOperations() {
               setCurrentPage(0);
               fetchProducts(cleared, 0, undefined);
             }}
-            isFiltering={activeCardFilter !== 'all' || filters.brand !== '' || filters.sku !== '' || filters.minPrice !== '' || filters.maxPrice !== '' || filters.isActive !== ''}
-            allProducts={allProducts}
           />
         )}
         {currentView === 'create' && (
